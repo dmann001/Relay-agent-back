@@ -302,7 +302,7 @@ export function SettingsContent() {
                   <div className="space-y-0.5">
                     <Label>Smart Replies</Label>
                     <div className="text-sm text-muted-foreground">
-                      Show AI-powered reply suggestions
+                      Auto-generate AI draft replies when opening emails
                     </div>
                   </div>
                   <Switch
