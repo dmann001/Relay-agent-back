@@ -72,7 +72,22 @@ export function InboxList() {
           })
 
           if (!response.ok) {
-            throw new Error("Failed to fetch emails")
+            const errorData = await response.json()
+
+            // Handle specific error cases
+            if (errorData.code === "GMAIL_API_DISABLED") {
+              throw new Error(
+                "Gmail API is not enabled. Please enable it in Google Cloud Console and try again."
+              )
+            }
+
+            if (errorData.code === "AUTH_EXPIRED") {
+              throw new Error(
+                "Your Gmail authentication has expired. Please reconnect your account in Settings."
+              )
+            }
+
+            throw new Error(errorData.message || errorData.error || "Failed to fetch emails")
           }
 
           const data = await response.json()
@@ -119,10 +134,23 @@ export function InboxList() {
       })
     } catch (error: any) {
       console.error("Error syncing emails:", error)
+
+      // Show specific error message
+      const errorMessage = error.message || "Failed to sync emails. Please try again."
+
       toast({
         title: "Sync Failed",
-        description: error.message || "Failed to sync emails. Please try again.",
+        description: errorMessage,
         variant: "destructive",
+        action: errorMessage.includes("Gmail API") ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open("https://console.developers.google.com/apis/api/gmail.googleapis.com/overview", "_blank")}
+          >
+            Enable API
+          </Button>
+        ) : undefined,
       })
     } finally {
       setIsSyncing(false)
