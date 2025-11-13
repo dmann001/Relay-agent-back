@@ -28,8 +28,10 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const [email, setEmail] = useState<Email | null>(null)
   const [draftContent, setDraftContent] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [autoGenerateAttempted, setAutoGenerateAttempted] = useState(false)
   const { toast } = useToast()
 
+  // Load email from storage
   useEffect(() => {
     const emails = storage.getEmails()
     const foundEmail = emails.find((e) => e.id === threadId)
@@ -37,6 +39,20 @@ export function ThreadView({ threadId }: { threadId: string }) {
       setEmail(foundEmail)
     }
   }, [threadId])
+
+  // Auto-generate draft when email loads
+  useEffect(() => {
+    if (email && !autoGenerateAttempted && !draftContent) {
+      const settings = storage.getSettings()
+
+      // Only auto-generate if API key exists and smart replies are enabled
+      if (settings.openaiApiKey && settings.aiFeatures.smartReplies) {
+        setAutoGenerateAttempted(true)
+        handleGenerateDraft()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, autoGenerateAttempted, draftContent])
 
   const handleGenerateDraft = async (instruction?: string) => {
     if (!email) return
@@ -69,10 +85,14 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
       const data = await response.json()
       setDraftContent(data.draft)
-      toast({
-        title: "Draft Generated",
-        description: "AI has generated a reply for you. Review and edit as needed.",
-      })
+
+      // Only show toast if manually triggered (not auto-generated)
+      if (instruction) {
+        toast({
+          title: "Draft Regenerated",
+          description: "AI has generated a new reply based on your request.",
+        })
+      }
     } catch (error: any) {
       console.error("Error generating draft:", error)
       toast({
@@ -191,12 +211,14 @@ export function ThreadView({ threadId }: { threadId: string }) {
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">AI-Powered Draft Assistance</span>
+                <span className="text-sm font-semibold">
+                  {isGenerating ? "Generating Your Reply..." : "AI-Powered Draft"}
+                </span>
               </div>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleGenerateDraft()}
+                onClick={() => handleGenerateDraft("Regenerate a professional reply")}
                 disabled={isGenerating}
               >
                 {isGenerating ? (
@@ -207,52 +229,93 @@ export function ThreadView({ threadId }: { threadId: string }) {
                 ) : (
                   <>
                     <Wand2 className="mr-2 h-3 w-3" />
-                    Generate Draft
+                    Regenerate
                   </>
                 )}
               </Button>
             </div>
+
+            {isGenerating && !draftContent && (
+              <Card className="mb-3 border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Preparing your AI-generated reply...</p>
+                    <p className="text-xs text-muted-foreground">
+                      GPT is analyzing the email and composing a professional response
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {!isGenerating && draftContent && (
+              <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span>AI draft ready - Review, edit, and send when ready</span>
+              </div>
+            )}
+
             <div className="mb-3 flex flex-wrap gap-2">
               <Badge
                 variant="secondary"
-                className="cursor-pointer hover:bg-secondary/80"
-                onClick={() => handleGenerateDraft("Write a professional thank you reply")}
+                className={cn(
+                  "cursor-pointer hover:bg-secondary/80",
+                  isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
+                )}
+                onClick={() => !isGenerating && handleGenerateDraft("Write a professional thank you reply")}
               >
                 Draft a "thank you" reply
               </Badge>
               <Badge
                 variant="secondary"
-                className="cursor-pointer hover:bg-secondary/80"
-                onClick={() => handleGenerateDraft("Ask about next steps")}
+                className={cn(
+                  "cursor-pointer hover:bg-secondary/80",
+                  isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
+                )}
+                onClick={() => !isGenerating && handleGenerateDraft("Ask about next steps")}
               >
                 Ask for next steps
               </Badge>
               <Badge
                 variant="secondary"
-                className="cursor-pointer hover:bg-secondary/80"
-                onClick={() => handleGenerateDraft("Request to schedule a meeting")}
+                className={cn(
+                  "cursor-pointer hover:bg-secondary/80",
+                  isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
+                )}
+                onClick={() => !isGenerating && handleGenerateDraft("Request to schedule a meeting")}
               >
                 Schedule a meeting
               </Badge>
               <Badge
                 variant="secondary"
-                className="cursor-pointer hover:bg-secondary/80"
-                onClick={() => handleGenerateDraft("Ask for more details")}
+                className={cn(
+                  "cursor-pointer hover:bg-secondary/80",
+                  isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
+                )}
+                onClick={() => !isGenerating && handleGenerateDraft("Ask for more details")}
               >
                 Request more details
               </Badge>
             </div>
             <Textarea
-              placeholder="Click 'Generate Draft' or type your reply..."
+              placeholder={
+                isGenerating
+                  ? "Generating your AI-powered reply..."
+                  : draftContent
+                  ? "Review and edit your AI-generated draft..."
+                  : "AI draft will appear here, or type your own reply..."
+              }
               className="min-h-32 resize-none"
               value={draftContent}
               onChange={(e) => setDraftContent(e.target.value)}
+              disabled={isGenerating}
             />
             <div className="mt-3 flex justify-end gap-2">
-              <Button variant="outline" onClick={handleSaveDraft} disabled={!draftContent.trim()}>
+              <Button variant="outline" onClick={handleSaveDraft} disabled={!draftContent.trim() || isGenerating}>
                 Save Draft
               </Button>
-              <Button disabled={!draftContent.trim()}>Send Reply</Button>
+              <Button disabled={!draftContent.trim() || isGenerating}>Send Reply</Button>
             </div>
           </div>
         </div>
