@@ -21,14 +21,17 @@ export function AppSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="flex w-16 flex-col items-center border-r border-border bg-sidebar py-6">
+    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar py-6">
       {/* Logo */}
-      <div className="mb-8 flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-        <Mail className="h-5 w-5 text-primary-foreground" />
+      <div className="mb-8 flex items-center gap-3 px-6">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+          <Mail className="h-5 w-5 text-primary-foreground" />
+        </div>
+        <span className="text-lg font-bold tracking-tight">Relay</span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-1 flex-col gap-2">
+      <nav className="flex flex-1 flex-col gap-1 px-3">
         {navigation.map((item) => {
           const isActive = pathname === item.href
           const IconComponent = typeof item.icon === "string" ? null : item.icon
@@ -39,7 +42,7 @@ export function AppSidebar() {
               key={item.name}
               href={item.href}
               className={cn(
-                "group relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
+                "group flex h-10 items-center rounded-md px-3 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -47,41 +50,45 @@ export function AppSidebar() {
               title={item.name}
             >
               {isProviderIcon ? (
-                <ProviderIcon provider={item.icon as "gmail" | "outlook"} className="h-5 w-5" />
+                <ProviderIcon provider={item.icon as "gmail" | "outlook"} className="mr-3 h-4 w-4" />
               ) : (
-                IconComponent && <IconComponent className="h-5 w-5" />
+                IconComponent && <IconComponent className="mr-3 h-4 w-4" />
               )}
+              <span>{item.name}</span>
               {item.count && item.count > 0 && (
                 <Badge
-                  variant="default"
-                  className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full px-1 text-[10px] font-semibold"
+                  variant="secondary"
+                  className="ml-auto h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]"
                 >
                   {item.count}
                 </Badge>
               )}
-              {isActive && <div className="absolute left-0 h-6 w-0.5 rounded-r-full bg-primary" />}
             </Link>
           )
         })}
       </nav>
 
-      <div className="mb-2">
-        <ThemeToggle />
-      </div>
+      <div className="mt-auto px-3">
+        <div className="mb-2 flex items-center justify-between px-3 py-2">
+          <span className="text-xs font-medium text-muted-foreground">Theme</span>
+          <ThemeToggle />
+        </div>
 
-      {/* Settings at bottom */}
-      <Link
-        href="/settings"
-        className={cn(
-          "flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
-          pathname === "/settings"
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        )}
-        title="Settings"
-      >
-        <Settings className="h-5 w-5" />
-      </Link>
+        {/* Settings at bottom */}
+        <Link
+          href="/settings"
+          className={cn(
+            "flex h-10 items-center rounded-md px-3 text-sm font-medium transition-colors",
+            pathname === "/settings"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+          title="Settings"
+        >
+          <Settings className="mr-3 h-4 w-4" />
+          <span>Settings</span>
+        </Link>
+      </div>
     </aside>
   )
 }

@@ -245,7 +245,7 @@ export function InboxList() {
                     .toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="mb-2 flex items-center gap-2.5">
                   <span className={cn("text-sm", !email.read && "font-semibold")}>
                     {email.from.name}
@@ -255,7 +255,7 @@ export function InboxList() {
                   </Badge>
                   {email.aiSummary && <Sparkles className="h-3.5 w-3.5 text-primary" />}
                 </div>
-                <div className={cn("mb-2 text-sm", !email.read ? "font-semibold" : "font-normal")}>
+                <div className={cn("mb-2 text-sm truncate", !email.read ? "font-semibold" : "font-normal")}>
                   {email.subject}
                 </div>
                 <p className="line-clamp-2 text-sm text-muted-foreground leading-relaxed">{email.bodyPlain}</p>
