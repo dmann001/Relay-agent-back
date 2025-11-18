@@ -7,7 +7,7 @@ export default function InboxPage() {
     <div className="flex h-screen bg-background">
       <AppSidebar />
       <div className="flex flex-1 flex-col">
-        <div className="border-b border-border bg-background px-6 py-4">
+        <div className="border-b border-border bg-background px-6 py-5">
           <SearchBar />
         </div>
         <InboxList />

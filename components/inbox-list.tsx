@@ -205,8 +205,8 @@ export function InboxList() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-6 py-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">
+      <div className="border-b border-border px-6 py-5 flex items-center justify-between">
+        <h2 className="text-base font-semibold">
           Inbox ({emails.filter((e) => !e.read).length} unread)
         </h2>
         <Button size="sm" variant="outline" onClick={handleSyncEmails} disabled={isSyncing}>
@@ -230,7 +230,7 @@ export function InboxList() {
               key={email.id}
               href={`/thread/${email.id}`}
               className={cn(
-                "flex items-start gap-4 px-6 py-4 transition-colors hover:bg-muted/50",
+                "flex items-start gap-6 px-6 py-6 transition-colors hover:bg-muted/50",
                 !email.read && "bg-muted/30"
               )}
             >
@@ -246,7 +246,7 @@ export function InboxList() {
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center gap-2">
+                <div className="mb-2 flex items-center gap-2.5">
                   <span className={cn("text-sm", !email.read && "font-semibold")}>
                     {email.from.name}
                   </span>
@@ -255,12 +255,12 @@ export function InboxList() {
                   </Badge>
                   {email.aiSummary && <Sparkles className="h-3.5 w-3.5 text-primary" />}
                 </div>
-                <div className={cn("mb-1 text-sm", !email.read ? "font-semibold" : "font-normal")}>
+                <div className={cn("mb-2 text-sm", !email.read ? "font-semibold" : "font-normal")}>
                   {email.subject}
                 </div>
-                <p className="line-clamp-1 text-sm text-muted-foreground">{email.bodyPlain}</p>
+                <p className="line-clamp-2 text-sm text-muted-foreground leading-relaxed">{email.bodyPlain}</p>
                 {email.aiLabels && email.aiLabels.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {email.aiLabels.map((label) => (
                       <AiLabelBadge key={label} label={label as any} />
                     ))}
