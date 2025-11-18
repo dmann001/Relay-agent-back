@@ -13,6 +13,7 @@ import { ProviderIcon } from "@/components/provider-icon"
 import { storage } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
 import type { Email } from "@/types"
+import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from "@/components/ui/pagination"
 
 function formatTimestamp(date: string): string {
   const emailDate = new Date(date)
@@ -33,6 +34,9 @@ export function InboxList() {
   const [emails, setEmails] = useState<Email[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [currentPage, setCurrentPage] = useState(0)
+  const [pageTokens, setPageTokens] = useState<(string | undefined)[]>([undefined])
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined)
   const { toast } = useToast()
 
   // Load emails from localStorage on mount
@@ -43,7 +47,7 @@ export function InboxList() {
     setIsLoading(false)
   }, [])
 
-  const handleSyncEmails = async () => {
+  const handleSyncEmails = async (pageToken?: string) => {
     setIsSyncing(true)
     const accounts = storage.getAccounts()
     const settings = storage.getSettings()
@@ -68,6 +72,7 @@ export function InboxList() {
             body: JSON.stringify({
               accessToken: account.accessToken,
               maxResults: 20,
+              pageToken,
             }),
           })
 
@@ -92,6 +97,7 @@ export function InboxList() {
 
           const data = await response.json()
           let fetchedEmails: Email[] = data.emails || []
+          const newNextPageToken = data.nextPageToken
 
           // Enrich emails with AI if enabled and API key is available
           if (settings.aiFeatures.autoSummarize && settings.openaiApiKey) {
@@ -123,8 +129,16 @@ export function InboxList() {
             )
           }
 
-          storage.addEmails(fetchedEmails)
-          setEmails(storage.getEmails().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+          // Store next page token
+          setNextPageToken(newNextPageToken)
+
+          // Don't add to storage when paginating - just display
+          if (!pageToken) {
+            storage.addEmails(fetchedEmails)
+          }
+
+          // Sort and set emails
+          setEmails(fetchedEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
         }
       }
 
@@ -157,6 +171,23 @@ export function InboxList() {
     }
   }
 
+  const handleNextPage = async () => {
+    if (nextPageToken) {
+      const newPageTokens = [...pageTokens, nextPageToken]
+      setPageTokens(newPageTokens)
+      setCurrentPage(currentPage + 1)
+      await handleSyncEmails(nextPageToken)
+    }
+  }
+
+  const handlePreviousPage = async () => {
+    if (currentPage > 0) {
+      const newPage = currentPage - 1
+      setCurrentPage(newPage)
+      await handleSyncEmails(pageTokens[newPage])
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -184,7 +215,7 @@ export function InboxList() {
                 Go to Settings
               </Link>
             </Button>
-            <Button onClick={handleSyncEmails} disabled={isSyncing}>
+            <Button onClick={() => handleSyncEmails()} disabled={isSyncing}>
               {isSyncing ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -209,7 +240,7 @@ export function InboxList() {
         <h2 className="text-base font-semibold">
           Inbox ({emails.filter((e) => !e.read).length} unread)
         </h2>
-        <Button size="sm" variant="outline" onClick={handleSyncEmails} disabled={isSyncing}>
+        <Button size="sm" variant="outline" onClick={() => handleSyncEmails()} disabled={isSyncing}>
           {isSyncing ? (
             <>
               <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
@@ -274,6 +305,44 @@ export function InboxList() {
           ))}
         </div>
       </div>
+      {(currentPage > 0 || nextPageToken) && (
+        <div className="border-t border-border px-6 py-4">
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handlePreviousPage()
+                  }}
+                  className={cn(
+                    currentPage === 0 && "pointer-events-none opacity-50",
+                    "cursor-pointer"
+                  )}
+                />
+              </PaginationItem>
+              <PaginationItem>
+                <span className="text-sm text-muted-foreground px-4">
+                  Page {currentPage + 1}
+                </span>
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handleNextPage()
+                  }}
+                  className={cn(
+                    !nextPageToken && "pointer-events-none opacity-50",
+                    isSyncing && "pointer-events-none opacity-50",
+                    "cursor-pointer"
+                  )}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
     </div>
   )
 }

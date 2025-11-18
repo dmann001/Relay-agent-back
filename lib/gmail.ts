@@ -50,7 +50,7 @@ export const gmail = {
   },
 
   // Fetch emails
-  async fetchEmails(accessToken: string, maxResults: number = 50): Promise<Email[]> {
+  async fetchEmails(accessToken: string, maxResults: number = 50, pageToken?: string): Promise<{ emails: Email[], nextPageToken?: string }> {
     oauth2Client.setCredentials({ access_token: accessToken });
     const gmailApi = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -60,6 +60,7 @@ export const gmail = {
         userId: 'me',
         maxResults,
         q: 'in:inbox',
+        pageToken,
       });
 
       const messages = response.data.messages || [];
@@ -83,7 +84,10 @@ export const gmail = {
         }
       }
 
-      return emails;
+      return {
+        emails,
+        nextPageToken: response.data.nextPageToken || undefined,
+      };
     } catch (error) {
       console.error('Error fetching emails:', error);
       throw error;

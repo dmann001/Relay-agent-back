@@ -5,7 +5,7 @@ import { gmail } from '@/lib/gmail';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accessToken, maxResults = 50 } = body;
+    const { accessToken, maxResults = 50, pageToken } = body;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -14,9 +14,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const emails = await gmail.fetchEmails(accessToken, maxResults);
+    const result = await gmail.fetchEmails(accessToken, maxResults, pageToken);
 
-    return NextResponse.json({ emails });
+    return NextResponse.json({ emails: result.emails, nextPageToken: result.nextPageToken });
   } catch (error: any) {
     console.error('Error fetching emails:', error);
 

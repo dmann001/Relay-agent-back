@@ -92,7 +92,7 @@ function parseGmailMessage(message: any): any { // Using any for simplicity in m
 // POST /api/emails - Fetch emails
 router.post('/', async (req, res) => {
     try {
-        const { accessToken, maxResults = 50 } = req.body;
+        const { accessToken, maxResults = 50, pageToken } = req.body;
 
         if (!accessToken) {
             return res.status(400).json({ error: 'Access token is required' });
@@ -106,6 +106,7 @@ router.post('/', async (req, res) => {
             userId: 'me',
             maxResults,
             q: 'in:inbox',
+            pageToken,
         });
 
         const messages = response.data.messages || [];
@@ -130,7 +131,7 @@ router.post('/', async (req, res) => {
             }
         }
 
-        res.json({ emails });
+        res.json({ emails, nextPageToken: response.data.nextPageToken });
     } catch (error: any) {
         console.error('Error fetching emails:', error);
 
