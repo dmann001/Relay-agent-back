@@ -5,7 +5,7 @@ import { gmail } from '@/lib/gmail';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accessToken, maxResults = 50 } = body;
+    const { accessToken, refreshToken, expiryDate, maxResults = 50, pageToken, existingIds, quickSync, lastSyncTime, categoryFilter, mailbox } = body;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -14,9 +14,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const emails = await gmail.fetchEmails(accessToken, maxResults);
+    // Quick sync mode - only fetch new emails since last sync
+    if (quickSync) {
+      const result = await gmail.quickSync(accessToken, lastSyncTime, categoryFilter, mailbox, refreshToken, expiryDate);
+      return NextResponse.json({
+        emails: result.emails,
+        hasMore: result.hasMore,
+        auth: result.auth,
+        syncType: 'quick'
+      });
+    }
 
-    return NextResponse.json({ emails });
+    // Full sync mode with optional existing IDs to skip
+    const existingIdSet = existingIds ? new Set<string>(existingIds) : undefined;
+    const result = await gmail.fetchEmails(accessToken, maxResults, pageToken, existingIdSet, categoryFilter, mailbox, refreshToken, expiryDate);
+
+    return NextResponse.json({ 
+      emails: result.emails,
+      nextPageToken: result.nextPageToken,
+      totalFetched: result.totalFetched,
+      newCount: result.newCount,
+      auth: result.auth,
+      syncType: 'full'
+    });
   } catch (error: any) {
     console.error('Error fetching emails:', error);
 

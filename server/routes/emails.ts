@@ -34,28 +34,66 @@ function parseGmailMessage(message: any): any { // Using any for simplicity in m
 
         const fromParsed = parseEmailAddress(from);
 
-        // Get body
+        // Get body - properly extract HTML and plain text separately
         let body = '';
         let bodyPlain = '';
+        const attachments: Array<{ filename: string; mimeType: string; size: number; attachmentId?: string }> = [];
 
-        const getBody = (part: any): string => {
+        const extractBodyParts = (part: any, htmlContent: { value: string }, plainContent: { value: string }) => {
+            if (!part) return;
+
+            const mimeType = (part.mimeType || '').toLowerCase();
+            
+            // Check if this part has a body with data
             if (part.body?.data) {
-                return Buffer.from(part.body.data, 'base64').toString('utf-8');
-            }
-            if (part.parts) {
-                for (const subPart of part.parts) {
-                    if (subPart.mimeType === 'text/html' || subPart.mimeType === 'text/plain') {
-                        const content = getBody(subPart);
-                        if (content) return content;
+                try {
+                    const content = Buffer.from(part.body.data, 'base64').toString('utf-8');
+                    
+                    // Check for HTML content (case-insensitive, handle with parameters like "text/html; charset=utf-8")
+                    if (mimeType.includes('text/html')) {
+                        // Prefer the first HTML part, but if we find a longer one, use that (likely more complete)
+                        if (!htmlContent.value || content.length > htmlContent.value.length) {
+                            htmlContent.value = content;
+                        }
+                    } 
+                    // Check for plain text content
+                    else if (mimeType.includes('text/plain')) {
+                        // Prefer the first plain text part, but if we find a longer one, use that
+                        if (!plainContent.value || content.length > plainContent.value.length) {
+                            plainContent.value = content;
+                        }
                     }
+                } catch (error) {
+                    console.warn('Error decoding part body:', error);
                 }
             }
-            return '';
+
+            // Check for attachments (parts with filenames and attachmentId)
+            if (part.filename && part.body?.attachmentId) {
+                attachments.push({
+                    filename: part.filename,
+                    mimeType: part.mimeType || 'application/octet-stream',
+                    size: part.body.size || 0,
+                    attachmentId: part.body.attachmentId,
+                });
+            }
+
+            // Recursively process nested parts (important for multipart/alternative, multipart/mixed, etc.)
+            if (part.parts && Array.isArray(part.parts)) {
+                for (const subPart of part.parts) {
+                    extractBodyParts(subPart, htmlContent, plainContent);
+                }
+            }
         };
 
         if (message.payload) {
-            body = getBody(message.payload);
-            bodyPlain = body.replace(/<[^>]*>/g, '').trim();
+            const htmlContent = { value: '' };
+            const plainContent = { value: '' };
+            extractBodyParts(message.payload, htmlContent, plainContent);
+
+            // Prefer HTML over plain text for body
+            body = htmlContent.value || plainContent.value;
+            bodyPlain = plainContent.value || (htmlContent.value ? htmlContent.value.replace(/<[^>]*>/g, '').trim() : '');
         }
 
         // Get labels
@@ -81,7 +119,8 @@ function parseGmailMessage(message: any): any { // Using any for simplicity in m
             read: !isUnread,
             labels: labels.filter((l: string) => !['UNREAD', 'INBOX', 'CATEGORY_PERSONAL'].includes(l)),
             provider: 'gmail',
-            hasAttachments: false,
+            hasAttachments: attachments.length > 0,
+            attachments: attachments.length > 0 ? attachments : undefined,
         };
     } catch (error) {
         console.error('Error parsing message:', error);
@@ -92,7 +131,7 @@ function parseGmailMessage(message: any): any { // Using any for simplicity in m
 // POST /api/emails - Fetch emails
 router.post('/', async (req, res) => {
     try {
-        const { accessToken, maxResults = 50 } = req.body;
+        const { accessToken, maxResults = 50, pageToken } = req.body;
 
         if (!accessToken) {
             return res.status(400).json({ error: 'Access token is required' });
@@ -101,15 +140,25 @@ router.post('/', async (req, res) => {
         oauth2Client.setCredentials({ access_token: accessToken });
         const gmailApi = google.gmail({ version: 'v1', auth: oauth2Client });
 
+        console.log(`Fetching emails for user. MaxResults: ${maxResults}, PageToken: ${pageToken || 'none'}`);
+
         // Get list of messages
         const response = await gmailApi.users.messages.list({
             userId: 'me',
             maxResults,
             q: 'in:inbox',
+            pageToken,
+        });
+
+        console.log('Gmail API List Response:', {
+            resultSizeEstimate: response.data.resultSizeEstimate,
+            messagesCount: response.data.messages?.length || 0,
+            nextPageToken: response.data.nextPageToken ? 'present' : 'missing'
         });
 
         const messages = response.data.messages || [];
         const emails: any[] = [];
+        const nextPageToken = response.data.nextPageToken;
 
         // Fetch details for each message
         // Note: In production, use batch requests or parallel promises with limit
@@ -130,7 +179,7 @@ router.post('/', async (req, res) => {
             }
         }
 
-        res.json({ emails });
+        res.json({ emails, nextPageToken });
     } catch (error: any) {
         console.error('Error fetching emails:', error);
 

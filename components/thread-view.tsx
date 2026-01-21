@@ -7,10 +7,12 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { AgentBanner } from "@/components/agent-banner"
-import { Sparkles, Reply, Forward, Archive, Trash2, MoreHorizontal, Loader2, Wand2 } from "lucide-react"
+import { Sparkles, Reply, Forward, Archive, Trash2, MoreHorizontal, Loader2, Wand2, Paperclip, Download, MessageSquare, ListTodo, Calendar, TrendingUp, Smile, Frown, Meh, AlertTriangle, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { storage } from "@/lib/storage"
+import { api } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
+import { formatEmailContent, formatFileSize } from "@/lib/email-utils"
 import type { Email } from "@/types"
 
 function formatTimestamp(date: string): string {
@@ -28,31 +30,31 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const [email, setEmail] = useState<Email | null>(null)
   const [draftContent, setDraftContent] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
-  const [autoGenerateAttempted, setAutoGenerateAttempted] = useState(false)
+  const [replySuggestions, setReplySuggestions] = useState<Array<{ type: 'short' | 'medium' | 'detailed'; content: string; tone: string }>>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [extractedTasks, setExtractedTasks] = useState<Array<{ title: string; deadline?: string; priority: 'low' | 'medium' | 'high' }>>([])
+  const [isExtractingTasks, setIsExtractingTasks] = useState(false)
+  const [isSendingReply, setIsSendingReply] = useState(false)
   const { toast } = useToast()
+  const summariesEnabled = storage.getSettings().aiFeatures.autoSummarize
 
   // Load email from storage
   useEffect(() => {
     const emails = storage.getEmails()
     const foundEmail = emails.find((e) => e.id === threadId)
     if (foundEmail) {
-      setEmail(foundEmail)
+      if (!foundEmail.read) {
+        const now = new Date().toISOString()
+        storage.updateEmail(foundEmail.id, { read: true, lastInteraction: now })
+        setEmail({ ...foundEmail, read: true, lastInteraction: now })
+      } else {
+        storage.recordEmailInteraction(foundEmail.id)
+        setEmail(foundEmail)
+      }
     }
   }, [threadId])
 
-  // Auto-generate draft when email loads
-  useEffect(() => {
-    if (email && !autoGenerateAttempted && !draftContent) {
-      const settings = storage.getSettings()
-
-      // Only auto-generate if API key exists and smart replies are enabled
-      if (settings.openaiApiKey && settings.aiFeatures.smartReplies) {
-        setAutoGenerateAttempted(true)
-        handleGenerateDraft()
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email, autoGenerateAttempted, draftContent])
+  // Auto-generation disabled: drafts are only generated on user request.
 
   const handleGenerateDraft = async (instruction?: string) => {
     if (!email) return
@@ -67,24 +69,11 @@ export function ThreadView({ threadId }: { threadId: string }) {
       return
     }
 
+    const userContext = (settings.userContext || '').trim()
     setIsGenerating(true)
     try {
-      const response = await fetch("/api/ai/generate-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: settings.openaiApiKey,
-          email,
-          instructions: instruction,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to generate draft")
-      }
-
-      const data = await response.json()
-      setDraftContent(data.draft)
+      const draft = await api.ai.draftReply(email, instruction, userContext)
+      setDraftContent(draft)
 
       // Only show toast if manually triggered (not auto-generated)
       if (instruction) {
@@ -102,6 +91,39 @@ export function ThreadView({ threadId }: { threadId: string }) {
       })
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleSummarize = async () => {
+    if (!email) return
+
+    const settings = storage.getSettings()
+    if (!settings.aiFeatures.autoSummarize) {
+      toast({ title: "AI Summaries Disabled", description: "Enable AI summaries in Settings to use this feature." })
+      return
+    }
+    if (email.aiSummary) {
+      toast({ title: "Summary Cached", description: "This thread already has a summary." })
+      return
+    }
+
+    try {
+      toast({ title: "Generating Summary", description: "Please wait..." })
+      const summary = await api.ai.summarizeThread([email]) // In real app, pass full thread
+
+      // Update local state to show summary immediately
+      setEmail(prev => prev ? { ...prev, aiSummary: summary } : null)
+      storage.updateEmail(email.id, { aiSummary: summary })
+      storage.incrementUsageStat('emailsSummarized', 1, 0.5)
+
+      toast({ title: "Summary Generated", description: "Thread summary has been updated" })
+    } catch (error) {
+      console.error("Error summarizing:", error)
+      toast({
+        title: "Summarization Failed",
+        description: "Failed to generate summary",
+        variant: "destructive"
+      })
     }
   }
 
@@ -127,39 +149,265 @@ export function ThreadView({ threadId }: { threadId: string }) {
     })
   }
 
+  const handleSendReply = async () => {
+    if (!email || !draftContent.trim()) return
+
+    const accounts = storage.getAccounts()
+    const gmailAccount = accounts.find(a => a.provider === 'gmail')
+
+    if (!gmailAccount?.accessToken) {
+      toast({
+        title: "No Gmail account",
+        description: "Please connect a Gmail account in Settings",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSendingReply(true)
+    try {
+      const response = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: gmailAccount.accessToken,
+          refreshToken: gmailAccount.refreshToken,
+          expiryDate: gmailAccount.expiryDate,
+          to: [email.from.email],
+          subject: email.subject.startsWith("Re:") ? email.subject : `Re: ${email.subject}`,
+          body: draftContent,
+          threadId: email.threadId,
+          inReplyToMessageId: email.messageId || email.id,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || "Failed to send reply")
+      }
+
+      const result = await response.json()
+      if (result.auth?.accessToken || result.auth?.expiryDate) {
+        const updates: { accessToken?: string; expiryDate?: number } = {}
+        if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
+        if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
+        storage.updateAccount(gmailAccount.id, updates)
+      }
+
+      toast({
+        title: "Reply sent!",
+        description: `Your reply to ${email.from.name} has been sent.`,
+      })
+      setDraftContent("")
+    } catch (error: any) {
+      console.error("Send reply error:", error)
+      toast({
+        title: "Failed to send",
+        description: error.message || "Could not send reply",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingReply(false)
+    }
+  }
+
+  const handleDownloadAttachment = async (attachment: NonNullable<Email["attachments"]>[number]) => {
+    if (!email) return
+    if (attachment.data) {
+      const link = document.createElement('a');
+      link.href = `data:${attachment.mimeType};base64,${attachment.data}`;
+      link.download = attachment.filename || 'attachment';
+      link.click();
+      return
+    }
+
+    if (!attachment.attachmentId) return
+    const accounts = storage.getAccounts()
+    const gmailAccount = accounts.find(a => a.provider === 'gmail')
+    if (!gmailAccount?.accessToken) {
+      toast({
+        title: "No Gmail account",
+        description: "Please connect a Gmail account in Settings",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const response = await fetch("/api/emails/attachment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: gmailAccount.accessToken,
+          refreshToken: gmailAccount.refreshToken,
+          expiryDate: gmailAccount.expiryDate,
+          messageId: email.id,
+          attachmentId: attachment.attachmentId,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || "Failed to fetch attachment")
+      }
+
+      const result = await response.json()
+      if (result.auth?.accessToken || result.auth?.expiryDate) {
+        const updates: { accessToken?: string; expiryDate?: number } = {}
+        if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
+        if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
+        storage.updateAccount(gmailAccount.id, updates)
+      }
+
+      const link = document.createElement('a');
+      link.href = `data:${attachment.mimeType};base64,${result.data}`;
+      link.download = attachment.filename || 'attachment';
+      link.click();
+    } catch (error: any) {
+      toast({
+        title: "Attachment failed",
+        description: error.message || "Could not download attachment",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Load smart reply suggestions
+  const handleLoadSuggestions = async () => {
+    if (!email) return
+
+    const settings = storage.getSettings()
+    if (!settings.aiFeatures.smartReplies) {
+      toast({ title: "Smart Replies Disabled", description: "Enable Smart Replies in Settings to use this feature." })
+      return
+    }
+    if (!settings.openaiApiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please add your OpenAI API key in Settings to use AI features",
+        variant: "destructive",
+      })
+      return
+    }
+    // Check cache first
+    const cached = storage.getReplySuggestions(email.id)
+    if (cached) {
+      setReplySuggestions(cached.suggestions)
+      toast({ title: "Loaded Cached Suggestions", description: "Using previously generated suggestions" })
+      return
+    }
+
+    setIsLoadingSuggestions(true)
+    try {
+      const suggestions = await api.ai.suggestReplies(email, settings.userContext)
+      setReplySuggestions(suggestions)
+
+      // Cache the suggestions
+      storage.saveReplySuggestions(email.id, {
+        id: `suggestion_${email.id}`,
+        emailId: email.id,
+        suggestions,
+        generatedAt: new Date().toISOString(),
+        cached: true,
+      })
+
+      toast({ title: "Suggestions Ready", description: "AI generated 3 reply options" })
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to generate suggestions", variant: "destructive" })
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }
+
+  // Extract tasks from email
+  const handleExtractTasks = async () => {
+    if (!email) return
+
+    setIsExtractingTasks(true)
+    try {
+      const tasks = await api.ai.extractTasks(email)
+      setExtractedTasks(tasks)
+
+      // Save tasks to storage
+      for (const task of tasks) {
+        storage.addTask({
+          id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          title: task.title,
+          deadline: task.deadline,
+          priority: task.priority,
+          sourceEmailId: email.id,
+          createdAt: new Date().toISOString(),
+          completed: false,
+        })
+      }
+
+      if (tasks.length > 0) {
+        toast({ title: "Tasks Extracted", description: `Found ${tasks.length} action items` })
+      } else {
+        toast({ title: "No Tasks Found", description: "No action items detected in this email" })
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to extract tasks", variant: "destructive" })
+    } finally {
+      setIsExtractingTasks(false)
+    }
+  }
+
+  // Archive email
+  const handleArchive = () => {
+    if (!email) return
+    storage.archiveEmail(email.id)
+    toast({ title: "Email Archived", description: "Email has been moved to archive" })
+  }
+
   if (!email) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center bg-[#0A0A0B]">
         <div className="text-center">
-          <p className="text-muted-foreground">Email not found</p>
+          <p className="text-[#8A8A8A]">Email not found</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col bg-[#0A0A0B]">
       {/* Agent Banner */}
       <AgentBanner />
 
       {/* Thread Header */}
-      <div className="border-b border-border bg-background px-6 py-4">
+      <div className="border-b border-white/[0.04] px-6 py-4" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{email.subject}</h1>
+          <h1 className="text-xl font-medium text-[#FAFAF9]">{email.subject}</h1>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
+            <Button
+              size="icon"
+              onClick={handleSummarize}
+              title="Summarize Thread"
+              disabled={!summariesEnabled}
+              className="text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.03] border-0"
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
+            <Button size="icon" onClick={handleLoadSuggestions} disabled={isLoadingSuggestions} title="Smart Reply Suggestions" className="text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.03] border-0">
+              {isLoadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+            </Button>
+            <Button size="icon" onClick={handleExtractTasks} disabled={isExtractingTasks} title="Extract Tasks" className="text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.03] border-0">
+              {isExtractingTasks ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListTodo className="h-4 w-4" />}
+            </Button>
+            <Button size="icon" className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] border-0">
               <Reply className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button size="icon" className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] border-0">
               <Forward className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button size="icon" onClick={handleArchive} title="Archive" className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] border-0">
               <Archive className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button size="icon" className="text-[#8A8A8A] hover:text-red-400 hover:bg-red-500/10 border-0">
               <Trash2 className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button size="icon" className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] border-0">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </div>
@@ -169,25 +417,130 @@ export function ThreadView({ threadId }: { threadId: string }) {
       {/* Thread Content */}
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-4xl p-6">
+          {/* Email Insights Row */}
+          <div className="mb-6 grid gap-4 grid-cols-1 md:grid-cols-3">
+            {/* Sentiment Card */}
+            {email.sentiment && (
+              <Card className="border border-white/[0.06] bg-white/[0.02] p-4 rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.9) 0%, rgba(10,10,11,0.95) 100%)', backdropFilter: 'blur(40px)' }}>
+                <div className="mb-2 flex items-center gap-2">
+                  {email.sentiment.sentiment === 'positive' && <Smile className="h-4 w-4 text-green-400" />}
+                  {email.sentiment.sentiment === 'negative' && <Frown className="h-4 w-4 text-red-400" />}
+                  {email.sentiment.sentiment === 'neutral' && <Meh className="h-4 w-4 text-[#8A8A8A]" />}
+                  <span className="text-sm font-medium text-[#FAFAF9]">Sentiment</span>
+                </div>
+                <p className="text-sm capitalize text-[#FAFAF9]">{email.sentiment.sentiment}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-xs text-[#8A8A8A]">Urgency:</span>
+                  <Badge className={cn("text-xs border-0", email.sentiment.urgency === 'critical' ? 'bg-red-500/20 text-red-400' : email.sentiment.urgency === 'high' ? 'bg-orange-500/20 text-orange-400' : 'bg-white/[0.06] text-[#8A8A8A]')}>
+                    {email.sentiment.urgency}
+                  </Badge>
+                </div>
+              </Card>
+            )}
+
+            {/* Priority Card */}
+            {email.priorityScore !== undefined && (
+              <Card className="border border-white/[0.06] bg-white/[0.02] p-4 rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.9) 0%, rgba(10,10,11,0.95) 100%)', backdropFilter: 'blur(40px)' }}>
+                <div className="mb-2 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-[#E8DCC4]" />
+                  <span className="text-sm font-medium text-[#FAFAF9]">Priority Score</span>
+                </div>
+                <p className="text-2xl font-bold text-[#E8DCC4]">{email.priorityScore}</p>
+                <p className="text-xs text-[#8A8A8A]">
+                  {email.priorityScore >= 70 ? 'High priority' : email.priorityScore >= 40 ? 'Medium priority' : 'Low priority'}
+                </p>
+              </Card>
+            )}
+
+            {/* Meeting Detection Card */}
+            {email.meetingRequest?.detected && (
+              <Card className="border border-white/[0.06] bg-white/[0.02] p-4 rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.9) 0%, rgba(10,10,11,0.95) 100%)', backdropFilter: 'blur(40px)' }}>
+                <div className="mb-2 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-[#C4A052]" />
+                  <span className="text-sm font-medium text-[#FAFAF9]">Meeting Request</span>
+                </div>
+                <p className="text-sm text-[#FAFAF9]">{email.meetingRequest.subject || 'Meeting detected'}</p>
+                {email.meetingRequest.proposedTimes && email.meetingRequest.proposedTimes.length > 0 && (
+                  <p className="text-xs text-[#8A8A8A] mt-1">
+                    Times: {email.meetingRequest.proposedTimes.slice(0, 2).join(', ')}
+                  </p>
+                )}
+              </Card>
+            )}
+          </div>
+
           {/* AI Summary Card */}
           {email.aiSummary && (
-            <Card className="mb-6 border-primary/20 bg-primary/5 p-4">
+            <Card className="mb-6 border border-[#E8DCC4]/20 bg-[#E8DCC4]/[0.03] p-4 rounded-2xl" style={{ backdropFilter: 'blur(40px)' }}>
               <div className="mb-2 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">AI Summary</span>
+                <Sparkles className="h-4 w-4 text-[#E8DCC4]" />
+                <span className="text-sm font-medium text-[#FAFAF9]">AI Summary</span>
               </div>
-              <p className="text-sm leading-relaxed text-foreground/90">{email.aiSummary}</p>
+              <p className="text-sm leading-relaxed text-[#FAFAF9]/90">{email.aiSummary}</p>
+            </Card>
+          )}
+
+          {/* Reply Suggestions */}
+          {replySuggestions.length > 0 && (
+            <Card className="mb-6 border border-white/[0.06] bg-white/[0.02] p-4 rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.9) 0%, rgba(10,10,11,0.95) 100%)', backdropFilter: 'blur(40px)' }}>
+              <div className="mb-3 flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-[#E8DCC4]" />
+                <span className="text-sm font-medium text-[#FAFAF9]">Smart Reply Suggestions</span>
+              </div>
+              <div className="space-y-2">
+                {replySuggestions.map((suggestion, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] cursor-pointer transition-colors"
+                    onClick={() => setDraftContent(suggestion.content)}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="text-xs capitalize bg-[#E8DCC4]/20 text-[#E8DCC4] border-0">{suggestion.type}</Badge>
+                      <span className="text-xs text-[#8A8A8A] capitalize">{suggestion.tone} tone</span>
+                    </div>
+                    <p className="text-sm text-[#FAFAF9]">{suggestion.content}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-[#5A5A5A] mt-2">Click a suggestion to use it as your reply</p>
+            </Card>
+          )}
+
+          {/* Extracted Tasks */}
+          {extractedTasks.length > 0 && (
+            <Card className="mb-6 border-yellow-500/20 bg-yellow-500/5 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <ListTodo className="h-4 w-4 text-yellow-600" />
+                <span className="text-sm font-semibold">Extracted Tasks</span>
+              </div>
+              <div className="space-y-2">
+                {extractedTasks.map((task, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded border border-border bg-background">
+                    <Badge
+                      variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'secondary' : 'outline'}
+                      className="text-xs"
+                    >
+                      {task.priority}
+                    </Badge>
+                    <span className="text-sm flex-1">{task.title}</span>
+                    {task.deadline && (
+                      <span className="text-xs text-muted-foreground">Due: {task.deadline}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">Tasks have been saved to your task list</p>
             </Card>
           )}
 
           {/* Email Message */}
           <div className="space-y-6">
-            <div className="rounded-lg border border-border p-4 bg-card">
+            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.9) 0%, rgba(10,10,11,0.95) 100%)', backdropFilter: 'blur(40px)' }}>
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10">
+                  <Avatar className="h-10 w-10 border border-white/[0.08]">
                     <AvatarImage src={email.from.avatar} alt={email.from.name} />
-                    <AvatarFallback>
+                    <AvatarFallback className="bg-gradient-to-br from-[#E8DCC4] to-[#C4A052] text-[#0A0A0B]">
                       {email.from.name
                         .split(" ")
                         .map((n) => n[0])
@@ -196,13 +549,222 @@ export function ThreadView({ threadId }: { threadId: string }) {
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <div className="font-semibold">{email.from.name}</div>
-                    <div className="text-xs text-muted-foreground">{email.from.email}</div>
+                    <div className="font-medium text-[#FAFAF9]">{email.from.name}</div>
+                    <div className="text-xs text-[#8A8A8A]">{email.from.email}</div>
                   </div>
                 </div>
-                <span className="text-xs text-muted-foreground">{formatTimestamp(email.date)}</span>
+                <span className="text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</span>
               </div>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed">{email.bodyPlain || email.body}</div>
+
+              {/* Email Body */}
+              {(() => {
+                const { html, isHtml } = formatEmailContent(email.body, email.bodyPlain);
+
+                if (isHtml) {
+                  return (
+                    <div className="email-content-wrapper">
+                      <div
+                        className="email-html-content"
+                        dangerouslySetInnerHTML={{ __html: html }}
+                      />
+                      <style dangerouslySetInnerHTML={{
+                        __html: `
+                        .email-html-content {
+                          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                          font-size: 14px;
+                          line-height: 1.6;
+                          color: inherit;
+                          word-wrap: break-word;
+                          overflow-wrap: break-word;
+                        }
+                        
+                        /* Clean text styling */
+                        .email-html-content p {
+                          margin: 0.75em 0;
+                        }
+                        .email-html-content p:first-child {
+                          margin-top: 0;
+                        }
+                        .email-html-content p:last-child {
+                          margin-bottom: 0;
+                        }
+                        
+                        /* Links */
+                        .email-html-content a {
+                          color: hsl(var(--primary));
+                          text-decoration: none;
+                        }
+                        .email-html-content a:hover {
+                          text-decoration: underline;
+                        }
+                        
+                        /* Images - clean, no boxes */
+                        .email-html-content img {
+                          max-width: 100%;
+                          height: auto;
+                          display: inline-block;
+                          border: none !important;
+                          outline: none !important;
+                        }
+                        
+                        /* Tables - minimal styling, no borders by default */
+                        .email-html-content table {
+                          border-collapse: collapse;
+                          border: none !important;
+                          background: transparent !important;
+                        }
+                        .email-html-content td,
+                        .email-html-content th {
+                          padding: 4px 8px;
+                          border: none !important;
+                          background: transparent !important;
+                          vertical-align: top;
+                        }
+                        .email-html-content tr {
+                          border: none !important;
+                          background: transparent !important;
+                        }
+                        .email-html-content tbody,
+                        .email-html-content thead,
+                        .email-html-content tfoot {
+                          border: none !important;
+                          background: transparent !important;
+                        }
+                        
+                        /* Remove all borders from divs/spans */
+                        .email-html-content div,
+                        .email-html-content span,
+                        .email-html-content center {
+                          border: none !important;
+                          outline: none !important;
+                          box-shadow: none !important;
+                        }
+                        
+                        /* Lists */
+                        .email-html-content ul,
+                        .email-html-content ol {
+                          margin: 0.75em 0;
+                          padding-left: 1.5em;
+                        }
+                        .email-html-content li {
+                          margin: 0.25em 0;
+                        }
+                        
+                        /* Blockquotes - subtle left border only */
+                        .email-html-content blockquote {
+                          margin: 0.75em 0;
+                          padding-left: 1em;
+                          border-left: 3px solid rgba(128, 128, 128, 0.2);
+                          color: inherit;
+                          opacity: 0.85;
+                        }
+                        
+                        /* Headings */
+                        .email-html-content h1,
+                        .email-html-content h2,
+                        .email-html-content h3,
+                        .email-html-content h4,
+                        .email-html-content h5,
+                        .email-html-content h6 {
+                          margin: 1em 0 0.5em 0;
+                          font-weight: 600;
+                          line-height: 1.3;
+                        }
+                        .email-html-content h1 { font-size: 1.5em; }
+                        .email-html-content h2 { font-size: 1.3em; }
+                        .email-html-content h3 { font-size: 1.15em; }
+                        
+                        /* Code */
+                        .email-html-content pre {
+                          background: rgba(128, 128, 128, 0.08);
+                          padding: 0.75em;
+                          border-radius: 6px;
+                          overflow-x: auto;
+                          font-size: 0.9em;
+                        }
+                        .email-html-content code {
+                          background: rgba(128, 128, 128, 0.08);
+                          padding: 0.15em 0.3em;
+                          border-radius: 3px;
+                          font-size: 0.9em;
+                        }
+                        
+                        /* Hide empty elements completely */
+                        .email-html-content div:empty,
+                        .email-html-content span:empty,
+                        .email-html-content p:empty,
+                        .email-html-content td:empty,
+                        .email-html-content tr:empty,
+                        .email-html-content table:empty {
+                          display: none !important;
+                        }
+                        
+                        /* Force remove any inline borders/outlines */
+                        .email-html-content * {
+                          border-color: transparent !important;
+                          outline: none !important;
+                        }
+                        
+                        /* Horizontal rules */
+                        .email-html-content hr {
+                          border: none;
+                          border-top: 1px solid rgba(128, 128, 128, 0.15);
+                          margin: 1em 0;
+                        }
+                        `
+                      }} />
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {html}
+                    </div>
+                  );
+                }
+              })()}
+
+              {/* Attachments */}
+              {email.attachments && email.attachments.length > 0 && (
+                <div className="mt-6 pt-4 border-t border-border">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Paperclip className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">
+                      {email.attachments.length} {email.attachments.length === 1 ? 'Attachment' : 'Attachments'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {email.attachments.map((attachment, index) => (
+                      <div
+                        key={index}
+                        className="group relative flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <Paperclip className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate pr-6">
+                            {attachment.filename || 'Untitled'}
+                          </div>
+                          {attachment.size && (
+                            <div className="text-xs text-muted-foreground">
+                              {formatFileSize(attachment.size)}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleDownloadAttachment(attachment)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -210,16 +772,16 @@ export function ThreadView({ threadId }: { threadId: string }) {
           <div className="mt-8">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">
+                <Sparkles className="h-4 w-4 text-[#E8DCC4]" />
+                <span className="text-sm font-medium text-[#FAFAF9]">
                   {isGenerating ? "Generating Your Reply..." : "AI-Powered Draft"}
                 </span>
               </div>
               <Button
                 size="sm"
-                variant="outline"
                 onClick={() => handleGenerateDraft("Regenerate a professional reply")}
                 disabled={isGenerating}
+                className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-lg"
               >
                 {isGenerating ? (
                   <>
@@ -236,12 +798,12 @@ export function ThreadView({ threadId }: { threadId: string }) {
             </div>
 
             {isGenerating && !draftContent && (
-              <Card className="mb-3 border-primary/20 bg-primary/5 p-4">
+              <Card className="mb-3 border border-[#E8DCC4]/20 bg-[#E8DCC4]/[0.03] p-4 rounded-2xl" style={{ backdropFilter: 'blur(40px)' }}>
                 <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <Loader2 className="h-5 w-5 animate-spin text-[#E8DCC4]" />
                   <div>
-                    <p className="text-sm font-medium">Preparing your AI-generated reply...</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm font-medium text-[#FAFAF9]">Preparing your AI-generated reply...</p>
+                    <p className="text-xs text-[#8A8A8A]">
                       GPT is analyzing the email and composing a professional response
                     </p>
                   </div>
@@ -250,17 +812,16 @@ export function ThreadView({ threadId }: { threadId: string }) {
             )}
 
             {!isGenerating && draftContent && (
-              <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <div className="mb-3 flex items-center gap-2 text-sm text-[#8A8A8A]">
+                <Sparkles className="h-3.5 w-3.5 text-[#E8DCC4]" />
                 <span>AI draft ready - Review, edit, and send when ready</span>
               </div>
             )}
 
             <div className="mb-3 flex flex-wrap gap-2">
               <Badge
-                variant="secondary"
                 className={cn(
-                  "cursor-pointer hover:bg-secondary/80",
+                  "cursor-pointer bg-white/[0.03] border border-white/[0.08] text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40",
                   isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
                 )}
                 onClick={() => !isGenerating && handleGenerateDraft("Write a professional thank you reply")}
@@ -268,9 +829,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
                 Draft a "thank you" reply
               </Badge>
               <Badge
-                variant="secondary"
                 className={cn(
-                  "cursor-pointer hover:bg-secondary/80",
+                  "cursor-pointer bg-white/[0.03] border border-white/[0.08] text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40",
                   isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
                 )}
                 onClick={() => !isGenerating && handleGenerateDraft("Ask about next steps")}
@@ -278,9 +838,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
                 Ask for next steps
               </Badge>
               <Badge
-                variant="secondary"
                 className={cn(
-                  "cursor-pointer hover:bg-secondary/80",
+                  "cursor-pointer bg-white/[0.03] border border-white/[0.08] text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40",
                   isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
                 )}
                 onClick={() => !isGenerating && handleGenerateDraft("Request to schedule a meeting")}
@@ -288,9 +847,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
                 Schedule a meeting
               </Badge>
               <Badge
-                variant="secondary"
                 className={cn(
-                  "cursor-pointer hover:bg-secondary/80",
+                  "cursor-pointer bg-white/[0.03] border border-white/[0.08] text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40",
                   isGenerating && "opacity-50 cursor-not-allowed pointer-events-none"
                 )}
                 onClick={() => !isGenerating && handleGenerateDraft("Ask for more details")}
@@ -303,19 +861,39 @@ export function ThreadView({ threadId }: { threadId: string }) {
                 isGenerating
                   ? "Generating your AI-powered reply..."
                   : draftContent
-                  ? "Review and edit your AI-generated draft..."
-                  : "AI draft will appear here, or type your own reply..."
+                    ? "Review and edit your AI-generated draft..."
+                    : "AI draft will appear here, or type your own reply..."
               }
-              className="min-h-32 resize-none"
+              className="min-h-32 resize-none bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
               value={draftContent}
               onChange={(e) => setDraftContent(e.target.value)}
               disabled={isGenerating}
             />
             <div className="mt-3 flex justify-end gap-2">
-              <Button variant="outline" onClick={handleSaveDraft} disabled={!draftContent.trim() || isGenerating}>
+              <Button
+                onClick={handleSaveDraft}
+                disabled={!draftContent.trim() || isGenerating || isSendingReply}
+                className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-xl"
+              >
                 Save Draft
               </Button>
-              <Button disabled={!draftContent.trim() || isGenerating}>Send Reply</Button>
+              <Button
+                onClick={handleSendReply}
+                disabled={!draftContent.trim() || isGenerating || isSendingReply}
+                className="bg-gradient-to-b from-[#E8DCC4] to-[#C4A052] hover:from-[#F5EDD8] hover:to-[#D4B062] text-[#0A0A0B] font-medium rounded-xl"
+              >
+                {isSendingReply ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send Reply
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>
