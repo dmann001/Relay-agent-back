@@ -42,7 +42,7 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
     // Check for relationships needing attention (no reply in 7+ days)
     const staleConversations = emails.filter(email => {
       if (!email.lastInteraction && !email.read) return false
-      const daysSinceInteraction = email.lastInteraction 
+      const daysSinceInteraction = email.lastInteraction
         ? Math.floor((Date.now() - new Date(email.lastInteraction).getTime()) / (1000 * 60 * 60 * 24))
         : 999
       const isFromVip = vipSenders.includes(email.from.email.toLowerCase())
@@ -56,7 +56,7 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
         icon: Heart,
         title: 'VIP Follow-up Needed',
         description: `${staleConversations.length} VIP contact${staleConversations.length > 1 ? 's' : ''} waiting for your response`,
-        color: 'text-pink-500',
+        color: 'text-pink-400',
         bgColor: 'bg-pink-500/10',
         priority: 90,
       })
@@ -85,15 +85,15 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
         icon: TrendingUp,
         title: 'Unusual Activity',
         description: `${count} emails from ${senderName} in the last 24h`,
-        color: 'text-amber-500',
+        color: 'text-amber-400',
         bgColor: 'bg-amber-500/10',
         priority: 70,
       })
     }
 
     // Check for sentiment shifts (negative emails)
-    const negativeEmails = emails.filter(email => 
-      email.sentiment?.sentiment === 'negative' && 
+    const negativeEmails = emails.filter(email =>
+      email.sentiment?.sentiment === 'negative' &&
       new Date(email.date).getTime() > Date.now() - 24 * 60 * 60 * 1000
     )
 
@@ -104,14 +104,14 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
         icon: AlertTriangle,
         title: 'Sentiment Alert',
         description: `${negativeEmails.length} emails with negative tone detected`,
-        color: 'text-red-500',
+        color: 'text-red-400',
         bgColor: 'bg-red-500/10',
         priority: 80,
       })
     }
 
     // Check for VIP unread emails
-    const unreadVipEmails = emails.filter(email => 
+    const unreadVipEmails = emails.filter(email =>
       !email.read && vipSenders.includes(email.from.email.toLowerCase())
     )
 
@@ -122,8 +122,8 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
         icon: Users,
         title: 'VIP Messages',
         description: `${unreadVipEmails.length} unread email${unreadVipEmails.length > 1 ? 's' : ''} from important contacts`,
-        color: 'text-blue-500',
-        bgColor: 'bg-blue-500/10',
+        color: 'text-[#E8DCC4]',
+        bgColor: 'bg-[#E8DCC4]/10',
         priority: 85,
       })
     }
@@ -137,7 +137,7 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
         icon: Clock,
         title: 'Responses Needed',
         description: `${pendingResponses.length} email${pendingResponses.length > 1 ? 's' : ''} awaiting your reply`,
-        color: 'text-orange-500',
+        color: 'text-orange-400',
         bgColor: 'bg-orange-500/10',
         priority: 75,
       })
@@ -157,9 +157,9 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
   if (visibleIndicators.length === 0) return null
 
   return (
-    <div className="border-b border-border/70 bg-muted/40 px-6 py-3">
+    <div className="border-b border-white/[0.04] bg-white/[0.02] px-6 py-3">
       <div className="flex items-center gap-3 overflow-x-auto scrollbar-none">
-        <Bell className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <Bell className="h-4 w-4 shrink-0 text-[#8A8A8A]" />
         {visibleIndicators.slice(0, 4).map((indicator) => {
           const Icon = indicator.icon
           return (
@@ -168,13 +168,13 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
               className={cn(
                 "group relative flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 transition-all",
                 indicator.bgColor,
-                "hover:ring-2 hover:ring-border/60"
+                "hover:ring-2 hover:ring-white/[0.08]"
               )}
             >
               <Icon className={cn("h-3.5 w-3.5 shrink-0", indicator.color)} />
               <div className="flex flex-col">
                 <span className={cn("text-xs font-medium", indicator.color)}>{indicator.title}</span>
-                <span className="text-[10px] text-muted-foreground">{indicator.description}</span>
+                <span className="text-[10px] text-[#8A8A8A]">{indicator.description}</span>
               </div>
               <button
                 onClick={(e) => {
@@ -183,16 +183,16 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
                 }}
                 className={cn(
                   "ml-1 rounded-full p-0.5 opacity-0 transition-opacity group-hover:opacity-100",
-                  "hover:bg-muted/60"
+                  "hover:bg-white/[0.06]"
                 )}
               >
-                <X className="h-3 w-3 text-muted-foreground" />
+                <X className="h-3 w-3 text-[#8A8A8A]" />
               </button>
             </div>
           )
         })}
         {visibleIndicators.length > 4 && (
-          <Badge variant="secondary" className="shrink-0">
+          <Badge className="shrink-0 bg-white/[0.03] border border-white/[0.08] text-[#8A8A8A]">
             +{visibleIndicators.length - 4} more
           </Badge>
         )}
@@ -200,4 +200,3 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
     </div>
   )
 }
-

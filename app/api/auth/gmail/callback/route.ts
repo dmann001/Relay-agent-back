@@ -41,9 +41,9 @@ export async function GET(request: NextRequest) {
     // Encode account data to pass to client
     const encodedData = encodeURIComponent(JSON.stringify(accountData));
 
-    // Redirect back to settings with success
+    // Redirect to inbox with success - user lands in their email immediately
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/settings?gmail_auth=success&account=${encodedData}`
+      `${process.env.NEXT_PUBLIC_APP_URL}/inbox?gmail_auth=success&account=${encodedData}`
     );
   } catch (error) {
     console.error('Error in Gmail OAuth callback:', error);

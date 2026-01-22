@@ -44,27 +44,31 @@ export function ArchivesList() {
   }
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="border-b border-border px-6 py-4">
-        <h1 className="text-2xl font-semibold">Archives</h1>
-        <p className="text-sm text-muted-foreground">Emails you've archived for reference</p>
+    <div className="flex-1 overflow-auto bg-[#0A0A0B]">
+      <div className="border-b border-white/[0.04] px-6 py-5" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
+        <h1 className="text-2xl font-light tracking-tight text-[#FAFAF9]">Archives</h1>
+        <p className="text-sm text-[#8A8A8A]">Emails you've archived for reference</p>
       </div>
       {sortedEmails.length === 0 ? (
-        <div className="flex h-[50vh] items-center justify-center text-sm text-muted-foreground">
-          No archived emails.
+        <div className="flex h-[50vh] flex-col items-center justify-center">
+          <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-6">
+            <Archive className="h-8 w-8 text-[#E8DCC4]" />
+          </div>
+          <h3 className="text-xl font-light text-[#FAFAF9]">No archived emails</h3>
+          <p className="mt-2 text-sm text-[#8A8A8A]">Emails you archive will appear here</p>
         </div>
       ) : (
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-white/[0.04]">
           {sortedEmails.map((email) => (
             <Link
               key={email.id}
               href={`/thread/${email.id}`}
-              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-muted/50"
+              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-white/[0.02]"
             >
-              <Checkbox className="mt-1" />
+              <Checkbox className="mt-1 border-white/[0.15] data-[state=checked]:bg-[#E8DCC4] data-[state=checked]:text-[#0A0A0B]" />
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage src={email.from.avatar || "/placeholder.svg"} alt={email.from.name} />
-                <AvatarFallback>
+                <AvatarFallback className="bg-white/[0.06] text-[#FAFAF9]">
                   {email.from.name
                     .split(" ")
                     .map((n) => n[0])
@@ -73,17 +77,17 @@ export function ArchivesList() {
               </Avatar>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="text-sm font-medium">{email.from.name}</span>
-                  <Badge variant="outline" className="h-5 px-1.5">
+                  <span className="text-sm font-medium text-[#FAFAF9]">{email.from.name}</span>
+                  <Badge variant="outline" className="h-5 px-1.5 border-white/[0.08] bg-transparent">
                     <ProviderIcon provider={email.provider} className="h-3 w-3" />
                   </Badge>
-                  <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+                  <Badge className="h-5 px-2 text-[10px] bg-[#E8DCC4]/10 text-[#E8DCC4] border-0">
                     <Archive className="mr-1 h-3 w-3" />
                     Archived
                   </Badge>
                 </div>
-                <div className="mb-1 text-sm font-normal">{email.subject}</div>
-                <p className="line-clamp-1 text-sm text-muted-foreground">
+                <div className="mb-1 text-sm font-normal text-[#FAFAF9]">{email.subject}</div>
+                <p className="line-clamp-1 text-sm text-[#8A8A8A]">
                   {(email.bodyPlain || email.body || "")
                     .replace(/<[^>]*>/g, "")
                     .replace(/\s+/g, " ")
@@ -91,11 +95,11 @@ export function ArchivesList() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-muted-foreground">{formatTimestamp(email.date)}</span>
+                <span className="text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</span>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-8 w-8 text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()

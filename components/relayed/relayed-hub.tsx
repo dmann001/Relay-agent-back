@@ -39,8 +39,8 @@ const intentConfig: Record<EmailIntent, { label: string; icon: typeof CheckCircl
   info_request: {
     label: "Information Requests",
     icon: HelpCircle,
-    color: "text-blue-500",
-    bgColor: "bg-blue-500/10",
+    color: "text-[#E8DCC4]",
+    bgColor: "bg-[#E8DCC4]/10",
   },
   meeting: {
     label: "Meeting Coordination",
@@ -203,7 +203,7 @@ export function RelayedHub() {
     setMessages((prev) => [...prev, userMessage])
     setIsProcessing(true)
 
-    if (!settings.openaiApiKey) {
+    if (!storage.getSettings().openaiApiKey) {
       return {
         content: "Add your OpenAI API key in Settings to unlock contextual responses.",
       }
@@ -491,28 +491,30 @@ export function RelayedHub() {
   }, [emails])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#0A0A0B] text-[#FAFAF9] selection:bg-[#E8DCC4]/20">
-      <div className="relative border-b border-white/[0.04] px-4 py-4 flex items-center justify-between shrink-0" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-[#0A0A0B] text-[#FAFAF9] selection:bg-[#E8DCC4]/20 relative"
+      style={{
+        backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' width='32' height='32' fill='none' stroke='rgba(255, 255, 255, 0.02)'%3e%3cpath d='M0 .5H31.5V32'/%3e%3c/svg%3e\")",
+      }}
+    >
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-[#0A0A0B]/80 via-transparent to-[#0A0A0B]/80" />
+
+      {/* Terminal Header */}
+      <div className="relative z-10 px-6 py-5 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#E8DCC4] to-[#C4A052]">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#E8DCC4] to-[#C4A052] shadow-[0_0_15px_rgba(232,220,196,0.2)]">
             <Terminal className="h-4 w-4 text-[#0A0A0B]" />
           </div>
-          <div>
-            <div className="text-xs uppercase tracking-[0.2em] text-[#8A8A8A]">Relayed Mode</div>
-            <div className="text-sm font-medium text-[#FAFAF9]">Inbox Flow Control</div>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-[#E8DCC4] font-bold">Relay Terminal</span>
+            <span className="text-[10px] font-mono text-[#5A5A5A]">v2.4.0 <span className="text-[#28C840]">BETA</span></span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-[#28C840] animate-pulse" />
-          <span className="text-[11px] font-semibold tracking-widest uppercase text-[#8A8A8A]">
-            Agent active
-          </span>
-        </div>
-
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden md:flex gap-1">
+        {/* View Switcher - Floating Center */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden md:flex gap-1 bg-[#0A0A0B]/80 backdrop-blur-md p-1 rounded-full border border-white/[0.04]">
           {[
-            { id: "command", label: "FLOW", icon: Terminal },
+            { id: "command", label: "TERMINAL", icon: Terminal },
             { id: "intents", label: "INTENTS", icon: Layers },
             { id: "priority", label: "PRIORITY", icon: Activity },
           ].map((view) => (
@@ -520,16 +522,21 @@ export function RelayedHub() {
               key={view.id}
               onClick={() => setActiveView(view.id as any)}
               className={cn(
-                "px-3 py-1.5 rounded-full text-[10px] font-semibold tracking-widest transition-all flex items-center gap-1.5",
+                "px-3 py-1.5 rounded-full text-[10px] font-mono font-medium transition-all flex items-center gap-1.5",
                 activeView === view.id
-                  ? "bg-[#E8DCC4]/15 text-[#E8DCC4] shadow-[0_0_20px_rgba(232,220,196,0.12)]"
-                  : "text-[#8A8A8A] hover:text-[#FAFAF9]"
+                  ? "bg-white/[0.06] text-[#E8DCC4]"
+                  : "text-[#5A5A5A] hover:text-[#FAFAF9]"
               )}
             >
-              <view.icon className="h-3 w-3" />
               {view.label}
             </button>
           ))}
+        </div>
+
+        {/* System Status Badge */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0A0A0B]/80 border border-white/[0.08] backdrop-blur-sm shadow-sm">
+          <div className="h-1.5 w-1.5 rounded-full bg-[#28C840] animate-pulse shadow-[0_0_8px_#28C840]" />
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[#5A5A5A]">System Online</span>
         </div>
       </div>
 
@@ -619,8 +626,8 @@ export function RelayedHub() {
                           <Terminal className="h-4 w-4 text-[#0A0A0B]" />
                         </div>
                       ) : (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03]">
-                          <span className="text-[10px] font-semibold text-[#8A8A8A]">You</span>
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.06]">
+                          <div className="h-4 w-4 rounded-full bg-gradient-to-br from-[#5A5A5A] to-[#3A3A3A]" />
                         </div>
                       )}
                     </div>
@@ -630,8 +637,8 @@ export function RelayedHub() {
                         className={cn(
                           "rounded-2xl border px-4 py-3",
                           message.type === "ai"
-                            ? "border-white/[0.06] bg-white/[0.02] text-[#FAFAF9]"
-                            : "border-[#E8DCC4]/20 bg-[#E8DCC4]/[0.06] text-[#FAFAF9]"
+                            ? "rounded-2xl rounded-tl-sm border-white/[0.06] bg-[#0A0A0B] text-[#FAFAF9] font-mono text-sm leading-relaxed shadow-lg"
+                            : "rounded-2xl rounded-tr-sm border-transparent bg-[#FAFAF9] text-[#0A0A0B] font-medium"
                         )}
                       >
                         {message.type === "ai" && (

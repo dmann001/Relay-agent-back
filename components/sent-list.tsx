@@ -83,13 +83,18 @@ export function SentList() {
   }
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+    <div className="flex-1 overflow-auto bg-[#0A0A0B]">
+      <div className="border-b border-white/[0.04] px-6 py-5 flex items-center justify-between" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
         <div>
-          <h1 className="text-2xl font-semibold">Sent</h1>
-          <p className="text-sm text-muted-foreground">Emails you have sent</p>
+          <h1 className="text-2xl font-light tracking-tight text-[#FAFAF9]">Sent</h1>
+          <p className="text-sm text-[#8A8A8A]">Emails you have sent</p>
         </div>
-        <Button size="sm" variant="outline" onClick={handleSync} disabled={isSyncing}>
+        <Button
+          size="sm"
+          onClick={handleSync}
+          disabled={isSyncing}
+          className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-xl"
+        >
           {isSyncing ? (
             <>
               <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
@@ -104,20 +109,24 @@ export function SentList() {
         </Button>
       </div>
       {sortedEmails.length === 0 ? (
-        <div className="flex h-[50vh] items-center justify-center text-sm text-muted-foreground">
-          No sent emails yet.
+        <div className="flex h-[50vh] flex-col items-center justify-center">
+          <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-6">
+            <SendHorizontal className="h-8 w-8 text-[#E8DCC4]" />
+          </div>
+          <h3 className="text-xl font-light text-[#FAFAF9]">No sent emails</h3>
+          <p className="mt-2 text-sm text-[#8A8A8A]">Emails you send will appear here</p>
         </div>
       ) : (
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-white/[0.04]">
           {sortedEmails.map((email) => (
             <Link
               key={email.id}
               href={`/thread/${email.id}`}
-              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-muted/50"
+              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-white/[0.02]"
             >
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage src={email.from.avatar} alt={email.from.name} />
-                <AvatarFallback>
+                <AvatarFallback className="bg-white/[0.06] text-[#FAFAF9]">
                   {email.from.name
                     .split(" ")
                     .map((n) => n[0])
@@ -126,20 +135,20 @@ export function SentList() {
               </Avatar>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="text-sm font-medium">
+                  <span className="text-sm font-medium text-[#FAFAF9]">
                     To: {email.to.map((t) => t.email).join(", ")}
                   </span>
-                  <Badge variant="secondary" className="h-5 px-2 text-[10px]">
+                  <Badge className="h-5 px-2 text-[10px] bg-[#28C840]/10 text-[#28C840] border-0">
                     <SendHorizontal className="mr-1 h-3 w-3" />
                     Sent
                   </Badge>
                 </div>
-                <div className="mb-1 text-sm font-normal">{email.subject}</div>
-                <p className="line-clamp-1 text-sm text-muted-foreground">
+                <div className="mb-1 text-sm font-normal text-[#FAFAF9]">{email.subject}</div>
+                <p className="line-clamp-1 text-sm text-[#8A8A8A]">
                   {(email.bodyPlain || email.body || "").replace(/<[^>]*>/g, "").slice(0, 120)}
                 </p>
               </div>
-              <div className="shrink-0 text-xs text-muted-foreground">{formatTimestamp(email.date)}</div>
+              <div className="shrink-0 text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</div>
             </Link>
           ))}
         </div>

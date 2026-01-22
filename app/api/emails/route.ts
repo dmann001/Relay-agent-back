@@ -14,6 +14,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Incremental sync mode - uses Gmail History API (most efficient)
+    if (body.incrementalSync) {
+      const result = await gmail.incrementalSync(
+        accessToken,
+        body.lastHistoryId,
+        refreshToken,
+        expiryDate
+      );
+      return NextResponse.json({
+        emails: result.emails,
+        newHistoryId: result.newHistoryId,
+        deletedIds: result.deletedIds,
+        auth: result.auth,
+        syncType: 'incremental'
+      });
+    }
+
     // Quick sync mode - only fetch new emails since last sync
     if (quickSync) {
       const result = await gmail.quickSync(accessToken, lastSyncTime, categoryFilter, mailbox, refreshToken, expiryDate);
@@ -29,7 +46,7 @@ export async function POST(request: NextRequest) {
     const existingIdSet = existingIds ? new Set<string>(existingIds) : undefined;
     const result = await gmail.fetchEmails(accessToken, maxResults, pageToken, existingIdSet, categoryFilter, mailbox, refreshToken, expiryDate);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       emails: result.emails,
       nextPageToken: result.nextPageToken,
       totalFetched: result.totalFetched,

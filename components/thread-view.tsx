@@ -508,28 +508,32 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
           {/* Extracted Tasks */}
           {extractedTasks.length > 0 && (
-            <Card className="mb-6 border-yellow-500/20 bg-yellow-500/5 p-4">
+            <Card className="mb-6 border border-[#FEBC2E]/20 bg-[#FEBC2E]/[0.03] p-4 rounded-2xl" style={{ backdropFilter: 'blur(40px)' }}>
               <div className="mb-3 flex items-center gap-2">
-                <ListTodo className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm font-semibold">Extracted Tasks</span>
+                <ListTodo className="h-4 w-4 text-[#FEBC2E]" />
+                <span className="text-sm font-medium text-[#FAFAF9]">Extracted Tasks</span>
               </div>
               <div className="space-y-2">
                 {extractedTasks.map((task, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 rounded border border-border bg-background">
+                  <div key={idx} className="flex items-center gap-2 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
                     <Badge
-                      variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'secondary' : 'outline'}
-                      className="text-xs"
+                      className={cn(
+                        "text-xs border-0",
+                        task.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                          task.priority === 'medium' ? 'bg-[#FEBC2E]/20 text-[#FEBC2E]' :
+                            'bg-white/[0.06] text-[#8A8A8A]'
+                      )}
                     >
                       {task.priority}
                     </Badge>
-                    <span className="text-sm flex-1">{task.title}</span>
+                    <span className="text-sm flex-1 text-[#FAFAF9]">{task.title}</span>
                     {task.deadline && (
-                      <span className="text-xs text-muted-foreground">Due: {task.deadline}</span>
+                      <span className="text-xs text-[#8A8A8A]">Due: {task.deadline}</span>
                     )}
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Tasks have been saved to your task list</p>
+              <p className="text-xs text-[#5A5A5A] mt-2">Tasks have been saved to your task list</p>
             </Card>
           )}
 
@@ -726,10 +730,10 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
               {/* Attachments */}
               {email.attachments && email.attachments.length > 0 && (
-                <div className="mt-6 pt-4 border-t border-border">
+                <div className="mt-6 pt-4 border-t border-white/[0.06]">
                   <div className="flex items-center gap-2 mb-4">
-                    <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">
+                    <Paperclip className="h-4 w-4 text-[#8A8A8A]" />
+                    <span className="text-sm font-medium text-[#FAFAF9]">
                       {email.attachments.length} {email.attachments.length === 1 ? 'Attachment' : 'Attachments'}
                     </span>
                   </div>
@@ -737,17 +741,17 @@ export function ThreadView({ threadId }: { threadId: string }) {
                     {email.attachments.map((attachment, index) => (
                       <div
                         key={index}
-                        className="group relative flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                        className="group relative flex items-start gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
                       >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                          <Paperclip className="h-5 w-5 text-muted-foreground" />
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                          <Paperclip className="h-5 w-5 text-[#E8DCC4]" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium truncate pr-6">
+                          <div className="text-sm font-medium text-[#FAFAF9] truncate pr-6">
                             {attachment.filename || 'Untitled'}
                           </div>
                           {attachment.size && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-xs text-[#8A8A8A]">
                               {formatFileSize(attachment.size)}
                             </div>
                           )}
@@ -755,7 +759,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="absolute right-1 top-1 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute right-1 top-1 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.03]"
                           onClick={() => handleDownloadAttachment(attachment)}
                         >
                           <Download className="h-4 w-4" />

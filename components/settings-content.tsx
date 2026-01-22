@@ -274,16 +274,16 @@ export function SettingsContent() {
           </TabsContent>
 
           <TabsContent value="preferences" className="space-y-6">
-            <Card>
+            <Card className="border border-white/[0.06] bg-white/[0.02] rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
               <CardHeader>
-                <CardTitle>AI Features</CardTitle>
-                <CardDescription>Customize AI-powered email features</CardDescription>
+                <CardTitle className="text-[#FAFAF9] font-medium">AI Features</CardTitle>
+                <CardDescription className="text-[#8A8A8A]">Customize AI-powered email features</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>AI Summaries</Label>
-                    <div className="text-sm text-muted-foreground">
+                    <Label className="text-[#FAFAF9]">AI Summaries</Label>
+                    <div className="text-sm text-[#8A8A8A]">
                       Enable on-demand summaries when you click the summarize button
                     </div>
                   </div>
@@ -295,8 +295,8 @@ export function SettingsContent() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Smart Labels</Label>
-                    <div className="text-sm text-muted-foreground">
+                    <Label className="text-[#FAFAF9]">Smart Labels</Label>
+                    <div className="text-sm text-[#8A8A8A]">
                       Automatically categorize emails with AI labels
                     </div>
                   </div>
@@ -308,8 +308,8 @@ export function SettingsContent() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Smart Replies</Label>
-                    <div className="text-sm text-muted-foreground">
+                    <Label className="text-[#FAFAF9]">Smart Replies</Label>
+                    <div className="text-sm text-[#8A8A8A]">
                       Enable AI reply tools (drafts and suggestions on demand)
                     </div>
                   </div>
@@ -321,8 +321,8 @@ export function SettingsContent() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Priority Inbox</Label>
-                    <div className="text-sm text-muted-foreground">
+                    <Label className="text-[#FAFAF9]">Priority Inbox</Label>
+                    <div className="text-sm text-[#8A8A8A]">
                       Use AI to prioritize important emails
                     </div>
                   </div>
@@ -333,8 +333,8 @@ export function SettingsContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Your AI Context</Label>
-                  <div className="text-sm text-muted-foreground">
+                  <Label className="text-[#FAFAF9]">Your AI Context</Label>
+                  <div className="text-sm text-[#8A8A8A]">
                     Tell the AI who you are and how you like to write (role, tone, sign-off, etc.).
                   </div>
                   <Textarea
@@ -346,6 +346,7 @@ export function SettingsContent() {
                       storage.updateSettings(updatedSettings)
                       setSettings(updatedSettings)
                     }}
+                    className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
                   />
                 </div>
               </CardContent>

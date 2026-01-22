@@ -1,9 +1,9 @@
 // Local Storage utilities for client-side data persistence
-import { 
-  EmailAccount, 
-  Email, 
-  Draft, 
-  AppSettings, 
+import {
+  EmailAccount,
+  Email,
+  Draft,
+  AppSettings,
   LocalStorageData,
   ExtractedTask,
   Reminder,
@@ -212,7 +212,7 @@ export const storage = {
     }
     const existingEmailsMap = new Map(data.emails.map((e) => [e.id, e]));
     const updatedEmails: Email[] = [];
-    
+
     for (const email of emails) {
       if (existingEmailsMap.has(email.id)) {
         // Update existing email with fresh data (important for re-parsing with new logic)
@@ -226,11 +226,11 @@ export const storage = {
         updatedEmails.push(email);
       }
     }
-    
+
     // Keep emails that weren't in the update batch
     const updatedIds = new Set(emails.map((e) => e.id));
     const otherEmails = data.emails.filter((e) => !updatedIds.has(e.id));
-    
+
     // Combine and sort by date (newest first) - ensures proper order after merging
     data.emails = [...otherEmails, ...updatedEmails].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -331,6 +331,25 @@ export const storage = {
     this.setData(data);
   },
 
+  // Gmail History ID methods (for efficient incremental sync)
+  getHistoryIds(): Record<string, string | undefined> {
+    const data = this.getData();
+    return (data as any)?.historyIds || {};
+  },
+
+  setHistoryId(accountId: string, historyId: string | undefined): void {
+    const data = this.getData() || this.init();
+    if (!(data as any).historyIds) {
+      (data as any).historyIds = {};
+    }
+    (data as any).historyIds[accountId] = historyId;
+    this.setData(data);
+  },
+
+  getHistoryId(accountId: string): string | undefined {
+    return this.getHistoryIds()[accountId];
+  },
+
   // Clear all data
   clear(): void {
     if (typeof window === 'undefined') return;
@@ -392,8 +411,8 @@ export const storage = {
   getActiveReminders(): Reminder[] {
     const data = this.getData();
     const now = new Date().toISOString();
-    return data?.reminders.filter((r) => 
-      r.active && 
+    return data?.reminders.filter((r) =>
+      r.active &&
       r.reminderDate <= now &&
       (!r.snoozedUntil || r.snoozedUntil <= now)
     ) || [];
@@ -742,7 +761,7 @@ export const storage = {
     const emails = this.getNonArchivedEmails();
     const threshold = new Date();
     threshold.setDate(threshold.getDate() - daysThreshold);
-    
+
     return emails.filter((e) => {
       if (!e.lastInteraction) return true;
       return new Date(e.lastInteraction) < threshold;

@@ -50,15 +50,15 @@ export function CommandInput({ onSubmit, isProcessing, suggestions = defaultSugg
 
   return (
     <div
-      className="rounded-2xl border border-white/[0.06] px-4 py-4"
+      className="rounded-2xl border border-white/[0.06] px-4 py-3 shadow-2xl"
       style={{
-        background: 'linear-gradient(180deg, rgba(20,20,22,0.9) 0%, rgba(10,10,11,0.95) 100%)',
-        backdropFilter: 'blur(40px)',
+        background: '#0F0F10',
+        boxShadow: '0 0 0 1px rgba(255,255,255,0.03), 0 20px 40px -10px rgba(0,0,0,0.5)',
       }}
     >
       {showSuggestions && !input && (
         <div className="mb-4">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-[#5A5A5A] mb-2">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-[#5A5A5A] mb-2 font-mono">
             Suggested flows
           </div>
           <div className="flex flex-wrap gap-2">
@@ -68,8 +68,8 @@ export function CommandInput({ onSubmit, isProcessing, suggestions = defaultSugg
                 onClick={() => handleSuggestionClick(suggestion)}
                 disabled={isProcessing}
                 className={cn(
-                  "rounded-full border border-white/[0.08] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em]",
-                  "text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40 transition-colors bg-white/[0.02]",
+                  "rounded-full border border-white/[0.08] px-3 py-1.5 text-[10px] uppercase tracking-[0.1em]",
+                  "text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40 transition-colors bg-white/[0.02] font-mono",
                   isProcessing && "opacity-50 cursor-not-allowed"
                 )}
               >
@@ -80,19 +80,19 @@ export function CommandInput({ onSubmit, isProcessing, suggestions = defaultSugg
         </div>
       )}
 
-      <div className="flex items-end gap-3">
+      <div className="flex items-center gap-3">
         <textarea
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setShowSuggestions(true)}
-          placeholder={isProcessing ? "Processing..." : "Tell Relayed what to do..."}
+          placeholder={isProcessing ? "Processing..." : "Schedule deep work session for Tuesday..."}
           disabled={isProcessing}
           rows={1}
           className={cn(
-            "w-full resize-none bg-transparent py-2 text-sm leading-relaxed",
-            "text-[#FAFAF9] placeholder:text-[#5A5A5A]",
+            "w-full resize-none bg-transparent py-3 text-sm leading-relaxed font-mono",
+            "text-[#FAFAF9] placeholder:text-[#5A5A5A]/60",
             "focus:outline-none border-none ring-0",
             "scrollbar-none",
             isProcessing && "opacity-50 cursor-wait"
@@ -105,12 +105,14 @@ export function CommandInput({ onSubmit, isProcessing, suggestions = defaultSugg
           onClick={handleSubmit}
           disabled={!input.trim() || isProcessing}
           className={cn(
-            "rounded-xl px-4 py-2 text-[11px] uppercase tracking-[0.2em] transition-all",
-            "bg-gradient-to-b from-[#E8DCC4] to-[#C4A052] text-[#0A0A0B] font-medium hover:from-[#F5EDD8] hover:to-[#D4B062]",
-            (!input.trim() || isProcessing) && "opacity-50 cursor-not-allowed"
+            "h-8 w-8 shrink-0 rounded-lg flex items-center justify-center transition-all",
+            "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]",
+            (!input.trim() || isProcessing) && "opacity-50 cursor-not-allowed bg-[#2A2A2C] text-[#5A5A5A]"
           )}
         >
-          Send
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8.00003 3.33331L12.6667 7.99998M12.6667 7.99998L8.00003 12.6666M12.6667 7.99998L3.33336 7.99998" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
       </div>
     </div>

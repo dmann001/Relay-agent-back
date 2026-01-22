@@ -71,9 +71,9 @@ export const gmail = {
 
   // Fetch emails with batch processing for better performance
   async fetchEmails(
-    accessToken: string, 
-    maxResults: number = 50, 
-    pageToken?: string, 
+    accessToken: string,
+    maxResults: number = 50,
+    pageToken?: string,
     existingIds?: Set<string>,
     categoryFilter?: {
       primary?: boolean;
@@ -99,7 +99,7 @@ export const gmail = {
       let query = mailbox === 'sent'
         ? 'in:sent -in:trash'
         : 'in:inbox -in:spam -in:trash';
-      
+
       // Skip category filtering for Sent mailbox
       if (mailbox === 'sent') {
         console.log('[Gmail] Fetching with query:', query);
@@ -107,7 +107,7 @@ export const gmail = {
 
       // Default to primary only if no filter provided
       const filter = categoryFilter || { primary: true };
-      
+
       // If only primary is selected (default), exclude all other categories
       if (filter.primary && !filter.promotions && !filter.social && !filter.updates && !filter.forums) {
         query += ' category:primary';
@@ -119,14 +119,14 @@ export const gmail = {
         if (filter.social) categories.push('category:social');
         if (filter.updates) categories.push('category:updates');
         if (filter.forums) categories.push('category:forums');
-        
+
         if (categories.length > 0 && categories.length < 5) {
           // Use OR to combine multiple categories
           query += ` {${categories.join(' ')}}`;
         }
         // If all categories selected, don't add any category filter
       }
-      
+
       if (mailbox !== 'sent') {
         console.log('[Gmail] Fetching with query:', query);
       }
@@ -143,7 +143,7 @@ export const gmail = {
       let newCount = 0;
 
       // Filter out messages we already have (if existingIds provided)
-      const messagesToFetch = existingIds 
+      const messagesToFetch = existingIds
         ? messages.filter(m => !existingIds.has(m.id!))
         : messages;
 
@@ -153,7 +153,7 @@ export const gmail = {
       const BATCH_SIZE = 5;
       for (let i = 0; i < messagesToFetch.length; i += BATCH_SIZE) {
         const batch = messagesToFetch.slice(i, i + BATCH_SIZE);
-        
+
         const batchResults = await Promise.allSettled(
           batch.map(async (message) => {
             const msgData = await gmailApi.users.messages.get({
@@ -178,8 +178,8 @@ export const gmail = {
       // Sort emails by date (newest first)
       emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      return { 
-        emails, 
+      return {
+        emails,
         nextPageToken: response.data.nextPageToken || undefined,
         totalFetched: messages.length,
         newCount,
@@ -213,7 +213,7 @@ export const gmail = {
       let query = mailbox === 'sent'
         ? 'in:sent -in:trash'
         : 'in:inbox -in:spam -in:trash';
-      
+
       if (mailbox !== 'sent') {
         const filter = categoryFilter || { primary: true };
         if (filter.primary && !filter.promotions && !filter.social && !filter.updates && !filter.forums) {
@@ -225,13 +225,13 @@ export const gmail = {
           if (filter.social) categories.push('category:social');
           if (filter.updates) categories.push('category:updates');
           if (filter.forums) categories.push('category:forums');
-          
+
           if (categories.length > 0 && categories.length < 5) {
             query += ` {${categories.join(' ')}}`;
           }
         }
       }
-      
+
       if (lastSyncTime) {
         // Format: after:YYYY/MM/DD
         const date = new Date(lastSyncTime);
@@ -254,7 +254,7 @@ export const gmail = {
       const BATCH_SIZE = 5;
       for (let i = 0; i < messages.length; i += BATCH_SIZE) {
         const batch = messages.slice(i, i + BATCH_SIZE);
-        
+
         const batchResults = await Promise.allSettled(
           batch.map(async (message) => {
             const msgData = await gmailApi.users.messages.get({
@@ -276,8 +276,8 @@ export const gmail = {
       // Sort by date (newest first) using the internalDate we parsed
       emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      return { 
-        emails, 
+      return {
+        emails,
         hasMore: !!response.data.nextPageToken,
         auth: updatedAccessToken !== accessToken || updatedExpiryDate !== expiryDate
           ? { accessToken: updatedAccessToken, expiryDate: updatedExpiryDate }
@@ -285,6 +285,136 @@ export const gmail = {
       };
     } catch (error) {
       console.error('[Gmail] Error in quick sync:', error);
+      throw error;
+    }
+  },
+
+  // Incremental sync using Gmail History API - most efficient method
+  // Only fetches emails that changed since lastHistoryId
+  async incrementalSync(
+    accessToken: string,
+    lastHistoryId?: string,
+    refreshToken?: string,
+    expiryDate?: number
+  ): Promise<{
+    emails: Email[];
+    newHistoryId?: string;
+    deletedIds: string[];
+    auth?: { accessToken: string; expiryDate?: number };
+  }> {
+    const { authClient, updatedAccessToken, updatedExpiryDate } = await getAuthorizedClient(
+      accessToken,
+      refreshToken,
+      expiryDate
+    );
+    const gmailApi = google.gmail({ version: 'v1', auth: authClient });
+
+    try {
+      // If no history ID, we need to do an initial sync to get one
+      if (!lastHistoryId) {
+        console.log('[Gmail] No historyId, fetching initial profile');
+        const profile = await gmailApi.users.getProfile({ userId: 'me' });
+        const currentHistoryId = profile.data.historyId;
+
+        return {
+          emails: [],
+          newHistoryId: currentHistoryId || undefined,
+          deletedIds: [],
+          auth: updatedAccessToken !== accessToken || updatedExpiryDate !== expiryDate
+            ? { accessToken: updatedAccessToken, expiryDate: updatedExpiryDate }
+            : undefined,
+        };
+      }
+
+      console.log(`[Gmail] Incremental sync from historyId: ${lastHistoryId}`);
+
+      // Use History API to get changes since lastHistoryId
+      const historyResponse = await gmailApi.users.history.list({
+        userId: 'me',
+        startHistoryId: lastHistoryId,
+        historyTypes: ['messageAdded', 'messageDeleted'],
+        labelId: 'INBOX',
+      });
+
+      const historyRecords = historyResponse.data.history || [];
+      const newHistoryId = historyResponse.data.historyId;
+
+      const addedMessageIds = new Set<string>();
+      const deletedIds: string[] = [];
+
+      // Process history records
+      for (const record of historyRecords) {
+        if (record.messagesAdded) {
+          for (const added of record.messagesAdded) {
+            if (added.message?.id) {
+              addedMessageIds.add(added.message.id);
+            }
+          }
+        }
+        if (record.messagesDeleted) {
+          for (const deleted of record.messagesDeleted) {
+            if (deleted.message?.id) {
+              deletedIds.push(deleted.message.id);
+              addedMessageIds.delete(deleted.message.id);
+            }
+          }
+        }
+      }
+
+      console.log(`[Gmail] Found ${addedMessageIds.size} new messages, ${deletedIds.length} deleted`);
+
+      // Fetch full details for new messages
+      const emails: Email[] = [];
+      const messageIds = Array.from(addedMessageIds);
+
+      // Batch fetch (5 at a time)
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < messageIds.length; i += BATCH_SIZE) {
+        const batch = messageIds.slice(i, i + BATCH_SIZE);
+
+        const batchResults = await Promise.allSettled(
+          batch.map(async (messageId) => {
+            const msgData = await gmailApi.users.messages.get({
+              userId: 'me',
+              id: messageId,
+              format: 'full',
+            });
+            return this.parseGmailMessage(msgData.data);
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            emails.push(result.value);
+          }
+        }
+      }
+
+      // Sort by date (newest first)
+      emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      return {
+        emails,
+        newHistoryId: newHistoryId || undefined,
+        deletedIds,
+        auth: updatedAccessToken !== accessToken || updatedExpiryDate !== expiryDate
+          ? { accessToken: updatedAccessToken, expiryDate: updatedExpiryDate }
+          : undefined,
+      };
+    } catch (error: any) {
+      // If history is too old (410 error), return empty to trigger full sync
+      if (error.code === 410) {
+        console.log('[Gmail] History expired, need full sync');
+        return {
+          emails: [],
+          newHistoryId: undefined,
+          deletedIds: [],
+          auth: updatedAccessToken !== accessToken || updatedExpiryDate !== expiryDate
+            ? { accessToken: updatedAccessToken, expiryDate: updatedExpiryDate }
+            : undefined,
+        };
+      }
+      console.error('[Gmail] Error in incremental sync:', error);
       throw error;
     }
   },
@@ -301,11 +431,11 @@ export const gmail = {
       const subject = getHeader('subject');
       const messageIdHeader = getHeader('message-id');
       const dateHeader = getHeader('date');
-      
+
       // Use internalDate (Gmail's received timestamp) for accurate sorting
       // This is more reliable than the Date header which can be spoofed or incorrect
       const internalDate = message.internalDate;
-      const date = internalDate 
+      const date = internalDate
         ? new Date(parseInt(internalDate)).toISOString()
         : (dateHeader || new Date().toISOString());
 
@@ -329,19 +459,19 @@ export const gmail = {
         if (!part) return;
 
         const mimeType = (part.mimeType || '').toLowerCase();
-        
+
         // Check if this part has a body with data
         if (part.body?.data) {
           try {
             const content = Buffer.from(part.body.data, 'base64').toString('utf-8');
-            
+
             // Check for HTML content (case-insensitive, handle with parameters like "text/html; charset=utf-8")
             if (mimeType.includes('text/html')) {
               // Prefer the first HTML part, but if we find a longer one, use that (likely more complete)
               if (!htmlContent.value || content.length > htmlContent.value.length) {
                 htmlContent.value = content;
               }
-            } 
+            }
             // Check for plain text content
             else if (mimeType.includes('text/plain')) {
               // Prefer the first plain text part, but if we find a longer one, use that
@@ -385,7 +515,7 @@ export const gmail = {
       // Get labels
       const labels = message.labelIds || [];
       const isUnread = labels.includes('UNREAD');
-      
+
       // Extract Gmail category from labels
       let gmailCategory: 'primary' | 'promotions' | 'social' | 'updates' | 'forums' | undefined;
       if (labels.includes('CATEGORY_PERSONAL') || labels.includes('CATEGORY_PRIMARY')) {
@@ -454,7 +584,7 @@ export const gmail = {
     const headers = [
       `To: ${to.join(', ')}`,
     ];
-    
+
     if (cc && cc.length > 0) {
       headers.push(`Cc: ${cc.join(', ')}`);
     }
@@ -463,7 +593,7 @@ export const gmail = {
       headers.push(`In-Reply-To: <${inReplyToMessageId}>`);
       headers.push(`References: <${inReplyToMessageId}>`);
     }
-    
+
     headers.push(`Subject: ${subject}`);
 
     const formatBodyAsHtml = (content: string) => {

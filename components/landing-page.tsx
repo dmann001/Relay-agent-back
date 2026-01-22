@@ -26,36 +26,97 @@ export function LandingPage() {
     }
   }, [])
 
+  // Text Generate Effect Logic
+  const [displayedText, setDisplayedText] = useState("")
+  const fullText = "I've analyzed your morning stream. 3 critical items require attention. Shall I draft responses?"
+
+  useEffect(() => {
+    if (isLoaded) {
+      let i = 0
+      const typingInterval = setInterval(() => {
+        if (i < fullText.length) {
+          setDisplayedText(fullText.substring(0, i + 1))
+          i++
+        } else {
+          clearInterval(typingInterval)
+        }
+      }, 30) // Speed of typing
+      return () => clearInterval(typingInterval)
+    }
+  }, [isLoaded])
+
+  // Animated Placeholders Logic
+  const placeholders = [
+    "Draft reply to Sarah about the merger...",
+    "Schedule deep work session for Tuesday...",
+    "Summarize Q3 financial report...",
+    "Find email from Alex about 'Project Titan'..."
+  ]
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
+  const [fadePlaceholder, setFadePlaceholder] = useState(false)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFadePlaceholder(true)
+      setTimeout(() => {
+        setPlaceholderIndex((prev) => (prev + 1) % placeholders.length)
+        setFadePlaceholder(false)
+      }, 500) // Wait for fade out
+    }, 4000) // Change every 4 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMousePosition({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    })
+  }
+
+  // Telemetry Logic
+  const [latency, setLatency] = useState(34)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLatency(prev => {
+        const change = Math.floor(Math.random() * 5) - 2
+        return Math.min(50, Math.max(20, prev + change))
+      })
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-[#FAFAF9] selection:bg-[#E8DCC4]/20 overflow-x-hidden">
-      {/* Noise Texture Overlay */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-        }}
-      />
+      {/* Living Void Background: Deep Noir with Gold Mesh */}
+      <div className="fixed inset-0 bg-[#030303] overflow-hidden pointer-events-none">
+        {/* Cinematic Grain Overlay handled by globals.css .bg-grain */}
+        <div className="bg-grain" />
 
-      {/* Ambient Gradient Orbs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        {/* Primary Ambient Glow - Golden Hour in the Void */}
         <div
-          className="absolute w-[800px] h-[800px] rounded-full blur-[150px] opacity-20"
+          className="absolute top-[-20%] left-[-10%] w-[1000px] h-[1000px] opacity-20 blur-[120px]"
           style={{
-            background: 'radial-gradient(circle, #E8DCC4 0%, transparent 70%)',
-            top: '-20%',
-            left: '-10%',
-            transform: `translateY(${scrollY * 0.1}px)`,
+            background: 'radial-gradient(circle at 50% 50%, #C4A052, transparent 60%)',
+            transform: `translateY(${scrollY * 0.2}px)`,
+            willChange: 'transform'
           }}
         />
+
+        {/* Secondary Deep Purple/Blue fill for contrast (Obsidian feel) */}
         <div
-          className="absolute w-[600px] h-[600px] rounded-full blur-[120px] opacity-10"
+          className="absolute bottom-[-20%] right-[-10%] w-[1200px] h-[1200px] opacity-10 blur-[150px]"
           style={{
-            background: 'radial-gradient(circle, #C4A052 0%, transparent 70%)',
-            bottom: '-10%',
-            right: '-5%',
-            transform: `translateY(${scrollY * -0.05}px)`,
+            background: 'radial-gradient(circle at 50% 50%, #2A2A35, transparent 70%)',
+            transform: `translateY(${scrollY * -0.1}px)`,
+            willChange: 'transform'
           }}
         />
+
+        {/* Floating Particles/Dust */}
+        <div className="absolute inset-0 opacity-20" style={{ backgroundSize: '4px 4px', backgroundImage: 'radial-gradient(#C4A052 1px, transparent 0)' }} />
       </div>
 
       {/* Navigation */}
@@ -130,74 +191,215 @@ export function LandingPage() {
         )}
       </nav>
 
-      {/* Hero Section */}
-      <section ref={heroRef} className="relative h-screen flex items-center justify-center px-6">
-        <div className="max-w-5xl mx-auto text-center">
-          {/* Private Beta Badge */}
-          <div
-            className={`inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/[0.03] border border-white/[0.06] mb-10 transition-all duration-1000 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-              }`}
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#E8DCC4] opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#E8DCC4]" />
-            </span>
-            <span className="text-xs font-medium tracking-[0.2em] text-[#8A8A8A] uppercase">
-              Private Beta
-            </span>
+      {/* Hero Section - Cinematic Reveal */}
+      <section ref={heroRef} className="relative h-screen flex items-center justify-center px-6 overflow-hidden">
+        <div className="max-w-[1400px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+
+          {/* Typography Content */}
+          <div className="lg:col-span-7 flex flex-col justify-center text-left z-10 pt-20">
+            {/* Precision Badge */}
+            <div
+              className={`inline-flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.08] mb-12 transition-all duration-1000 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-[#C4A052] animate-pulse" />
+              <span className="text-[10px] font-mono tracking-[0.2em] text-[#C4A052] uppercase">
+                System v1.0 // Private Beta
+              </span>
+            </div>
+
+            {/* Main Headline - Noir Gold */}
+            <h1 className="relative">
+              <span className={`block text-[clamp(3.5rem,6vw,5.5rem)] font-light tracking-[-0.04em] leading-[0.95] text-[#FAFAF9] transition-all duration-1000 delay-100 ${isLoaded ? 'opacity-100 translate-y-0 filter-none' : 'opacity-0 translate-y-12 blur-lg'}`}>
+                Email without
+              </span>
+              <span className={`block text-[clamp(3.5rem,6vw,5.5rem)] font-normal tracking-[-0.04em] leading-[0.95] text-[#FAFAF9] transition-all duration-1000 delay-200 ${isLoaded ? 'opacity-100 translate-y-0 filter-none' : 'opacity-0 translate-y-12 blur-lg'}`}>
+                the <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-shimmer bg-[length:200%_auto]">inbox.</span>
+              </span>
+            </h1>
+
+            {/* Subheadline & Description */}
+            <p
+              className={`mt-8 text-lg text-[#8A8A8A] max-w-xl font-light leading-relaxed transition-all duration-1000 delay-300 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
+            >
+              Your AI agent reads, acts, and evolves.
+              <br />
+              <span className="text-[#5A5A5A]">Stop managing email. Start managing decisions.</span>
+            </p>
+
+            {/* Magnetic CTA Buttons */}
+            <div
+              className={`flex flex-wrap items-center gap-5 mt-12 transition-all duration-1000 delay-500 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
+            >
+              <Button
+                className="group relative h-14 px-8 rounded-full bg-[#FAFAF9] hover:bg-[#E8DCC4] text-[#0A0A0B] text-base font-medium overflow-hidden transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  Request Access <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:animate-shimmer" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                className="group h-14 px-8 rounded-full border border-[#FAFAF9]/10 text-[#FAFAF9] hover:bg-[#FAFAF9]/5 hover:text-[#FAFAF9] transition-all duration-300"
+              >
+                <span className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#FAFAF9]/10 flex items-center justify-center border border-[#FAFAF9]/10 group-hover:bg-[#C4A052] group-hover:text-[#0A0A0B] transition-colors">
+                    <Play className="w-3 h-3 ml-0.5 fill-current" />
+                  </div>
+                  System Demo
+                </span>
+              </Button>
+            </div>
+
+            {/* Live System Telemetry Strip - Technical Proof instead of Social Proof */}
+            <div className={`mt-20 w-full transition-all duration-1000 delay-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-4 py-4 border-y border-[#FAFAF9]/[0.05] bg-[#FAFAF9]/[0.01] backdrop-blur-sm">
+                {/* Status */}
+                <div className="flex items-center gap-3">
+                  <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#28C840] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#28C840]" />
+                  </div>
+                  <span className="text-xs font-mono text-[#FAFAF9]/80 tracking-widest uppercase">
+                    System Operational
+                  </span>
+                </div>
+
+                {/* Divider - only visible on larger screens */}
+                <div className="hidden sm:block w-px h-4 bg-[#FAFAF9]/10" />
+
+                {/* Latency Metric */}
+                <div className="flex items-center gap-3">
+                  <Zap className="w-3 h-3 text-[#C4A052]" />
+                  <span className="text-xs font-mono text-[#FAFAF9]/80 tracking-widest uppercase">
+                    Global Latency: <span className="text-[#C4A052]">{latency}ms</span>
+                  </span>
+                </div>
+
+                {/* Divider */}
+                <div className="hidden sm:block w-px h-4 bg-[#FAFAF9]/10" />
+
+                {/* Encryption Metric */}
+                <div className="flex items-center gap-3">
+                  <Lock className="w-3 h-3 text-[#FAFAF9]/50" />
+                  <span className="text-xs font-mono text-[#FAFAF9]/80 tracking-widest uppercase">
+                    AES-256 <span className="text-[#5A5A5A]">::</span> E2EE Active
+                  </span>
+                </div>
+
+                {/* Uptime (fill space) */}
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-[#5A5A5A]">UPTIME 99.99%</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Main Headline - Editorial Typography */}
-          <h1
-            className={`text-[clamp(3rem,10vw,7rem)] font-light tracking-[-0.04em] leading-[0.9] mb-6 transition-all duration-1000 delay-150 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
-              }`}
-          >
-            <span className="block">Email without</span>
-            <span className="block relative">
-              the{' '}
-              <span className="relative inline-block">
-                <span className="relative z-10 bg-gradient-to-r from-[#E8DCC4] via-[#F5EDD8] to-[#C4A052] bg-clip-text text-transparent font-normal">
-                  inbox
-                </span>
-                <span className="absolute -bottom-2 left-0 right-0 h-[3px] bg-gradient-to-r from-[#E8DCC4] via-[#F5EDD8] to-[#C4A052] opacity-60" />
-              </span>
-            </span>
-          </h1>
-
-          {/* Subheadline */}
-          <p
-            className={`text-lg md:text-xl text-[#8A8A8A] max-w-xl mx-auto mb-10 leading-relaxed font-light transition-all duration-1000 delay-300 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
-              }`}
-          >
-            Your AI agent reads, prioritizes, drafts, and acts on every email.
-            <br className="hidden md:block" />
-            You just have a conversation.
-          </p>
-
-          {/* CTA Buttons */}
+          {/* Hero Visual - Abstract Floating Element with 3D Scroll Tilt */}
           <div
-            className={`flex flex-col sm:flex-row items-center justify-center gap-4 transition-all duration-1000 delay-500 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
-              }`}
+            className={`hidden lg:block lg:col-span-5 relative transition-all duration-1000 delay-500 ${isLoaded ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'}`}
+            style={{
+              perspective: '1000px'
+            }}
           >
-            <Button
-              className="relative group bg-gradient-to-b from-[#FAFAF9] to-[#E8E8E6] hover:from-[#FFFFFF] hover:to-[#F5F5F3] text-[#0A0A0B] font-medium rounded-xl px-8 h-14 text-base shadow-2xl shadow-white/10 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] overflow-hidden"
+            <div
+              className="relative w-full aspect-square"
+              style={{
+                transform: `rotateX(${scrollY * 0.02}deg) rotateY(${scrollY * -0.02}deg) scale(${Math.max(0.9, 1 - scrollY * 0.0005)})`,
+                transition: 'transform 0.1s ease-out'
+              }}
             >
-              <span className="relative z-10 flex items-center gap-2">
-                Request access
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </span>
-            </Button>
-            <Button
-              variant="ghost"
-              className="text-[#FAFAF9] hover:text-[#FAFAF9] hover:bg-white/[0.03] rounded-xl px-8 h-14 text-base border border-white/[0.08] group"
-            >
-              <span className="flex items-center gap-3">
-                Watch demo
-                <div className="relative h-8 w-8 rounded-lg bg-white/[0.06] flex items-center justify-center border border-white/[0.08] group-hover:bg-white/[0.1] transition-colors">
-                  <Play className="h-3 w-3 fill-[#FAFAF9] ml-0.5" />
+              {/* Back Glow - Pulse Effect */}
+              <div className="absolute inset-0 bg-[#C4A052] opacity-10 blur-[100px] rounded-full animate-pulse-slow" />
+
+              {/* Main Crystal/Obsidian Object - using CSS3D representation */}
+              <div className="relative w-full h-full rounded-[3rem] border border-[#FAFAF9]/10 bg-gradient-to-b from-[#FAFAF9]/[0.05] to-transparent backdrop-blur-2xl shadow-2xl shadow-black/50 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#FAFAF9]/[0.02] to-transparent" />
+
+                {/* Internal UI Mockup - Active Agent Interface */}
+                <div className="absolute inset-4 rounded-[2.5rem] bg-[#0A0A0B]/90 border border-[#FAFAF9]/[0.05] flex flex-col overflow-hidden">
+
+                  {/* Glass Header */}
+                  <div className="h-14 border-b border-[#FAFAF9]/[0.05] flex items-center justify-between px-6 bg-[#FAFAF9]/[0.02]">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F57] shadow-[0_0_8px_rgba(255,95,87,0.3)]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#FEBC2E] shadow-[0_0_8px_rgba(254,188,46,0.3)]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#28C840] shadow-[0_0_8px_rgba(40,200,64,0.3)]" />
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05]">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#28C840] animate-pulse" />
+                      <span className="text-[10px] font-mono text-[#FAFAF9]/50 uppercase tracking-wider">System Online</span>
+                    </div>
+                  </div>
+
+                  {/* Active Content Area */}
+                  <div className="flex-1 p-6 flex flex-col gap-6 relative">
+                    {/* Background Grid Pattern */}
+                    <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(#FAFAF9 1px, transparent 1px), linear-gradient(90deg, #FAFAF9 1px, transparent 1px)', backgroundSize: '16px 16px' }}></div>
+
+                    {/* Agent Message Bubble with Text Generate Effect */}
+                    <div className="flex gap-4 items-start relative z-10">
+                      <div className={`w-8 h-8 rounded-lg bg-gradient-to-br from-[#E8DCC4] to-[#C4A052] flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(196,160,82,0.2)] transition-all duration-500 ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}>
+                        <Sparkles className="w-4 h-4 text-[#0A0A0B]" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div className={`p-4 rounded-2xl rounded-tl-sm bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05] backdrop-blur-sm transition-all duration-500 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+                          <p className="text-sm text-[#FAFAF9] leading-relaxed font-mono">
+                            {displayedText}
+                            <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-[#C4A052] animate-pulse" />
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Interactive Item Card */}
+                    <div className="ml-12 relative z-10 animate-fade-in-up delay-200">
+                      <div className="group p-4 rounded-xl bg-[#0F0F11] border border-[#FAFAF9]/[0.08] hover:border-[#C4A052]/30 transition-colors duration-300">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-[#FAFAF9]/[0.05] text-[#FAFAF9]">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-medium text-[#FAFAF9] group-hover:text-[#C4A052] transition-colors">Stripe Invoice #2024-001</h4>
+                              <p className="text-xs text-[#5A5A5A]">$2,400.00 • Payment Failed</p>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#FF5F57]/10 text-[#FF5F57] border border-[#FF5F57]/20">High Priority</span>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 mt-2">
+                          <button className="flex-1 py-1.5 rounded-lg bg-[#FAFAF9] text-[#0A0A0B] text-xs font-medium hover:bg-[#E8DCC4] transition-colors">
+                            Update Payment Method
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* User Reply Input Mock with Animated Placeholders */}
+                    <div className="mt-auto relative z-10 animate-fade-in-up delay-300">
+                      <div className="relative group/input">
+                        <input
+                          disabled
+                          className="w-full h-10 bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05] rounded-lg pl-3 pr-10 text-xs text-[#FAFAF9] placeholder:text-transparent transition-colors group-hover/input:border-[#FAFAF9]/10"
+                        />
+
+                        {/* Animated Placeholder Overlay */}
+                        <div className={`absolute left-3 top-0 h-full flex items-center pointer-events-none transition-opacity duration-500 ${fadePlaceholder ? 'opacity-0' : 'opacity-100'}`}>
+                          <span className="text-xs text-[#5A5A5A] italic">{placeholders[placeholderIndex]}</span>
+                        </div>
+
+                        <div className="absolute right-2 top-2 p-1 rounded bg-[#C4A052]/20 group-hover/input:bg-[#C4A052] transition-colors duration-300">
+                          <ArrowRight className="w-3 h-3 text-[#C4A052] group-hover/input:text-[#0A0A0B] transition-colors duration-300" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </span>
-            </Button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -343,81 +545,107 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="relative min-h-screen flex items-center py-20 px-6 scroll-mt-20">
-        <div className="max-w-6xl mx-auto">
+      {/* Features Section - Obsidian Cards with Spotlight Grid */}
+      <section
+        id="features"
+        className="relative py-32 px-6 overflow-hidden"
+        onMouseMove={handleMouseMove}
+      >
+        {/* Spotlight Grid Background */}
+        <div
+          className="absolute inset-0 pointer-events-none bg-grid-white/[0.02]"
+          style={{
+            maskImage: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, black, transparent)`,
+            WebkitMaskImage: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, black, transparent)`,
+          }}
+        />
+
+        <div className="max-w-7xl mx-auto relative z-10">
           {/* Section Header */}
-          <div className="text-center mb-8">
-            <span className="inline-block text-xs font-medium tracking-[0.3em] text-[#C4A052] uppercase mb-4">
-              Features
-            </span>
-            <h2 className="text-3xl md:text-5xl font-light tracking-[-0.03em] mb-4">
-              Built for the
-              <br />
-              <span className="text-[#5A5A5A]">post-inbox era</span>
+          <div className="text-center mb-20">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#C4A052]/20 bg-[#C4A052]/5 mb-6">
+              <Sparkles className="w-3 h-3 text-[#C4A052]" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-[#C4A052] font-semibold">Capabilities</span>
+            </div>
+
+            <h2 className="text-4xl md:text-6xl font-normal tracking-tight mb-6">
+              <span className="text-[#FAFAF9]">Power in</span> <span className="text-[#8A8A8A] font-light italic">every pixel.</span>
             </h2>
+            <p className="text-[#8A8A8A] max-w-2xl mx-auto text-lg font-light leading-relaxed">
+              Designed not just to function, but to feel. Every interaction is a statement of precision.
+            </p>
           </div>
 
-          {/* Feature Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Obsidian Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               {
-                icon: <Layers className="h-5 w-5" />,
-                title: "Zero inbox interface",
-                description: "No folders. No labels. No sorting. Just tell your agent what you need.",
-                gradient: "from-[#E8DCC4] to-[#C4A052]"
+                icon: <Layers className="h-6 w-6" />,
+                title: "Zero Inbox",
+                description: "No folders. No labels. Just a stream of decisions handled by intelligence.",
+                meta: "AUTO-SORT v2.1"
               },
               {
-                icon: <Zap className="h-5 w-5" />,
-                title: "Autonomous actions",
-                description: "Drafts responses, schedules meetings, unsubscribes—all with your approval.",
-                gradient: "from-[#FEBC2E] to-[#FF9500]"
+                icon: <Zap className="h-6 w-6" />,
+                title: "Autonomous Actions",
+                description: "Drafts, schedules, and unsubscribes. You approve, it executes.",
+                meta: "LATENCY < 50ms"
               },
               {
-                icon: <Lock className="h-5 w-5" />,
-                title: "Privacy-first",
-                description: "Your emails never leave your device for training. You own your data.",
-                gradient: "from-[#28C840] to-[#1E9432]"
+                icon: <Lock className="h-6 w-6" />,
+                title: "Encrypted Core",
+                description: "Your data stays on device. Training happens locally, never in the cloud.",
+                meta: "AES-256 GCM"
               },
               {
-                icon: <Sparkles className="h-5 w-5" />,
-                title: "Learns your style",
-                description: "Adapts to your tone, priorities, and preferences over time.",
-                gradient: "from-[#FF6B6B] to-[#EE5A5A]"
+                icon: <Sparkles className="h-6 w-6" />,
+                title: "Adaptive Style",
+                description: "Learns your tone of voice. Writes exactly how you would, but faster.",
+                meta: "LLM-FT-7B"
               },
               {
-                icon: <Globe className="h-5 w-5" />,
-                title: "Universal integration",
-                description: "Works with Gmail, Outlook, and any IMAP provider seamlessly.",
-                gradient: "from-[#7B68EE] to-[#6B5ACE]"
+                icon: <Globe className="h-6 w-6" />,
+                title: "Universal Sync",
+                description: "Connects with Gmail, Outlook, and IMAP. One interface for everything.",
+                meta: "IMAP/SMTP"
               },
               {
-                icon: <Clock className="h-5 w-5" />,
-                title: "24/7 processing",
-                description: "Your agent works around the clock. Important emails surface instantly.",
-                gradient: "from-[#00CED1] to-[#00A0A0]"
+                icon: <Clock className="h-6 w-6" />,
+                title: "Active Sleep",
+                description: "Processing continues while you sleep. Wake up to a prioritized summary.",
+                meta: "bg-background-worker"
               }
             ].map((feature, i) => (
               <div
                 key={i}
-                className="group relative p-[1px] rounded-2xl bg-gradient-to-b from-white/[0.08] to-transparent hover:from-white/[0.12] transition-all duration-300"
+                className="group relative h-[300px] rounded-3xl bg-[#0F0F11] border border-[#FAFAF9]/[0.05] overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:shadow-2xl hover:shadow-[#C4A052]/10"
               >
-                <div className="relative h-full p-6 rounded-2xl bg-[#0A0A0B] overflow-hidden">
-                  {/* Hover gradient */}
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-500`}
-                  />
+                {/* Obsidian Surface Texture */}
+                <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat opacity-[0.03]" />
 
-                  <div className="relative">
-                    <div className={`inline-flex p-2.5 rounded-xl bg-gradient-to-br ${feature.gradient} mb-4`}>
-                      <div className="text-[#0A0A0B]">
-                        {feature.icon}
-                      </div>
+                {/* Rim Light Gradient - Animates on Hover */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
+                  <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_340deg,white_360deg)] animate-spin-slow opacity-20 mix-blend-overlay" />
+                </div>
+
+                {/* Inner Glow (Spotlight effect substitute) */}
+                <div className="absolute -inset-[100px] bg-gradient-to-r from-transparent via-[#FAFAF9]/5 to-transparent rotate-45 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000 ease-in-out" />
+
+                <div className="relative h-full p-8 flex flex-col justify-between z-10">
+                  <div>
+                    <div className="inline-flex p-3 rounded-2xl bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05] mb-6 group-hover:bg-[#C4A052] group-hover:text-[#0A0A0B] transition-colors duration-300">
+                      {feature.icon}
                     </div>
-                    <h3 className="text-lg font-medium mb-3 text-[#FAFAF9]">{feature.title}</h3>
-                    <p className="text-sm text-[#8A8A8A] leading-relaxed">
+                    <h3 className="text-xl font-medium text-[#FAFAF9] mb-3 group-hover:translate-x-1 transition-transform duration-300">{feature.title}</h3>
+                    <p className="text-[#8A8A8A] text-sm leading-relaxed font-light">
                       {feature.description}
                     </p>
+                  </div>
+
+                  {/* Tech Meta Data */}
+                  <div className="flex items-center justify-between pt-6 border-t border-[#FAFAF9]/[0.03]">
+                    <span className="text-[10px] font-mono text-[#5A5A5A] uppercase tracking-wider">{feature.meta}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#333] group-hover:bg-[#C4A052] transition-colors duration-300" />
                   </div>
                 </div>
               </div>
@@ -426,60 +654,55 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="relative min-h-screen flex items-center py-20 px-6 scroll-mt-20">
-        <div className="max-w-4xl mx-auto">
+      {/* Pricing Section - Obsidian Monolith */}
+      <section id="pricing" className="relative py-32 px-6 overflow-hidden">
+        {/* Background Glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#C4A052]/5 blur-[120px] rounded-full pointer-events-none" />
+
+        <div className="max-w-4xl mx-auto relative z-10">
           {/* Section Header */}
-          <div className="text-center mb-8">
-            <span className="inline-block text-xs font-medium tracking-[0.3em] text-[#C4A052] uppercase mb-4">
-              Pricing
+          <div className="text-center mb-16">
+            <span className="inline-block text-xs font-mono tracking-[0.3em] text-[#C4A052] uppercase mb-4">
+              // Access
             </span>
-            <h2 className="text-3xl md:text-5xl font-light tracking-[-0.03em] mb-4">
-              Simple pricing.
-              <br />
-              <span className="text-[#5A5A5A]">No surprises.</span>
+            <h2 className="text-4xl md:text-5xl font-light tracking-[-0.03em] mb-4 text-[#FAFAF9]">
+              Fair pricing. <span className="text-[#8A8A8A]">Unlimited power.</span>
             </h2>
           </div>
 
-          {/* Coming Soon Card */}
+          {/* Coming Soon Card - Obsidian Style */}
           <div className="relative group">
-            {/* Ambient glow */}
-            <div
-              className="absolute -inset-4 rounded-[32px] opacity-20 blur-2xl"
-              style={{
-                background: 'radial-gradient(ellipse at center, rgba(232,220,196,0.15) 0%, transparent 70%)',
-              }}
-            />
+            <div className="absolute -inset-0.5 bg-gradient-to-b from-[#C4A052]/20 to-transparent opacity-20 blur-lg transition-opacity duration-500 group-hover:opacity-40" />
 
-            <div className="relative p-[1px] rounded-[32px] bg-gradient-to-b from-white/[0.1] to-white/[0.02]">
-              <div
-                className="relative rounded-[31px] py-20 px-10 md:py-24 md:px-16 text-center overflow-hidden"
-                style={{
-                  background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)',
-                  backdropFilter: 'blur(40px)',
-                }}
-              >
-                {/* Inner glow */}
-                <div className="absolute inset-0 rounded-[23px] overflow-hidden">
-                  <div className="absolute top-0 left-1/4 w-1/2 h-1/2 bg-[#E8DCC4]/[0.03] blur-3xl" />
-                </div>
+            <div className="relative rounded-[32px] bg-[#0F0F11] border border-[#FAFAF9]/[0.05] overflow-hidden p-1">
+              <div className="relative rounded-[28px] py-20 px-10 md:py-24 md:px-16 text-center overflow-hidden bg-[#0A0A0B]">
+                {/* Noise Texture */}
+                <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat opacity-[0.04]" />
+
+                {/* Inner Spotlight */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1/2 bg-gradient-to-b from-[#FAFAF9]/[0.03] to-transparent blur-3xl pointer-events-none" />
 
                 <div className="relative">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#E8DCC4]/[0.08] border border-[#E8DCC4]/[0.15] mb-6">
-                    <Sparkles className="h-4 w-4 text-[#E8DCC4]" />
-                    <span className="text-sm font-medium text-[#E8DCC4]">Coming Soon</span>
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#C4A052]/10 border border-[#C4A052]/20 mb-8">
+                    <Sparkles className="h-3 w-3 text-[#C4A052]" />
+                    <span className="text-xs font-medium text-[#C4A052] uppercase tracking-wider">Early Access Phase</span>
                   </div>
-                  <h3 className="text-3xl md:text-5xl font-light text-[#FAFAF9] mb-6">
-                    Pricing to be announced
+
+                  <h3 className="text-3xl md:text-4xl font-light text-[#FAFAF9] mb-6 tracking-tight">
+                    Pricing revealed at launch.
                   </h3>
-                  <p className="text-[#8A8A8A] text-lg max-w-lg mx-auto mb-10">
-                    We&apos;re finalizing our pricing plans. Join the waitlist to be the first to know when we launch.
+                  <p className="text-[#8A8A8A] text-lg max-w-lg mx-auto mb-10 font-light leading-relaxed">
+                    We are currently onboarding founding members. Join the waitlist to secure your spot and legacy pricing.
                   </p>
+
                   <Button
-                    className="bg-gradient-to-b from-[#FAFAF9] to-[#E8E8E6] hover:from-[#FFFFFF] hover:to-[#F5F5F3] text-[#0A0A0B] font-medium rounded-xl px-8 h-12 text-base transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                    className="relative group bg-[#FAFAF9] hover:bg-[#E8DCC4] text-[#0A0A0B] font-medium rounded-full px-10 h-14 text-base transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] overflow-hidden"
                   >
-                    Join waitlist
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                    <span className="relative z-10 flex items-center gap-2">
+                      Join waitlist
+                      <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/80 to-transparent translate-x-[-100%] group-hover:animate-shimmer" />
                   </Button>
                 </div>
               </div>
@@ -488,48 +711,30 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Final CTA Section */}
-      <section className="relative min-h-screen flex items-center py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          {/* CTA Card with Liquid Glass */}
-          <div className="relative">
-            {/* Ambient glow */}
-            <div
-              className="absolute -inset-8 rounded-[48px] opacity-40 blur-3xl"
-              style={{
-                background: 'radial-gradient(ellipse at center, rgba(232,220,196,0.2) 0%, transparent 70%)',
-              }}
-            />
+      {/* Final CTA Section - The Void Calls */}
+      <section className="relative py-40 px-6 overflow-hidden">
+        {/* Abstract Background Elements */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-gradient-to-t from-[#C4A052]/10 to-transparent blur-[100px]" />
+        </div>
 
-            <div className="relative p-[1px] rounded-[32px] bg-gradient-to-b from-white/[0.15] to-white/[0.02]">
-              <div
-                className="relative rounded-[31px] py-20 px-10 md:py-24 md:px-16 text-center overflow-hidden"
-                style={{
-                  background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)',
-                  backdropFilter: 'blur(40px)',
-                }}
-              >
-                {/* Inner glow */}
-                <div className="absolute inset-0 rounded-[31px] overflow-hidden">
-                  <div className="absolute top-0 left-1/4 w-1/2 h-1/2 bg-[#E8DCC4]/[0.04] blur-3xl" />
-                </div>
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <h2 className="text-5xl md:text-7xl font-light tracking-[-0.04em] mb-8 text-[#FAFAF9]">
+            Ready to <span className="text-transparent bg-clip-text bg-gradient-to-b from-[#FAFAF9] to-[#8A8A8A]">ascend?</span>
+          </h2>
+          <p className="text-[#8A8A8A] text-xl mb-12 font-light max-w-xl mx-auto">
+            The future of communication is silent, intelligent, and instantaneous.
+          </p>
 
-                <div className="relative">
-                  <h2 className="text-3xl md:text-5xl font-light tracking-[-0.03em] mb-6">
-                    Ready for the future
-                    <br />
-                    <span className="text-[#5A5A5A]">of email?</span>
-                  </h2>
-                  <p className="text-[#8A8A8A] text-lg mb-10">Join the waitlist for early access.</p>
-                  <Button
-                    className="bg-gradient-to-b from-[#FAFAF9] to-[#E8E8E6] hover:from-[#FFFFFF] hover:to-[#F5F5F3] text-[#0A0A0B] font-medium rounded-xl px-10 h-14 text-base shadow-2xl shadow-white/10 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    Get early access
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
+            <Button
+              className="relative group bg-[#FAFAF9] hover:bg-[#E8DCC4] text-[#0A0A0B] font-medium rounded-full px-12 h-16 text-lg shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] hover:shadow-[0_0_60px_-15px_rgba(196,160,82,0.4)] transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <span className="relative z-10 flex items-center gap-3">
+                Get Early Access
+                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+              </span>
+            </Button>
           </div>
         </div>
       </section>
@@ -595,6 +800,19 @@ export function LandingPage() {
           </div>
         </div>
       </footer>
+      {/* Tracing Beam - The Thread */}
+      <div className="fixed left-6 top-0 bottom-0 w-[1px] hidden xl:block pointer-events-none z-50">
+        <div className="absolute top-0 bottom-0 w-full bg-[#FAFAF9]/[0.05]" />
+        <div
+          className="absolute top-0 w-full bg-gradient-to-b from-[#C4A052] to-transparent transition-all duration-100 ease-out overflow-hidden"
+          style={{ height: `${Math.min(100, (scrollY / 3000) * 100)}%` }}
+        >
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-[#C4A052] rounded-full shadow-[0_0_10px_#C4A052]" />
+
+          {/* Active Data Packet */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[2px] h-8 bg-gradient-to-b from-transparent to-[#C4A052] animate-beam-flow" />
+        </div>
+      </div>
     </div>
   )
 }

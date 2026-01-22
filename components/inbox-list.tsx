@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -48,9 +48,9 @@ export function InboxList() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Pagination state
+  // Pagination state - 50 items per page like Gmail
   const [currentPage, setCurrentPage] = useState(1)
-  const ITEMS_PER_PAGE = 20
+  const ITEMS_PER_PAGE = 50
 
   // Store next page tokens for each account: { accountId: token }
   const [accountTokens, setAccountTokens] = useState<Record<string, string | undefined>>({})
@@ -68,7 +68,15 @@ export function InboxList() {
   // Compose dialog state
   const [showCompose, setShowCompose] = useState(false)
   const searchParams = useSearchParams()
+  const router = useRouter()
   const providerFilter = searchParams.get("provider") as Email["provider"] | null
+
+  // Infinite scroll ref
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+
+  // Check for OAuth callback from Gmail auth
+  const gmailAuthSuccess = searchParams.get("gmail_auth")
+  const accountParam = searchParams.get("account")
 
   const { toast } = useToast()
   const filterByProvider = useMemo(() => providerFilter, [providerFilter])
@@ -98,16 +106,23 @@ export function InboxList() {
 
   // Quick sync - only fetch new emails since last sync (faster)
   const handleQuickSync = async () => {
-    setIsSyncing(true)
     const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
-    const data = storage.getData()
-    const lastSync = data?.lastSync
+    const existingEmails = storage.getEmails()
     const settings = storage.getSettings()
 
     if (accounts.length === 0) {
       setIsSyncing(false)
       return
     }
+
+    if (existingEmails.length === 0) {
+      await handleSyncEmails(true)
+      return
+    }
+
+    setIsSyncing(true)
+    const data = storage.getData()
+    const lastSync = data?.lastSync
 
     try {
       let newEmailCount = 0
@@ -198,9 +213,200 @@ export function InboxList() {
     }
   }
 
-  // Load emails from localStorage on mount
+  // Smart sync - uses incremental History API when possible, falls back to quickSync
+  const handleSmartSync = async (silent: boolean = false) => {
+    if (!silent) setIsSyncing(true)
+    const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
+    const settings = storage.getSettings()
+
+    if (accounts.length === 0) {
+      if (!silent) {
+        toast({
+          title: "No Accounts Connected",
+          description: "Please connect a Gmail account in Settings first",
+          variant: "destructive",
+        })
+      }
+      setIsSyncing(false)
+      return
+    }
+
+    try {
+      let newEmailCount = 0
+
+      for (const account of accounts) {
+        if (account.provider === "gmail" && account.accessToken) {
+          const lastHistoryId = storage.getHistoryId(account.id)
+
+          console.log(`[SmartSync] Account ${account.email}, historyId: ${lastHistoryId || 'none'}`)
+
+          // If no historyId, use quickSync for initial fetch (gets emails + establishes baseline)
+          if (!lastHistoryId) {
+            console.log('[SmartSync] No historyId, using quickSync for initial fetch')
+            await handleQuickSync()
+
+            // Get historyId for future syncs
+            const profileResponse = await fetch("/api/emails", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                accessToken: account.accessToken,
+                refreshToken: account.refreshToken,
+                expiryDate: account.expiryDate,
+                incrementalSync: true,
+                lastHistoryId: undefined,
+              }),
+            })
+            if (profileResponse.ok) {
+              const profileResult = await profileResponse.json()
+              if (profileResult.newHistoryId) {
+                storage.setHistoryId(account.id, profileResult.newHistoryId)
+              }
+              applyUpdatedAuth(account.id, profileResult.auth)
+            }
+
+            // Refresh display and return
+            const allEmails = storage.getEmails().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            setEmails(allEmails)
+            setIsSyncing(false)
+            if (!silent) {
+              toast({
+                title: "Emails Synced",
+                description: "Your inbox has been synced",
+              })
+            }
+            return
+          }
+
+          // Use incremental sync if we have a historyId
+          const response = await fetch("/api/emails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              accessToken: account.accessToken,
+              refreshToken: account.refreshToken,
+              expiryDate: account.expiryDate,
+              incrementalSync: true,
+              lastHistoryId,
+            }),
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            if (errorData.code === 'AUTH_EXPIRED') {
+              toast({
+                title: "Session Expired",
+                description: "Please reconnect your Gmail account in Settings",
+                variant: "destructive",
+              })
+            }
+            continue
+          }
+
+          const result = await response.json()
+          applyUpdatedAuth(account.id, result.auth)
+
+          // Update historyId for next sync
+          if (result.newHistoryId) {
+            storage.setHistoryId(account.id, result.newHistoryId)
+          }
+
+          // Handle deleted emails
+          if (result.deletedIds && result.deletedIds.length > 0) {
+            const data = storage.getData()
+            if (data) {
+              data.emails = data.emails.filter(e => !result.deletedIds.includes(e.id))
+              storage.setData(data)
+            }
+          }
+
+          // Add new emails
+          const fetchedEmails = result.emails || []
+          if (fetchedEmails.length > 0) {
+            // Classify intents for Relayed Mode
+            if (settings.openaiApiKey) {
+              try {
+                const intentResults = await api.ai.batchClassifyIntents(fetchedEmails, settings.openaiApiKey)
+                const intentMap = new Map(intentResults.map((r: any) => [r.emailId, r.intent]))
+                fetchedEmails.forEach((email: any) => {
+                  const intent = intentMap.get(email.id)
+                  if (intent) {
+                    email.intent = intent
+                    email.requiresResponse = ['decision', 'info_request', 'meeting', 'action_item'].includes(intent)
+                  }
+                })
+              } catch (error) {
+                console.error("[SmartSync] Intent classification failed:", error)
+              }
+            }
+
+            storage.addEmails(fetchedEmails)
+            try {
+              await api.ai.indexEmails(fetchedEmails)
+            } catch (error) {
+              console.error("[SmartSync] Indexing failed:", error)
+            }
+            newEmailCount += fetchedEmails.length
+          }
+        }
+      }
+
+      // Refresh the display
+      const allEmails = storage.getEmails().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      setEmails(allEmails)
+
+      if (newEmailCount > 0 && !silent) {
+        toast({
+          title: "New Emails",
+          description: `Found ${newEmailCount} new email${newEmailCount > 1 ? 's' : ''}`,
+        })
+      }
+
+    } catch (error: any) {
+      console.error("[SmartSync] Error:", error)
+      if (!silent) {
+        toast({
+          title: "Sync Failed",
+          description: error.message || "Failed to sync emails",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  // Handle OAuth callback - process account data from Gmail auth redirect
   useEffect(() => {
-    setIsLoading(true)
+    if (gmailAuthSuccess === "success" && accountParam) {
+      try {
+        const accountData = JSON.parse(decodeURIComponent(accountParam))
+        // Ensure account has all required fields
+        const fullAccountData = {
+          ...accountData,
+          connectedAt: accountData.connectedAt || new Date().toISOString(),
+        }
+        storage.addAccount(fullAccountData)
+
+        // Clean up URL (remove query params)
+        router.replace("/inbox")
+
+        toast({
+          title: "Gmail Connected",
+          description: `Connected ${accountData.email}. Syncing emails...`,
+        })
+
+        // Trigger initial sync using quickSync
+        setTimeout(() => handleQuickSync(), 500)
+      } catch (error) {
+        console.error("Failed to parse account data:", error)
+      }
+    }
+  }, [gmailAuthSuccess, accountParam])
+
+  // Load emails from localStorage on mount + background sync
+  useEffect(() => {
+    // Show cached emails immediately (no loading spinner)
     const loadedEmails = storage.getEmails()
     setEmails(loadedEmails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
 
@@ -210,16 +416,17 @@ export function InboxList() {
 
     setIsLoading(false)
 
-    // Only auto-sync if we have accounts connected (avoid error on first visit)
+    // Background sync (only if accounts exist)
     const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
     if (accounts.length > 0) {
-      handleQuickSync() // Use quick sync for faster initial load
+      handleQuickSync() // Use quickSync for reliability
     }
   }, [filterByProvider])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [filterByProvider, categoryFilter, searchQuery])
+
 
   // Full sync - fetch all emails with pagination support
   const handleSyncEmails = async (isInitial: boolean = true) => {
@@ -443,6 +650,20 @@ export function InboxList() {
     }
   }
 
+  // Infinite scroll - pre-fetch next page when user scrolls near bottom
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && canGoNext && !isSyncing) {
+          handleNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    if (loadMoreRef.current) observer.observe(loadMoreRef.current)
+    return () => observer.disconnect()
+  }, [canGoNext, isSyncing, handleNextPage])
+
   // Clear cached emails and do a fresh sync
   const handleClearAndResync = async () => {
     if (isSyncing) return
@@ -497,7 +718,7 @@ export function InboxList() {
               </Link>
             </Button>
             <Button
-              onClick={() => handleSyncEmails(true)}
+              onClick={() => handleQuickSync()}
               disabled={isSyncing}
               className="bg-gradient-to-b from-[#FAFAF9] to-[#E8E8E6] hover:from-[#FFFFFF] hover:to-[#F5F5F3] text-[#0A0A0B] rounded-xl"
             >
@@ -602,7 +823,7 @@ export function InboxList() {
             </Button>
             <Button
               size="sm"
-              onClick={() => handleSyncEmails(true)}
+              onClick={() => handleQuickSync()}
               disabled={isSyncing}
               className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-lg"
             >
@@ -617,15 +838,6 @@ export function InboxList() {
                   Sync
                 </>
               )}
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleClearAndResync}
-              disabled={isSyncing}
-              title="Clear cached emails and fetch fresh"
-              className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
-            >
-              Fresh Sync
             </Button>
           </div>
         </div>
@@ -700,6 +912,12 @@ export function InboxList() {
       <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
 
       <div className="flex-1 overflow-auto">
+        {/* Primary Section */}
+        <div className="px-6 py-3 border-b border-white/[0.04]">
+          <span className="text-sm font-medium text-[#8A8A8A]">
+            Primary <span className="text-[#5A5A5A]">[{displayedEmails.length}]</span>
+          </span>
+        </div>
         <div className="divide-y divide-white/[0.04]">
           {displayedEmails.map((email) => (
             <Link
@@ -752,7 +970,7 @@ export function InboxList() {
                   )}
                   {/* Priority indicator */}
                   {email.priorityScore !== undefined && email.priorityScore >= 70 && (
-                    <TrendingUp className="h-3.5 w-3.5 text-blue-500" title={`Priority: ${email.priorityScore}`} />
+                    <TrendingUp className="h-3.5 w-3.5 text-[#E8DCC4]" title={`Priority: ${email.priorityScore}`} />
                   )}
                   {/* Meeting indicator */}
                   {email.meetingRequest?.detected && (
