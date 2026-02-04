@@ -7,6 +7,16 @@ import { storage } from "@/lib/storage"
 import { api } from "@/lib/api"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   CheckCircle2,
   HelpCircle,
   Calendar,
@@ -23,7 +33,7 @@ import {
   Star,
 } from "lucide-react"
 
-import type { AgentMemory, Email, EmailIntent } from "@/types"
+import type { AgentMemory, Email, EmailIntent, Reminder } from "@/types"
 import { CommandInput } from "./command-input"
 import { IntentGrid } from "./intent-grid"
 import { PriorityFeed } from "./priority-feed"
@@ -80,6 +90,15 @@ interface Message {
   content: string
   timestamp: Date
   data?: any
+  actions?: BackgroundAction[]
+}
+
+interface BackgroundAction {
+  id: string
+  title: string
+  description: string
+  impact: string
+  onConfirm: () => Promise<string> | string
 }
 
 export function RelayedHub() {
@@ -99,6 +118,9 @@ export function RelayedHub() {
     unknown: 0,
   })
   const [activeView, setActiveView] = useState<"command" | "intents" | "priority">("command")
+  const [pendingActions, setPendingActions] = useState<BackgroundAction[]>([])
+  const [actionDialogOpen, setActionDialogOpen] = useState(false)
+  const [isActionRunning, setIsActionRunning] = useState(false)
   const isClassifyingRef = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -188,6 +210,52 @@ export function RelayedHub() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
+  const activeAction = pendingActions[0]
+
+  useEffect(() => {
+    if (pendingActions.length === 0) {
+      setActionDialogOpen(false)
+    }
+  }, [pendingActions.length])
+
+  const runAction = async (actionId: string) => {
+    const action = pendingActions.find((a) => a.id === actionId)
+    if (!action) return
+    setIsActionRunning(true)
+
+    try {
+      const result = await action.onConfirm()
+      refreshEmails()
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `action_done_${Date.now()}`,
+          type: "ai",
+          content: result || `${action.title} completed.`,
+          timestamp: new Date(),
+        },
+      ])
+    } catch (error) {
+      console.error("Action execution failed:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `action_error_${Date.now()}`,
+          type: "ai",
+          content: "That background action failed. Try again or adjust the request.",
+          timestamp: new Date(),
+        },
+      ])
+    } finally {
+      setPendingActions((prev) => prev.filter((a) => a.id !== actionId))
+      setIsActionRunning(false)
+    }
+  }
+
+  const skipAction = (actionId: string) => {
+    setPendingActions((prev) => prev.filter((a) => a.id !== actionId))
+  }
+
   const handleCommand = async (command: string) => {
     if (!command.trim() || isProcessing) return
 
@@ -203,20 +271,20 @@ export function RelayedHub() {
     setMessages((prev) => [...prev, userMessage])
     setIsProcessing(true)
 
-    if (!storage.getSettings().openaiApiKey) {
-      return {
-        content: "Add your OpenAI API key in Settings to unlock contextual responses.",
-      }
-    }
-
     try {
       const response = await processCommand(command)
+      const actions = response.actions || []
+      if (actions.length > 0) {
+        setPendingActions((prev) => [...prev, ...actions])
+        setActionDialogOpen(true)
+      }
       const aiMessage: Message = {
         id: `ai_${Date.now()}`,
         type: "ai",
         content: response.content,
         timestamp: new Date(),
         data: response.data,
+        actions: actions.length ? actions : undefined,
       }
       setMessages((prev) => [...prev, aiMessage])
     } catch (error) {
@@ -235,10 +303,135 @@ export function RelayedHub() {
     }
   }
 
-  const processCommand = async (command: string): Promise<{ content: string; data?: any }> => {
+  const processCommand = async (
+    command: string
+  ): Promise<{ content: string; data?: any; actions?: BackgroundAction[] }> => {
     const lowerCommand = command.toLowerCase()
     const settings = storage.getSettings()
     const memory = storage.getAgentMemory()
+    const priorityThreshold = settings.agentConfig?.priorityThreshold ?? 70
+
+    const buildLocalSnapshot = () => {
+      const unreadCount = emails.filter((e) => !e.read).length
+      const vipCount = storage.getVipEmails().length
+      const requiresResponse = emails.filter((e) => e.requiresResponse).length
+      const focusList = [...emails]
+        .map((email) => {
+          const urgencyBoost = email.sentiment?.urgency === "critical" ? 30 : email.sentiment?.urgency === "high" ? 20 : 0
+          const score = (email.priorityScore || 0) + (email.requiresResponse ? 15 : 0) + (!email.read ? 10 : 0) + urgencyBoost
+          return { email, score }
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map(({ email }) => `${email.from.name}: ${email.subject}`)
+
+      return `Inbox snapshot:
+- ${emails.length} total / ${unreadCount} unread
+- ${requiresResponse} need responses / ${vipCount} VIP threads
+- Last sync: ${lastSync ? new Date(lastSync).toLocaleString() : "unknown"}
+- Focus: ${focusList.length > 0 ? focusList.join("; ") : "no urgent threads right now."}`
+    }
+
+    const buildActionProposals = (): BackgroundAction[] => {
+      const actions: BackgroundAction[] = []
+      const wantsCleanup = /(clean|sweep|clear|tidy|zero|archive)/.test(lowerCommand)
+      const wantsMarkRead = /(mark .*read|clear unread|read all)/.test(lowerCommand)
+      const wantsFollowUp = /(follow up|remind|nudge|ping)/.test(lowerCommand)
+
+      const lowSignalCandidates = emails
+        .filter(
+          (email) =>
+            !email.requiresResponse &&
+            !storage.isVipSender(email.from.email) &&
+            !email.meetingRequest?.detected &&
+            (email.intent === "update" || email.intent === "unknown") &&
+            (email.priorityScore || 0) < priorityThreshold
+        )
+        .slice(0, 25)
+
+      if (wantsCleanup && lowSignalCandidates.length > 0) {
+        const ids = lowSignalCandidates.map((e) => e.id)
+        actions.push({
+          id: `archive_${Date.now()}`,
+          title: `Archive ${ids.length} low-signal threads`,
+          description: "FYIs and updates without clear actions. VIPs and meetings stay untouched.",
+          impact: lowSignalCandidates
+            .slice(0, 3)
+            .map((e) => e.subject)
+            .join(" • "),
+          onConfirm: () => {
+            storage.bulkArchiveEmails(ids)
+            return `Archived ${ids.length} threads. Find them in Archive.`
+          },
+        })
+      }
+
+      const unreadLowPriority = emails
+        .filter((email) => !email.read && !email.requiresResponse && !storage.isVipSender(email.from.email))
+        .slice(0, 30)
+
+      if ((wantsMarkRead || wantsCleanup) && unreadLowPriority.length > 0) {
+        const ids = unreadLowPriority.map((e) => e.id)
+        actions.push({
+          id: `markread_${Date.now()}`,
+          title: `Mark ${ids.length} low-priority emails as read`,
+          description: "Keeps focus on threads that actually need you. VIPs are left as-is.",
+          impact: unreadLowPriority
+            .slice(0, 3)
+            .map((e) => e.subject)
+            .join(" • "),
+          onConfirm: () => {
+            storage.bulkMarkRead(ids, true)
+            return `Marked ${ids.length} threads as read.`
+          },
+        })
+      }
+
+      if (wantsFollowUp) {
+        const followUps = emails
+          .filter((email) => email.requiresResponse && !email.read)
+          .slice(0, 3)
+
+        if (followUps.length > 0) {
+          actions.push({
+            id: `reminders_${Date.now()}`,
+            title: `Set ${followUps.length} follow-up reminder${followUps.length > 1 ? "s" : ""}`,
+            description: "Drops 48h reminders for threads still waiting on your reply.",
+            impact: followUps
+              .map((e) => e.subject)
+              .join(" • "),
+            onConfirm: () => {
+              const now = new Date()
+              const reminderDate = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString()
+              followUps.forEach((email) => {
+                const reminder: Reminder = {
+                  id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `reminder_${Date.now()}_${Math.random()}`,
+                  emailId: email.id,
+                  threadId: email.threadId,
+                  reminderDate,
+                  reason: "Follow up needed",
+                  type: "follow_up",
+                  active: true,
+                  createdAt: now.toISOString(),
+                }
+                storage.addReminder(reminder)
+              })
+              return `Follow-up reminders scheduled for ${followUps.length} threads.`
+            },
+          })
+        }
+      }
+
+      return actions
+    }
+
+    const backgroundActions = buildActionProposals()
+    if (backgroundActions.length > 0) {
+      return {
+        content: `Ready to run ${backgroundActions.length} background action${backgroundActions.length > 1 ? "s" : ""}. Confirm below to proceed.`,
+        actions: backgroundActions,
+      }
+    }
 
     if (lowerCommand.includes("attention") || lowerCommand.includes("important") || lowerCommand.includes("urgent")) {
       const priorityEmails = emails
@@ -267,14 +460,13 @@ export function RelayedHub() {
     }
 
     if (lowerCommand.includes("summar")) {
-      const unreadCount = emails.filter((e) => !e.read).length
-      const vipCount = storage.getVipEmails().length
-      const requiresResponse = emails.filter((e) => e.requiresResponse).length
+      const intentSpread = Object.entries(intentCounts)
+        .filter(([_, count]) => count > 0)
+        .map(([intent, count]) => `${intentConfig[intent as EmailIntent]?.label || intent}: ${count}`)
+        .join("\n- ")
+
       return {
-        content: `Snapshot:\n- ${emails.length} total messages\n- ${unreadCount} unread\n- ${vipCount} VIP threads\n- ${requiresResponse} need replies\n\nIntent spread:\n- ${Object.entries(intentCounts)
-          .filter(([_, count]) => count > 0)
-          .map(([intent, count]) => `${intentConfig[intent as EmailIntent]?.label || intent}: ${count}`)
-          .join("\n- ")}`,
+        content: `${buildLocalSnapshot()}\n\nIntent spread:\n- ${intentSpread || "no intents detected yet."}`,
       }
     }
 
@@ -335,23 +527,21 @@ export function RelayedHub() {
       }
     }
 
-    if (lowerCommand.includes("mark read") || lowerCommand.includes("clear unread")) {
-      const unread = emails.filter((e) => !e.read)
-      if (unread.length === 0) return { content: "No unread messages to clear." }
-      storage.bulkMarkRead(unread.map((e) => e.id), true)
-      refreshEmails()
-      return { content: `Marked ${unread.length} as read.` }
-    }
-
     if (lowerCommand.includes("archive") || lowerCommand.includes("clean up")) {
       try {
         const candidates = await api.ai.suggestArchive(emails)
         if (candidates.length === 0) return { content: "Nothing safe to archive right now." }
-        storage.bulkArchiveEmails(candidates)
-        refreshEmails()
-        return { content: `Archived ${candidates.length} threads.` }
+        return {
+          content: `I can archive ${candidates.length} threads. Ask me to "run the archive sweep" to confirm.`,
+        }
       } catch {
         return { content: "Auto-archive is unavailable right now." }
+      }
+    }
+
+    if (!settings.openaiApiKey) {
+      return {
+        content: `${buildLocalSnapshot()}\n\nAdd your OpenAI API key in Settings to unlock richer, model-backed replies. I can still run cleanups and reminders above.`,
       }
     }
 
@@ -468,12 +658,13 @@ export function RelayedHub() {
   const quickSuggestions = useMemo(() => {
     const unread = emails.filter((e) => !e.read).length
     const vip = storage.getVipEmails().length
+    const needsFollowUp = emails.some((e) => e.requiresResponse && !e.read)
     return [
       unread > 0 ? `Show ${Math.min(unread, 5)} unread emails` : "Summarize my inbox",
-      vip > 0 ? "Show VIP messages" : "What needs my attention?",
+      "Run a quick clean sweep",
+      needsFollowUp ? "Set follow-up reminders" : vip > 0 ? "Show VIP messages" : "What needs my attention?",
       "Show decisions needed",
       "Show meeting requests",
-      "Find emails about budgets",
     ]
   }, [emails])
 
@@ -652,6 +843,43 @@ export function RelayedHub() {
                         </span>
                       </div>
 
+                      {message.actions && message.actions.length > 0 && (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {message.actions.map((action) => (
+                            <div
+                              key={action.id}
+                              className="border border-white/[0.06] bg-white/[0.02] rounded-xl p-3 shadow-sm"
+                            >
+                              <div className="space-y-2">
+                                <p className="text-xs font-mono uppercase tracking-[0.2em] text-[#E8DCC4]">Background action</p>
+                                <p className="text-sm text-[#FAFAF9] font-medium">{action.title}</p>
+                                <p className="text-xs text-[#8A8A8A] leading-relaxed">{action.description}</p>
+                                <p className="text-[11px] text-[#5A5A5A]">Impact: {action.impact || "Run quietly"}</p>
+                              </div>
+                              <div className="mt-3 flex items-center gap-2">
+                                <button
+                                  onClick={() => runAction(action.id)}
+                                  disabled={isActionRunning}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-[0.1em]",
+                                    "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8] transition-colors",
+                                    isActionRunning && "opacity-60 cursor-not-allowed"
+                                  )}
+                                >
+                                  {isActionRunning ? "Running..." : "Confirm"}
+                                </button>
+                                <button
+                                  onClick={() => skipAction(action.id)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-[0.1em] bg-white/[0.03] border border-white/[0.06] text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.05] transition-colors"
+                                >
+                                  Skip
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {message.data?.emails && (
                         <div className="grid gap-3 md:grid-cols-2">
                           {message.data.emails.slice(0, 4).map((email: Email, i: number) => (
@@ -737,6 +965,35 @@ export function RelayedHub() {
             <PriorityFeed emails={emails} />
           </div>
         )}
+
+        <AlertDialog open={actionDialogOpen && !!activeAction} onOpenChange={setActionDialogOpen}>
+          <AlertDialogContent className="bg-[#0A0A0B] border border-white/[0.08] text-[#FAFAF9]">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-[#E8DCC4] text-sm tracking-[0.2em] uppercase">Background action</AlertDialogTitle>
+              <AlertDialogDescription className="text-[#8A8A8A]">
+                {activeAction?.title}
+                <br />
+                <span className="text-[#FAFAF9]">{activeAction?.description}</span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="text-[11px] text-[#5A5A5A]">Impact: {activeAction?.impact || "Runs silently"}</div>
+            <AlertDialogFooter className="mt-4">
+              <AlertDialogCancel
+                className="bg-transparent border border-white/[0.08] text-[#FAFAF9] hover:bg-white/[0.06]"
+                onClick={() => activeAction && skipAction(activeAction.id)}
+              >
+                Skip
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]"
+                onClick={() => activeAction && runAction(activeAction.id)}
+                disabled={isActionRunning}
+              >
+                {isActionRunning ? "Running..." : "Run in background"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   )

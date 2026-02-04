@@ -15,7 +15,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const PUBLIC_ROUTES = new Set(["/", "/login"])
+const PUBLIC_ROUTES = new Set(["/", "/login", "/demo"])
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()

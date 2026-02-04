@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 const SYSTEM_PROMPT = `You are an AI email assistant for an email client.
 Use the provided context (user profile, memory, inbox snapshot, and top emails) to answer precisely.
 If information is missing, ask a clarifying question instead of guessing.
+Prefer concise steps and propose concrete actions, but explicitly ask for confirmation before suggesting anything destructive.
 If a command requests an action you cannot execute, explain what the user can do in the app.`;
 
 export async function POST(request: NextRequest) {

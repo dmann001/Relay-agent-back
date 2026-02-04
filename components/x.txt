@@ -1,0 +1,718 @@
+"use client"
+
+import { useEffect, useState, useRef, type MouseEvent } from "react"
+import Link from "next/link"
+import {
+  Mail,
+  ArrowRight,
+  Play,
+  Menu,
+  X,
+  Zap,
+  Lock,
+  Sparkles,
+  Layers,
+  Globe,
+  Clock,
+  Search,
+  Inbox,
+  PenLine,
+  CheckCircle2,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+
+const TAG_STYLES: Record<string, string> = {
+  critical: "bg-[#FF5F57]/10 text-[#FF5F57] border border-[#FF5F57]/20",
+  high: "bg-[#FEBC2E]/10 text-[#FEBC2E] border border-[#FEBC2E]/20",
+  auto: "bg-[#28C840]/10 text-[#28C840] border border-[#28C840]/20",
+  info: "bg-[#C4A052]/10 text-[#C4A052] border border-[#C4A052]/20",
+  neutral: "bg-white/[0.04] text-[#8A8A8A] border border-white/[0.06]",
+}
+
+const PREVIEW_MODES = [
+  {
+    id: "briefing",
+    label: "Morning Brief",
+    icon: Sparkles,
+    summary: "Summaries that collapse 147 emails into 6 decisions.",
+    prompt: "Show only revenue-impacting threads",
+    status: "Syncing 2 inboxes - 12s to complete",
+    progress: 72,
+    signals: [
+      { label: "Threads scanned", value: "412" },
+      { label: "Decisions", value: "6 queued" },
+      { label: "Drafts", value: "4 ready" },
+    ],
+    messages: [
+      { role: "agent", text: "Morning brief is ready. 6 decisions need your eyes.", meta: "Briefing" },
+      { role: "user", text: "Prioritize anything from Acme or Stripe.", meta: "Request" },
+      { role: "agent", text: "2 items flagged. Drafts prepared and queued.", meta: "Action" },
+    ],
+    chips: ["Approve 4 drafts", "Snooze promos", "View timeline"],
+    panel: {
+      type: "decisions",
+      title: "Decision queue",
+      footer: "3 auto-executed, 2 waiting approval",
+      items: [
+        { title: "Stripe dispute - Acme Corp", meta: "Draft reply ready in 11s", tag: "Critical", tone: "critical" },
+        { title: "Board deck review", meta: "Due today 5:00 PM", tag: "High", tone: "high" },
+        { title: "Vendor renewal notice", meta: "Auto-archived 28 promos", tag: "Auto", tone: "auto" },
+      ],
+    },
+  },
+  {
+    id: "search",
+    label: "Semantic Search",
+    icon: Search,
+    summary: "Search by meaning across Gmail and Outlook.",
+    prompt: "Find the clause about renewal windows",
+    status: "Vector index updated 2m ago",
+    progress: 91,
+    signals: [
+      { label: "Matches", value: "12 threads" },
+      { label: "Accounts", value: "3 connected" },
+      { label: "Recall", value: "97%" },
+    ],
+    messages: [
+      { role: "user", text: "Find the email where Alex mentioned Project Titan scope change.", meta: "Query" },
+      { role: "agent", text: "Found 12 threads. The scope change appears in 3.", meta: "Result" },
+      { role: "agent", text: 'Top hit is Nov 12, subject: "Titan scope update".', meta: "Top match" },
+    ],
+    chips: ["Open top thread", "Summarize results", "Draft follow-up"],
+    panel: {
+      type: "search",
+      query: "Project Titan scope change",
+      results: [
+        { title: "Alex Rivera - Titan scope update", meta: "Nov 12, 2:14 PM", highlight: "scope changed to include data migration" },
+        { title: "Legal - Titan contract redlines", meta: "Nov 10, 9:03 AM", highlight: "renewal window shortened to 30 days" },
+        { title: "Ops - Migration timeline", meta: "Nov 08, 6:41 PM", highlight: "timeline moved to May 18" },
+      ],
+    },
+  },
+  {
+    id: "draft",
+    label: "Draft Studio",
+    icon: PenLine,
+    summary: "Drafts in your voice, ready to send.",
+    prompt: "Draft a calm response about the delay",
+    status: "Tone model: You v4.2",
+    progress: 64,
+    signals: [
+      { label: "Drafts", value: "5 ready" },
+      { label: "Sentiment", value: "Confident" },
+      { label: "Length", value: "118 words" },
+    ],
+    messages: [
+      { role: "agent", text: "I drafted a response in your voice. Want it shorter?", meta: "Draft" },
+      { role: "user", text: "Keep it concise and include the new timeline.", meta: "Edit" },
+      { role: "agent", text: "Updated. Highlighted the May 18 date and next steps.", meta: "Ready" },
+    ],
+    chips: ["Send now", "Schedule", "Edit details"],
+    panel: {
+      type: "draft",
+      subject: "Updated timeline for Q2 rollout",
+      body: "Thanks for the patience. We are moving the launch to May 18. The data migration is underway, and we will share a detailed checklist this week.",
+      suggestions: ["Shorten opening", "Add availability", "Attach timeline PDF"],
+      stats: [
+        { label: "Read time", value: "34s" },
+        { label: "Tone", value: "Calm, direct" },
+        { label: "CTA", value: "Book a call" },
+      ],
+    },
+  },
+  {
+    id: "autopilot",
+    label: "Autopilot Rules",
+    icon: Inbox,
+    summary: "Low-risk tasks done in the background.",
+    prompt: "Auto-archive newsletters under 2% open rate",
+    status: "Rules active: 14",
+    progress: 83,
+    signals: [
+      { label: "Automations", value: "14 live" },
+      { label: "Time saved", value: "2h 14m" },
+      { label: "Auto-archived", value: "28 today" },
+    ],
+    messages: [
+      { role: "agent", text: "Muted 3 newsletters and archived 28 promo emails.", meta: "Automation" },
+      { role: "user", text: "Keep receipts and anything from legal.", meta: "Guardrails" },
+      { role: "agent", text: "Pinned receipts and legal. Everything else filtered.", meta: "Confirmed" },
+    ],
+    chips: ["Edit rules", "View logs", "Pause automation"],
+    panel: {
+      type: "rules",
+      rules: [
+        { title: "Auto-unsubscribe low engagement", meta: "Last run 8m ago", state: "On" },
+        { title: "Mark receipts as Finance", meta: "Triggered 5 times today", state: "On" },
+        { title: "Snooze social updates", meta: "Resumes on Friday", state: "Scheduled" },
+      ],
+      footer: "No critical items skipped in 14 days",
+    },
+  },
+] as const
+
+export function LandingPage() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [scrollY, setScrollY] = useState(0)
+  const [isLoaded, setIsLoaded] = useState(false)
+  const heroRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoaded(true), 100)
+
+    const handleScroll = () => setScrollY(window.scrollY)
+
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener("scroll", handleScroll)
+      clearTimeout(timer)
+    }
+  }, [])
+
+  // Text Generate Effect Logic
+  const [displayedText, setDisplayedText] = useState("")
+  const fullText = "I've analyzed your morning stream. 3 critical items require attention. Shall I draft responses?"
+
+  useEffect(() => {
+    if (!isLoaded) return
+    let i = 0
+    const typingInterval = setInterval(() => {
+      if (i < fullText.length) {
+        setDisplayedText(fullText.substring(0, i + 1))
+        i++
+      } else {
+        clearInterval(typingInterval)
+      }
+    }, 30)
+    return () => clearInterval(typingInterval)
+  }, [isLoaded, fullText])
+
+  // Animated Placeholders Logic
+  const placeholders = [
+    "Draft reply to Sarah about the merger...",
+    "Schedule deep work session for Tuesday...",
+    "Summarize Q3 financial report...",
+    "Find email from Alex about 'Project Titan'...",
+  ]
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
+  const [fadePlaceholder, setFadePlaceholder] = useState(false)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFadePlaceholder(true)
+      setTimeout(() => {
+        setPlaceholderIndex((prev) => (prev + 1) % placeholders.length)
+        setFadePlaceholder(false)
+      }, 500)
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [placeholders.length])
+
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setMousePosition({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+  }
+
+  // Telemetry Logic
+  const [latency, setLatency] = useState(34)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLatency((prev) => {
+        const change = Math.floor(Math.random() * 5) - 2
+        return Math.min(50, Math.max(20, prev + change))
+      })
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const [activePreview, setActivePreview] = useState(0)
+  const [isPreviewHovered, setIsPreviewHovered] = useState(false)
+
+  useEffect(() => {
+    if (isPreviewHovered) return
+    const interval = setInterval(() => {
+      setActivePreview((prev) => (prev + 1) % PREVIEW_MODES.length)
+    }, 7000)
+    return () => clearInterval(interval)
+  }, [isPreviewHovered])
+
+  const activePreviewMode = PREVIEW_MODES[activePreview]
+  const activePreviewPanel = activePreviewMode.panel
+  const confidenceScore = Math.min(99, activePreviewMode.progress + 6)
+  const recallScore = Math.min(99, activePreviewMode.progress + 3)
+  const automationScore = Math.min(99, activePreviewMode.progress + 9)
+
+  return (
+    <div className="min-h-screen bg-[#0A0A0B] text-[#FAFAF9] selection:bg-[#E8DCC4]/20 overflow-x-hidden">
+      {/* Living Void Background */}
+      <div className="fixed inset-0 bg-[#030303] overflow-hidden pointer-events-none">
+        <div className="bg-grain" />
+        <div
+          className="absolute top-[-20%] left-[-10%] w-[1000px] h-[1000px] opacity-20 blur-[120px]"
+          style={{
+            background: "radial-gradient(circle at 50% 50%, #C4A052, transparent 60%)",
+            transform: `translateY(${scrollY * 0.2}px)`,
+            willChange: "transform",
+          }}
+        />
+        <div
+          className="absolute bottom-[-20%] right-[-10%] w-[1200px] h-[1200px] opacity-10 blur-[150px]"
+          style={{
+            background: "radial-gradient(circle at 50% 50%, #2A2A35, transparent 70%)",
+            transform: `translateY(${scrollY * -0.1}px)`,
+            willChange: "transform",
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundSize: "4px 4px",
+            backgroundImage: "radial-gradient(#C4A052 1px, transparent 0)",
+          }}
+        />
+      </div>
+
+      {/* Navigation */}
+      <nav className={`fixed top-0 w-full z-40 transition-all duration-500 ${scrollY > 50 ? "py-4" : "py-6"}`}>
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div
+            className={`flex items-center justify-between px-6 py-3 rounded-2xl transition-all duration-500 ${
+              scrollY > 50
+                ? "bg-[#0A0A0B]/60 backdrop-blur-2xl border border-white/[0.04] shadow-2xl shadow-black/20"
+                : "bg-transparent"
+            }`}
+          >
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="relative">
+                <div className="absolute inset-0 bg-[#E8DCC4] blur-lg opacity-40 group-hover:opacity-60 transition-opacity" />
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#E8DCC4] to-[#C4A052]">
+                  <Mail className="h-5 w-5 text-[#0A0A0B]" />
+                </div>
+              </div>
+              <span className="text-xl font-semibold tracking-tight">Relay</span>
+            </Link>
+
+            <div className="hidden md:flex items-center justify-center gap-1 absolute left-1/2 -translate-x-1/2">
+              {["How it works", "Preview", "Features", "Pricing"].map((item) => (
+                <Link
+                  key={item}
+                  href={`#${item.toLowerCase().replace(/\s+/g, "-")}`}
+                  className="px-5 py-2 text-sm text-[#8A8A8A] hover:text-[#FAFAF9] transition-colors duration-200 rounded-lg hover:bg-white/[0.03]"
+                >
+                  {item}
+                </Link>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-4">
+              <Link href="/login" className="hidden sm:block text-sm text-[#8A8A8A] hover:text-[#FAFAF9] transition-colors">
+                Sign in
+              </Link>
+              <Button className="bg-[#FAFAF9] hover:bg-[#E8DCC4] text-[#0A0A0B] font-medium rounded-xl px-5 h-10 text-sm transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]">
+                Get early access
+              </Button>
+              <button
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="md:hidden p-2 text-[#8A8A8A] hover:text-[#FAFAF9] transition-colors"
+              >
+                {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {isMenuOpen && (
+          <div className="md:hidden absolute top-full left-0 w-full px-6 pt-4">
+            <div className="bg-[#141416]/95 backdrop-blur-2xl border border-white/[0.04] rounded-2xl p-6 space-y-4">
+              {["How it works", "Preview", "Features", "Pricing"].map((item) => (
+                <Link
+                  key={item}
+                  href={`#${item.toLowerCase().replace(/\s+/g, "-")}`}
+                  className="block text-[#8A8A8A] hover:text-[#FAFAF9] transition-colors py-2"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  {item}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </nav>
+
+      {/* Hero Section */}
+      <section ref={heroRef} className="relative h-screen flex items-center justify-center px-6 overflow-hidden">
+        <div className="max-w-[1400px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          {/* Typography Content */}
+          <div className="lg:col-span-7 flex flex-col justify-center text-left z-10 pt-20">
+            <div
+              className={`inline-flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.08] mb-12 transition-all duration-1000 ${
+                isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              }`}
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-[#C4A052] animate-pulse" />
+              <span className="text-[10px] font-mono tracking-[0.2em] text-[#C4A052] uppercase">System v1.0 // Private Beta</span>
+            </div>
+
+            <h1 className="relative">
+              <span
+                className={`block text-[clamp(3.5rem,6vw,5.5rem)] font-light tracking-[-0.04em] leading-[0.95] text-[#FAFAF9] transition-all duration-1000 delay-100 ${
+                  isLoaded ? "opacity-100 translate-y-0 filter-none" : "opacity-0 translate-y-12 blur-lg"
+                }`}
+              >
+                Email without
+              </span>
+              <span
+                className={`block text-[clamp(3.5rem,6vw,5.5rem)] font-normal tracking-[-0.04em] leading-[0.95] text-[#FAFAF9] transition-all duration-1000 delay-200 ${
+                  isLoaded ? "opacity-100 translate-y-0 filter-none" : "opacity-0 translate-y-12 blur-lg"
+                }`}
+              >
+                the{" "}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-shimmer bg-[length:200%_auto]">
+                  inbox.
+                </span>
+              </span>
+            </h1>
+
+            <p
+              className={`mt-8 text-lg text-[#8A8A8A] max-w-xl font-light leading-relaxed transition-all duration-1000 delay-300 ${
+                isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              }`}
+            >
+              Your AI agent reads, acts, and evolves.
+              <br />
+              <span className="text-[#5A5A5A]">Stop managing email. Start managing decisions.</span>
+            </p>
+
+            <div
+              className={`flex flex-wrap items-center gap-5 mt-12 transition-all duration-1000 delay-500 ${
+                isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+              }`}
+            >
+              <Button className="group relative h-14 px-8 rounded-full bg-[#FAFAF9] hover:bg-[#E8DCC4] text-[#0A0A0B] text-base font-medium overflow-hidden transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]">
+                <span className="relative z-10 flex items-center gap-2">
+                  Request Access <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:animate-shimmer" />
+              </Button>
+
+              <Link href="/demo">
+                <Button
+                  variant="ghost"
+                  className="group h-14 px-8 rounded-full border border-[#FAFAF9]/10 text-[#FAFAF9] hover:bg-[#FAFAF9]/5 hover:text-[#FAFAF9] transition-all duration-300"
+                >
+                  <span className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#FAFAF9]/10 flex items-center justify-center border border-[#FAFAF9]/10 group-hover:bg-[#C4A052] group-hover:text-[#0A0A0B] transition-colors">
+                      <Play className="w-3 h-3 ml-0.5 fill-current" />
+                    </div>
+                    System Demo
+                  </span>
+                </Button>
+              </Link>
+            </div>
+
+            <div className={`mt-20 w-full transition-all duration-1000 delay-700 ${isLoaded ? "opacity-100" : "opacity-0"}`}>
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-4 py-4 border-y border-[#FAFAF9]/[0.05] bg-[#FAFAF9]/[0.01] backdrop-blur-sm">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#28C840] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#28C840]" />
+                  </div>
+                  <span className="text-xs font-mono text-[#FAFAF9]/80 tracking-widest uppercase">System Operational</span>
+                </div>
+
+                <div className="hidden sm:block w-px h-4 bg-[#FAFAF9]/10" />
+
+                <div className="flex items-center gap-3">
+                  <Zap className="w-3 h-3 text-[#C4A052]" />
+                  <span className="text-xs font-mono text-[#FAFAF9]/80 tracking-widest uppercase">
+                    Global Latency: <span className="text-[#C4A052]">{latency}ms</span>
+                  </span>
+                </div>
+
+                <div className="hidden sm:block w-px h-4 bg-[#FAFAF9]/10" />
+
+                <div className="flex items-center gap-3">
+                  <Lock className="w-3 h-3 text-[#FAFAF9]/50" />
+                  <span className="text-xs font-mono text-[#FAFAF9]/80 tracking-widest uppercase">
+                    AES-256 <span className="text-[#5A5A5A]">::</span> E2EE Active
+                  </span>
+                </div>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-[#5A5A5A]">UPTIME 99.99%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Hero Visual */}
+          <div
+            className={`hidden lg:block lg:col-span-5 relative transition-all duration-1000 delay-500 ${
+              isLoaded ? "opacity-100 translate-x-0" : "opacity-0 translate-x-12"
+            }`}
+            style={{ perspective: "1000px" }}
+          >
+            <div
+              className="relative w-full aspect-square"
+              style={{
+                transform: `rotateX(${scrollY * 0.02}deg) rotateY(${scrollY * -0.02}deg) scale(${Math.max(
+                  0.9,
+                  1 - scrollY * 0.0005
+                )})`,
+                transition: "transform 0.1s ease-out",
+              }}
+            >
+              <div className="absolute inset-0 bg-[#C4A052] opacity-10 blur-[100px] rounded-full animate-pulse-slow" />
+
+              <div className="relative w-full h-full rounded-[3rem] border border-[#FAFAF9]/10 bg-gradient-to-b from-[#FAFAF9]/[0.05] to-transparent backdrop-blur-2xl shadow-2xl shadow-black/50 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#FAFAF9]/[0.02] to-transparent" />
+
+                <div className="absolute inset-4 rounded-[2.5rem] bg-[#0A0A0B]/90 border border-[#FAFAF9]/[0.05] flex flex-col overflow-hidden">
+                  <div className="h-14 border-b border-[#FAFAF9]/[0.05] flex items-center justify-between px-6 bg-[#FAFAF9]/[0.02]">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F57] shadow-[0_0_8px_rgba(255,95,87,0.3)]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#FEBC2E] shadow-[0_0_8px_rgba(254,188,46,0.3)]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#28C840] shadow-[0_0_8px_rgba(40,200,64,0.3)]" />
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05]">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#28C840] animate-pulse" />
+                      <span className="text-[10px] font-mono text-[#FAFAF9]/50 uppercase tracking-wider">System Online</span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 p-6 flex flex-col gap-6 relative">
+                    <div
+                      className="absolute inset-0 opacity-[0.03]"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(#FAFAF9 1px, transparent 1px), linear-gradient(90deg, #FAFAF9 1px, transparent 1px)",
+                        backgroundSize: "16px 16px",
+                      }}
+                    />
+
+                    <div className="flex gap-4 items-start relative z-10">
+                      <div
+                        className={`w-8 h-8 rounded-lg bg-gradient-to-br from-[#E8DCC4] to-[#C4A052] flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(196,160,82,0.2)] transition-all duration-500 ${
+                          isLoaded ? "opacity-100 scale-100" : "opacity-0 scale-90"
+                        }`}
+                      >
+                        <Sparkles className="w-4 h-4 text-[#0A0A0B]" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div
+                          className={`p-4 rounded-2xl rounded-tl-sm bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05] backdrop-blur-sm transition-all duration-500 ${
+                            isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+                          }`}
+                        >
+                          <p className="text-sm text-[#FAFAF9] leading-relaxed font-mono">
+                            {displayedText}
+                            <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-[#C4A052] animate-pulse" />
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ml-12 relative z-10 animate-fade-in-up delay-200">
+                      <div className="group p-4 rounded-xl bg-[#0F0F11] border border-[#FAFAF9]/[0.08] hover:border-[#C4A052]/30 transition-colors duration-300">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-[#FAFAF9]/[0.05] text-[#FAFAF9]">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-medium text-[#FAFAF9] group-hover:text-[#C4A052] transition-colors">
+                                Stripe Invoice #2024-001
+                              </h4>
+                              <p className="text-xs text-[#5A5A5A]">$2,400.00 • Payment Failed</p>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#FF5F57]/10 text-[#FF5F57] border border-[#FF5F57]/20">
+                            High Priority
+                          </span>
+                        </div>
+
+                        <div className="flex gap-2 mt-2">
+                          <button className="flex-1 py-1.5 rounded-lg bg-[#FAFAF9] text-[#0A0A0B] text-xs font-medium hover:bg-[#E8DCC4] transition-colors">
+                            Update Payment Method
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto relative z-10 animate-fade-in-up delay-300">
+                      <div className="relative group/input">
+                        <input
+                          disabled
+                          className="w-full h-10 bg-[#FAFAF9]/[0.03] border border-[#FAFAF9]/[0.05] rounded-lg pl-3 pr-10 text-xs text-[#FAFAF9] placeholder:text-transparent transition-colors group-hover/input:border-[#FAFAF9]/10"
+                        />
+                        <div
+                          className={`absolute left-3 top-0 h-full flex items-center pointer-events-none transition-opacity duration-500 ${
+                            fadePlaceholder ? "opacity-0" : "opacity-100"
+                          }`}
+                        >
+                          <span className="text-xs text-[#5A5A5A] italic">{placeholders[placeholderIndex]}</span>
+                        </div>
+                        <div className="absolute right-2 top-2 p-1 rounded bg-[#C4A052]/20 group-hover/input:bg-[#C4A052] transition-colors duration-300">
+                          <ArrowRight className="w-3 h-3 text-[#C4A052] group-hover/input:text-[#0A0A0B] transition-colors duration-300" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* FIX: closes the hero grid wrapper */}
+        </div>
+      </section>
+
+      {/* Preview Section - FIXED: right column is now inside the grid (was outside due to extra closing divs) */}
+      <section
+        id="preview"
+        className="relative py-32 px-6 overflow-hidden scroll-mt-20"
+        onMouseEnter={() => setIsPreviewHovered(true)}
+        onMouseLeave={() => setIsPreviewHovered(false)}
+      >
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-32 right-0 w-[720px] h-[720px] bg-gradient-to-br from-[#C4A052]/10 to-transparent blur-[160px]" />
+          <div className="absolute -bottom-40 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-[#FAFAF9]/5 to-transparent blur-[140px]" />
+        </div>
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center mb-16 max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#C4A052]/20 bg-[#C4A052]/5 mb-6">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-[#C4A052] font-semibold">Preview</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-light tracking-tight mb-6">
+              Preview the agent <span className="text-[#8A8A8A]">in motion.</span>
+            </h2>
+            <p className="text-[#8A8A8A] text-lg font-light leading-relaxed">
+              Switch modes to see briefings, search, drafting, and autopilot in the same interface.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left column */}
+            <div className="lg:col-span-5 space-y-6">
+              {/* Mode switcher */}
+              <div className="liquid-panel liquid-interactive rounded-3xl p-6 group">
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Mode switcher</span>
+                  <div className="flex items-center gap-2 text-xs text-[#8A8A8A]">
+                    <div className="h-1.5 w-1.5 rounded-full bg-[#C4A052] animate-pulse" />
+                    Auto-cycling
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {PREVIEW_MODES.map((mode, index) => {
+                    const Icon = mode.icon
+                    const isActive = activePreview === index
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setActivePreview(index)}
+                        className={`group relative w-full text-left rounded-2xl p-4 border transition-all duration-300 overflow-hidden hover:-translate-y-0.5 ${
+                          isActive
+                            ? "bg-[#0F0F11] border-[#C4A052]/30 shadow-[0_0_25px_rgba(196,160,82,0.2)]"
+                            : "bg-[#0A0A0B]/60 border-white/[0.05] hover:border-white/[0.14]"
+                        }`}
+                        aria-pressed={isActive}
+                      >
+                        <div className={`absolute inset-0 opacity-0 transition-opacity duration-500 ${isActive ? "opacity-100" : "group-hover:opacity-100"}`}>
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(196,160,82,0.2),transparent_60%)]" />
+                          <div className="absolute inset-y-0 -left-1/3 w-1/2 bg-gradient-to-r from-transparent via-white/[0.12] to-transparent animate-scan-line" />
+                        </div>
+                        <div className="relative z-10">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`h-10 w-10 rounded-xl flex items-center justify-center transition-colors ${
+                                  isActive
+                                    ? "bg-[#C4A052] text-[#0A0A0B]"
+                                    : "bg-white/[0.05] text-[#FAFAF9] group-hover:bg-white/[0.08]"
+                                }`}
+                              >
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-[#FAFAF9]">{mode.label}</p>
+                                <p className="text-xs text-[#8A8A8A] leading-relaxed">{mode.summary}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] uppercase tracking-wider ${isActive ? "text-[#C4A052]" : "text-[#5A5A5A]"}`}>
+                              {isActive ? "Active" : "Preview"}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-xs text-[#5A5A5A]">
+                            <span>{mode.status}</span>
+                            <div className="flex items-center gap-2">
+                              <div className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-[#C4A052] animate-pulse" : "bg-[#333]"}`} />
+                              <span className="text-[10px] uppercase tracking-widest">{mode.progress}%</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-700 ${
+                                isActive
+                                  ? "bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-gradient-shift"
+                                  : "bg-white/[0.08]"
+                              }`}
+                              style={{ width: `${mode.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Live signals */}
+              <div className="liquid-card liquid-interactive rounded-3xl p-6 group">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Live signals</span>
+                  <span className="text-xs text-[#C4A052]">{activePreviewMode.status}</span>
+                </div>
+                <div className="mt-5 flex flex-col sm:flex-row gap-5">
+                  <div className="relative h-20 w-20 shrink-0">
+                    <div className="absolute -inset-2 rounded-full border border-[#C4A052]/20 animate-halo" />
+                    <div
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `conic-gradient(#C4A052 ${activePreviewMode.progress * 3.6}deg, rgba(255,255,255,0.08) 0deg)`,
+                      }}
+                    />
+                    <div className="absolute inset-2 rounded-full bg-[#0A0A0B] border border-white/[0.06]" />
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-[#FAFAF9]">{activePreviewMode.progress}%</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 flex-1">
+                    {activePreviewMode.signals.map((signal) => (
+                      <div key={signal.label} className="rounded-lg bg-[#0A0A0B] border border-white/[0.04] p-3 transition-colors duration-300 hover:border-[#C4A052]/30">
+                        <p className="text-sm text-[#FAFAF9]">{signal.value}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">{signal.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right column (previously outside the grid) */}
+            <div className="lg:col-span-7 space-y-6">
+              {/* keep your existing right-column content here unchanged */}
+              {/* I left it as-is in your file; only moved it inside the grid to fix the JSX structure. */}
+              {/* Paste your existing lg:col-span-7 block here (starting from <div className="liquid-panel...">). */}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ...the rest of your sections stay the same... */}
+      {/* (Features, Pricing, CTA, Footer, Tracing Beam) */}
+      {/* Make sure you did not leave the old misplaced lg:col-span-7 block in its original location. */}
+    </div>
+  )
+}

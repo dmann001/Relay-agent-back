@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
-import { Loader2, Mail, ArrowLeft, ArrowRight, Check, Sparkles, Shield, Zap } from "lucide-react"
+import { Loader2, Mail, ArrowLeft, ArrowRight, Check, Sparkles, Shield, Zap, Eye, EyeOff } from "lucide-react"
 import { getAuthStoragePreference, setAuthStoragePreference, supabase } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import Link from "next/link"
 
 const signInSchema = z.object({
@@ -43,6 +44,8 @@ export default function LoginPage() {
   const [isSigningInWithGoogle, setIsSigningInWithGoogle] = useState(false)
   const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin")
   const [isLoaded, setIsLoaded] = useState(false)
+  const [showSignInPassword, setShowSignInPassword] = useState(false)
+  const [isForgotOpen, setIsForgotOpen] = useState(false)
 
   const signInForm = useForm<SignInValues>({
     resolver: zodResolver(signInSchema),
@@ -73,6 +76,19 @@ export default function LoginPage() {
         password: values.password,
       })
       if (error) {
+        const errorMessage = error.message?.toLowerCase()
+        if (
+          error.status === 0 ||
+          errorMessage?.includes("failed to fetch") ||
+          errorMessage?.includes("network")
+        ) {
+          toast({
+            title: "Auth service unavailable",
+            description: "We could not reach the authentication service. Please try again in a moment.",
+            variant: "destructive",
+          })
+          return
+        }
         if (error.message?.toLowerCase().includes("email not confirmed")) {
           toast({
             title: "Confirm your email",
@@ -85,6 +101,15 @@ export default function LoginPage() {
       }
       router.replace("/inbox")
     } catch (error: any) {
+      const errorMessage = error?.message?.toLowerCase?.() ?? ""
+      if (errorMessage.includes("failed to fetch") || errorMessage.includes("network")) {
+        toast({
+          title: "Auth service unavailable",
+          description: "We could not reach the authentication service. Please try again in a moment.",
+          variant: "destructive",
+        })
+        return
+      }
       toast({
         title: "Sign in failed",
         description: error.message || "Please check your credentials and try again.",
@@ -158,6 +183,14 @@ export default function LoginPage() {
     } finally {
       setIsSigningInWithGoogle(false)
     }
+  }
+
+  const handleForgotPassword = () => {
+    toast({
+      title: "Reset link requested",
+      description: "This is a UI-only flow for now. Wire it to Supabase when ready.",
+    })
+    setIsForgotOpen(false)
   }
 
   return (
@@ -387,15 +420,59 @@ export default function LoginPage() {
                             <FormItem>
                               <div className="flex items-center justify-between">
                                 <FormLabel className="text-xs uppercase tracking-wider text-[#8A8A8A] font-medium">Password</FormLabel>
-                                <Link href="#" className="text-xs text-[#E8DCC4] hover:text-[#F5EDD8] transition-colors">Forgot?</Link>
+                                <Dialog open={isForgotOpen} onOpenChange={setIsForgotOpen}>
+                                  <DialogTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="text-xs text-[#E8DCC4] hover:text-[#F5EDD8] transition-colors"
+                                    >
+                                      Forgot?
+                                    </button>
+                                  </DialogTrigger>
+                                  <DialogContent className="bg-[#0F0F11] border border-white/[0.08] text-[#FAFAF9]">
+                                    <DialogHeader>
+                                      <DialogTitle>Reset your password</DialogTitle>
+                                      <DialogDescription className="text-[#8A8A8A]">
+                                        Enter your email and we will send a reset link.
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-2">
+                                      <FormLabel className="text-xs uppercase tracking-wider text-[#8A8A8A] font-medium">Email</FormLabel>
+                                      <Input
+                                        type="email"
+                                        placeholder="you@company.com"
+                                        className="h-11 bg-white/[0.03] border-white/[0.06] text-[#FAFAF9] placeholder:text-[#5A5A5A] focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20 rounded-xl transition-all"
+                                      />
+                                    </div>
+                                    <DialogFooter>
+                                      <Button
+                                        type="button"
+                                        onClick={handleForgotPassword}
+                                        className="bg-gradient-to-b from-[#FAFAF9] to-[#E8E8E6] text-[#0A0A0B]"
+                                      >
+                                        Send reset link
+                                      </Button>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
                               </div>
                               <FormControl>
-                                <Input
-                                  type="password"
-                                  placeholder="••••••••"
-                                  {...field}
-                                  className="h-11 bg-white/[0.03] border-white/[0.06] text-[#FAFAF9] placeholder:text-[#5A5A5A] focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20 rounded-xl transition-all"
-                                />
+                                <div className="relative">
+                                  <Input
+                                    type={showSignInPassword ? "text" : "password"}
+                                    placeholder="••••••••"
+                                    {...field}
+                                    className="h-11 bg-white/[0.03] border-white/[0.06] text-[#FAFAF9] placeholder:text-[#5A5A5A] focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20 rounded-xl transition-all pr-11"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowSignInPassword((prev) => !prev)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] hover:text-[#FAFAF9] transition-colors"
+                                    aria-label={showSignInPassword ? "Hide password" : "Show password"}
+                                  >
+                                    {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                </div>
                               </FormControl>
                               <FormMessage className="text-red-400" />
                             </FormItem>

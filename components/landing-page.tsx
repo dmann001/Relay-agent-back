@@ -2,8 +2,138 @@
 
 import { useEffect, useState, useRef } from "react"
 import Link from "next/link"
-import { Mail, ArrowRight, Play, Menu, X, Zap, Lock, Sparkles, Layers, Globe, Clock } from "lucide-react"
+import { Mail, ArrowRight, Play, Menu, X, Zap, Lock, Sparkles, Layers, Globe, Clock, Search, Inbox, PenLine, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+
+const TAG_STYLES: Record<string, string> = {
+  critical: "bg-[#FF5F57]/10 text-[#FF5F57] border border-[#FF5F57]/20",
+  high: "bg-[#FEBC2E]/10 text-[#FEBC2E] border border-[#FEBC2E]/20",
+  auto: "bg-[#28C840]/10 text-[#28C840] border border-[#28C840]/20",
+  info: "bg-[#C4A052]/10 text-[#C4A052] border border-[#C4A052]/20",
+  neutral: "bg-white/[0.04] text-[#8A8A8A] border border-white/[0.06]"
+}
+
+const PREVIEW_MODES = [
+  {
+    id: "briefing",
+    label: "Morning Brief",
+    icon: Sparkles,
+    summary: "Summaries that collapse 147 emails into 6 decisions.",
+    prompt: "Show only revenue-impacting threads",
+    status: "Syncing 2 inboxes - 12s to complete",
+    progress: 72,
+    signals: [
+      { label: "Threads scanned", value: "412" },
+      { label: "Decisions", value: "6 queued" },
+      { label: "Drafts", value: "4 ready" }
+    ],
+    messages: [
+      { role: "agent", text: "Morning brief is ready. 6 decisions need your eyes.", meta: "Briefing" },
+      { role: "user", text: "Prioritize anything from Acme or Stripe.", meta: "Request" },
+      { role: "agent", text: "2 items flagged. Drafts prepared and queued.", meta: "Action" }
+    ],
+    chips: ["Approve 4 drafts", "Snooze promos", "View timeline"],
+    panel: {
+      type: "decisions",
+      title: "Decision queue",
+      footer: "3 auto-executed, 2 waiting approval",
+      items: [
+        { title: "Stripe dispute - Acme Corp", meta: "Draft reply ready in 11s", tag: "Critical", tone: "critical" },
+        { title: "Board deck review", meta: "Due today 5:00 PM", tag: "High", tone: "high" },
+        { title: "Vendor renewal notice", meta: "Auto-archived 28 promos", tag: "Auto", tone: "auto" }
+      ]
+    }
+  },
+  {
+    id: "search",
+    label: "Semantic Search",
+    icon: Search,
+    summary: "Search by meaning across Gmail and Outlook.",
+    prompt: "Find the clause about renewal windows",
+    status: "Vector index updated 2m ago",
+    progress: 91,
+    signals: [
+      { label: "Matches", value: "12 threads" },
+      { label: "Accounts", value: "3 connected" },
+      { label: "Recall", value: "97%" }
+    ],
+    messages: [
+      { role: "user", text: "Find the email where Alex mentioned Project Titan scope change.", meta: "Query" },
+      { role: "agent", text: "Found 12 threads. The scope change appears in 3.", meta: "Result" },
+      { role: "agent", text: "Top hit is Nov 12, subject: \"Titan scope update\".", meta: "Top match" }
+    ],
+    chips: ["Open top thread", "Summarize results", "Draft follow-up"],
+    panel: {
+      type: "search",
+      query: "Project Titan scope change",
+      results: [
+        { title: "Alex Rivera - Titan scope update", meta: "Nov 12, 2:14 PM", highlight: "scope changed to include data migration" },
+        { title: "Legal - Titan contract redlines", meta: "Nov 10, 9:03 AM", highlight: "renewal window shortened to 30 days" },
+        { title: "Ops - Migration timeline", meta: "Nov 08, 6:41 PM", highlight: "timeline moved to May 18" }
+      ]
+    }
+  },
+  {
+    id: "draft",
+    label: "Draft Studio",
+    icon: PenLine,
+    summary: "Drafts in your voice, ready to send.",
+    prompt: "Draft a calm response about the delay",
+    status: "Tone model: You v4.2",
+    progress: 64,
+    signals: [
+      { label: "Drafts", value: "5 ready" },
+      { label: "Sentiment", value: "Confident" },
+      { label: "Length", value: "118 words" }
+    ],
+    messages: [
+      { role: "agent", text: "I drafted a response in your voice. Want it shorter?", meta: "Draft" },
+      { role: "user", text: "Keep it concise and include the new timeline.", meta: "Edit" },
+      { role: "agent", text: "Updated. Highlighted the May 18 date and next steps.", meta: "Ready" }
+    ],
+    chips: ["Send now", "Schedule", "Edit details"],
+    panel: {
+      type: "draft",
+      subject: "Updated timeline for Q2 rollout",
+      body: "Thanks for the patience. We are moving the launch to May 18. The data migration is underway, and we will share a detailed checklist this week.",
+      suggestions: ["Shorten opening", "Add availability", "Attach timeline PDF"],
+      stats: [
+        { label: "Read time", value: "34s" },
+        { label: "Tone", value: "Calm, direct" },
+        { label: "CTA", value: "Book a call" }
+      ]
+    }
+  },
+  {
+    id: "autopilot",
+    label: "Autopilot Rules",
+    icon: Inbox,
+    summary: "Low-risk tasks done in the background.",
+    prompt: "Auto-archive newsletters under 2% open rate",
+    status: "Rules active: 14",
+    progress: 83,
+    signals: [
+      { label: "Automations", value: "14 live" },
+      { label: "Time saved", value: "2h 14m" },
+      { label: "Auto-archived", value: "28 today" }
+    ],
+    messages: [
+      { role: "agent", text: "Muted 3 newsletters and archived 28 promo emails.", meta: "Automation" },
+      { role: "user", text: "Keep receipts and anything from legal.", meta: "Guardrails" },
+      { role: "agent", text: "Pinned receipts and legal. Everything else filtered.", meta: "Confirmed" }
+    ],
+    chips: ["Edit rules", "View logs", "Pause automation"],
+    panel: {
+      type: "rules",
+      rules: [
+        { title: "Auto-unsubscribe low engagement", meta: "Last run 8m ago", state: "On" },
+        { title: "Mark receipts as Finance", meta: "Triggered 5 times today", state: "On" },
+        { title: "Snooze social updates", meta: "Resumes on Friday", state: "Scheduled" }
+      ],
+      footer: "No critical items skipped in 14 days"
+    }
+  }
+] as const
 
 export function LandingPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -87,6 +217,36 @@ export function LandingPage() {
     return () => clearInterval(interval)
   }, [])
 
+  const [activePreview, setActivePreview] = useState(0)
+  const [isPreviewHovered, setIsPreviewHovered] = useState(false)
+
+  useEffect(() => {
+    if (isPreviewHovered) {
+      return
+    }
+    const interval = setInterval(() => {
+      setActivePreview((prev) => (prev + 1) % PREVIEW_MODES.length)
+    }, 7000)
+    return () => clearInterval(interval)
+  }, [isPreviewHovered])
+
+  const activePreviewMode = PREVIEW_MODES[activePreview]
+  const activePreviewPanel = activePreviewMode.panel
+  const confidenceScore = Math.min(99, activePreviewMode.progress + 6)
+  const recallScore = Math.min(99, activePreviewMode.progress + 3)
+  const automationScore = Math.min(99, activePreviewMode.progress + 9)
+  const runwayActions = activePreviewMode.chips.map((chip, index) => ({
+    label: chip,
+    eta: `${(index + 1) * 4}m`,
+    state: index === 0 ? "Queued" : index === 1 ? "Staged" : "Auto",
+    tone: index === 2 ? "auto" : index === 1 ? "high" : "info"
+  }))
+  const guardrailSettings = [
+    { label: "VIP senders require approval", state: "Locked", tone: "critical" },
+    { label: "Finance threads require review", state: "Review", tone: "high" },
+    { label: "Auto-send outside hours", state: activePreviewMode.id === "autopilot" ? "Paused" : "Locked", tone: "info" }
+  ]
+
 
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-[#FAFAF9] selection:bg-[#E8DCC4]/20 overflow-x-hidden">
@@ -139,7 +299,7 @@ export function LandingPage() {
             </Link>
 
             <div className="hidden md:flex items-center justify-center gap-1 absolute left-1/2 -translate-x-1/2">
-              {['How it works', 'Features', 'Pricing'].map((item) => (
+              {['How it works', 'Preview', 'Features', 'Pricing'].map((item) => (
                 <Link
                   key={item}
                   href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
@@ -176,7 +336,7 @@ export function LandingPage() {
         {isMenuOpen && (
           <div className="md:hidden absolute top-full left-0 w-full px-6 pt-4">
             <div className="bg-[#141416]/95 backdrop-blur-2xl border border-white/[0.04] rounded-2xl p-6 space-y-4">
-              {['How it works', 'Features', 'Pricing'].map((item) => (
+              {['How it works', 'Preview', 'Features', 'Pricing'].map((item) => (
                 <Link
                   key={item}
                   href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
@@ -239,17 +399,19 @@ export function LandingPage() {
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:animate-shimmer" />
               </Button>
 
-              <Button
-                variant="ghost"
-                className="group h-14 px-8 rounded-full border border-[#FAFAF9]/10 text-[#FAFAF9] hover:bg-[#FAFAF9]/5 hover:text-[#FAFAF9] transition-all duration-300"
-              >
-                <span className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#FAFAF9]/10 flex items-center justify-center border border-[#FAFAF9]/10 group-hover:bg-[#C4A052] group-hover:text-[#0A0A0B] transition-colors">
-                    <Play className="w-3 h-3 ml-0.5 fill-current" />
-                  </div>
-                  System Demo
-                </span>
-              </Button>
+              <Link href="/demo">
+                <Button
+                  variant="ghost"
+                  className="group h-14 px-8 rounded-full border border-[#FAFAF9]/10 text-[#FAFAF9] hover:bg-[#FAFAF9]/5 hover:text-[#FAFAF9] transition-all duration-300"
+                >
+                  <span className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#FAFAF9]/10 flex items-center justify-center border border-[#FAFAF9]/10 group-hover:bg-[#C4A052] group-hover:text-[#0A0A0B] transition-colors">
+                      <Play className="w-3 h-3 ml-0.5 fill-current" />
+                    </div>
+                    System Demo
+                  </span>
+                </Button>
+              </Link>
             </div>
 
             {/* Live System Telemetry Strip - Technical Proof instead of Social Proof */}
@@ -293,6 +455,7 @@ export function LandingPage() {
                   <span className="text-[10px] font-mono text-[#5A5A5A]">UPTIME 99.99%</span>
                 </div>
               </div>
+
             </div>
           </div>
 
@@ -399,6 +562,7 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
@@ -537,6 +701,484 @@ export function LandingPage() {
                     <button className="absolute right-2 top-2 h-8 w-8 rounded-lg bg-gradient-to-br from-[#E8DCC4] to-[#C4A052] flex items-center justify-center hover:opacity-90 transition-opacity">
                       <ArrowRight className="h-4 w-4 text-[#0A0A0B]" />
                     </button>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="liquid-card rounded-2xl p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Action runway</span>
+                    <span className="text-xs text-[#C4A052]">ETA 14s</span>
+                  </div>
+                  <div className="mt-4">
+                    <div className="relative h-2 rounded-full bg-white/[0.05] overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 w-[65%] bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-gradient-shift" />
+                      <div className="absolute inset-y-0 left-0 w-10 bg-white/[0.5] blur-md animate-scan-line" />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-[10px] uppercase tracking-wider text-[#5A5A5A]">
+                      <span>Queued</span>
+                      <span>Drafting</span>
+                      <span>Ready</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {activePreviewMode.chips.map((chip) => (
+                      <button
+                        key={chip}
+                        className="px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-xs text-[#8A8A8A] hover:text-[#FAFAF9] hover:border-[#C4A052]/40 transition-colors"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="liquid-card rounded-2xl p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Guardrails</span>
+                    <span className="text-xs text-[#8A8A8A]">Risk: Low</span>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {[
+                      { label: "Auto-archive promos", state: activePreviewMode.id === "draft" ? "Paused" : "On" },
+                      { label: "Pin receipts + legal", state: "On" },
+                      { label: "Approval required > $1k", state: "On" }
+                    ].map((rule) => {
+                      const stateClass = rule.state === "On"
+                        ? "bg-[#28C840]/10 text-[#28C840] border border-[#28C840]/20"
+                        : "bg-[#C4A052]/10 text-[#C4A052] border border-[#C4A052]/20"
+                      return (
+                        <div
+                          key={rule.label}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-[#0A0A0B] p-3"
+                        >
+                          <span className="text-xs text-[#FAFAF9]">{rule.label}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${stateClass}`}>
+                            {rule.state}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    {[
+                      { label: "Confidence", value: `${confidenceScore}%` },
+                      { label: "Recall", value: `${recallScore}%` },
+                      { label: "Auto ops", value: `${automationScore}%` }
+                    ].map((stat) => (
+                      <div key={stat.label} className="rounded-lg bg-[#0A0A0B] border border-white/[0.04] p-3">
+                        <p className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">{stat.label}</p>
+                        <p className="text-sm text-[#FAFAF9]">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Preview Section - Interactive App Tour */}
+      <section
+        id="preview"
+        className="relative py-32 px-6 overflow-hidden scroll-mt-20"
+        onMouseEnter={() => setIsPreviewHovered(true)}
+        onMouseLeave={() => setIsPreviewHovered(false)}
+      >
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-32 right-0 w-[720px] h-[720px] bg-gradient-to-br from-[#C4A052]/10 to-transparent blur-[160px]" />
+          <div className="absolute -bottom-40 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-[#FAFAF9]/5 to-transparent blur-[140px]" />
+        </div>
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center mb-16 max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#C4A052]/20 bg-[#C4A052]/5 mb-6">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-[#C4A052] font-semibold">Preview</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-light tracking-tight mb-6">
+              Preview the agent <span className="text-[#8A8A8A]">in motion.</span>
+            </h2>
+            <p className="text-[#8A8A8A] text-lg font-light leading-relaxed">
+              Switch modes to see briefings, search, drafting, and autopilot in the same interface.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-5 space-y-6">
+              <div className="liquid-panel liquid-interactive rounded-3xl p-6 group">
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Mode switcher</span>
+                  <div className="flex items-center gap-2 text-xs text-[#8A8A8A]">
+                    <div className="h-1.5 w-1.5 rounded-full bg-[#C4A052] animate-pulse" />
+                    Auto-cycling
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {PREVIEW_MODES.map((mode, index) => {
+                    const Icon = mode.icon
+                    const isActive = activePreview === index
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setActivePreview(index)}
+                        className={`group relative w-full text-left rounded-2xl p-4 border transition-all duration-300 overflow-hidden hover:-translate-y-0.5 ${isActive
+                          ? 'bg-[#0F0F11] border-[#C4A052]/30 shadow-[0_0_25px_rgba(196,160,82,0.2)]'
+                          : 'bg-[#0A0A0B]/60 border-white/[0.05] hover:border-white/[0.14]'
+                          }`}
+                        aria-pressed={isActive}
+                      >
+                        <div className={`absolute inset-0 opacity-0 transition-opacity duration-500 ${isActive ? 'opacity-100' : 'group-hover:opacity-100'}`}>
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(196,160,82,0.2),transparent_60%)]" />
+                          <div className="absolute inset-y-0 -left-1/3 w-1/2 bg-gradient-to-r from-transparent via-white/[0.12] to-transparent animate-scan-line" />
+                        </div>
+                        <div className="relative z-10">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`h-10 w-10 rounded-xl flex items-center justify-center transition-colors ${isActive
+                                  ? 'bg-[#C4A052] text-[#0A0A0B]'
+                                  : 'bg-white/[0.05] text-[#FAFAF9] group-hover:bg-white/[0.08]'
+                                  }`}
+                              >
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-[#FAFAF9]">{mode.label}</p>
+                                <p className="text-xs text-[#8A8A8A] leading-relaxed">{mode.summary}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] uppercase tracking-wider ${isActive ? 'text-[#C4A052]' : 'text-[#5A5A5A]'}`}>
+                              {isActive ? 'Active' : 'Preview'}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between text-xs text-[#5A5A5A]">
+                            <span>{mode.status}</span>
+                            <div className="flex items-center gap-2">
+                              <div className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-[#C4A052] animate-pulse' : 'bg-[#333]'}`} />
+                              <span className="text-[10px] uppercase tracking-widest">{mode.progress}%</span>
+                            </div>
+                          </div>
+                          <div className="mt-3 h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-700 ${isActive
+                                ? 'bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-gradient-shift'
+                                : 'bg-white/[0.08]'
+                                }`}
+                              style={{ width: `${mode.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="liquid-card liquid-interactive rounded-3xl p-6 group">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Live signals</span>
+                  <span className="text-xs text-[#C4A052]">{activePreviewMode.status}</span>
+                </div>
+                <div className="mt-5 flex flex-col sm:flex-row gap-5">
+                  <div className="relative h-20 w-20 shrink-0">
+                    <div className="absolute -inset-2 rounded-full border border-[#C4A052]/20 animate-halo" />
+                    <div
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `conic-gradient(#C4A052 ${activePreviewMode.progress * 3.6}deg, rgba(255,255,255,0.08) 0deg)`
+                      }}
+                    />
+                    <div className="absolute inset-2 rounded-full bg-[#0A0A0B] border border-white/[0.06]" />
+                    <div className="absolute inset-0 flex items-center justify-center text-sm text-[#FAFAF9]">
+                      {activePreviewMode.progress}%
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 flex-1">
+                    {activePreviewMode.signals.map((signal) => (
+                      <div
+                        key={signal.label}
+                        className="rounded-lg bg-[#0A0A0B] border border-white/[0.04] p-3 transition-colors duration-300 hover:border-[#C4A052]/30"
+                      >
+                        <p className="text-sm text-[#FAFAF9]">{signal.value}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">{signal.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-5">
+                  <div className="flex items-center justify-between text-xs text-[#5A5A5A]">
+                    <span>Indexing stream</span>
+                    <span className="text-[#FAFAF9]">{activePreviewMode.progress}%</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-white/[0.04] overflow-hidden relative">
+                    <div
+                      className="h-full bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-gradient-shift transition-all duration-700"
+                      style={{ width: `${activePreviewMode.progress}%` }}
+                    />
+                    <div className="absolute inset-y-0 left-0 w-12 bg-white/[0.5] blur-md animate-scan-line" />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="lg:col-span-7 space-y-6">
+            <div className="liquid-panel liquid-interactive rounded-3xl p-[1px] group">
+                <div className="relative rounded-[calc(1.5rem-1px)] bg-[#0A0A0B]/90 border border-white/[0.04] overflow-hidden">
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute -top-24 right-[-10%] w-[280px] h-[280px] bg-gradient-to-br from-[#C4A052]/20 to-transparent blur-[90px] animate-subtle-float" />
+                    <div className="absolute -bottom-28 left-[20%] w-[260px] h-[260px] bg-gradient-to-tr from-[#C4A052]/15 to-transparent blur-[100px] opacity-0 transition-opacity duration-700 group-hover:opacity-100 animate-halo" />
+                    <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/[0.08] to-transparent" />
+                    <div className="absolute inset-0 bg-grid-white/[0.03] opacity-30" />
+                  </div>
+                  <div className="relative">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.05] bg-[#0F0F11]/60">
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F57]" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#FEBC2E]" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#28C840]" />
+                        </div>
+                        <span className="text-xs font-mono text-[#5A5A5A]">preview.relay.ai</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#C4A052] animate-pulse" />
+                        <span className="text-xs text-[#8A8A8A]">
+                          Mode: <span className="text-[#FAFAF9]">{activePreviewMode.label}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="px-6 py-2 border-b border-white/[0.04]">
+                      <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono uppercase tracking-[0.25em] text-[#5A5A5A]">
+                        <span className="text-[#C4A052]">Pulse</span>
+                        <div className="relative h-1 w-32 bg-white/[0.04] rounded-full overflow-hidden">
+                          <div className="absolute inset-y-0 left-0 w-[70%] bg-gradient-to-r from-[#C4A052] via-[#E8DCC4] to-[#C4A052] animate-gradient-shift" />
+                          <div className="absolute inset-y-0 left-0 w-10 bg-white/[0.5] blur-md animate-scan-line" />
+                        </div>
+                        <span>IDX {activePreviewMode.progress}%</span>
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-6">
+                        <div className="liquid-card liquid-interactive rounded-2xl p-5 flex flex-col gap-4 group">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Agent dialog</span>
+                            <span className="text-xs text-[#8A8A8A]">{activePreviewMode.status}</span>
+                          </div>
+
+                          <div className="space-y-3">
+                            {activePreviewMode.messages.map((message, index) => (
+                              <div
+                                key={`${message.meta}-${index}`}
+                                className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse text-right" : ""}`}
+                              >
+                                <div
+                                  className={`shrink-0 h-8 w-8 rounded-lg flex items-center justify-center ${message.role === "user"
+                                    ? "bg-white/[0.06] border border-white/[0.08]"
+                                    : "bg-gradient-to-br from-[#E8DCC4] to-[#C4A052]"
+                                    }`}
+                                >
+                                  {message.role === "user" ? (
+                                    <div className="h-3 w-3 rounded-full bg-[#5A5A5A]" />
+                                  ) : (
+                                    <span className="text-[#0A0A0B] text-xs font-semibold">R</span>
+                                  )}
+                                </div>
+                                <div
+                                  className={`max-w-[80%] p-3 rounded-2xl transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_15px_35px_rgba(196,160,82,0.18)] ${message.role === "user"
+                                    ? "bg-[#FAFAF9] text-[#0A0A0B] rounded-tr-md"
+                                    : "bg-white/[0.03] border border-white/[0.04] text-[#FAFAF9] rounded-tl-md"
+                                    }`}
+                                >
+                                  <p className={`text-sm ${message.role === "user" ? "font-medium" : ""}`}>{message.text}</p>
+                                  <span
+                                    className={`mt-2 inline-flex text-[10px] uppercase tracking-wider ${message.role === "user"
+                                      ? "text-[#5A5A5A]"
+                                      : "text-[#8A8A8A]"
+                                      }`}
+                                  >
+                                    {message.meta}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-[#5A5A5A]">
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-[#C4A052]/80 animate-typing" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-[#C4A052]/60 animate-typing delay-100" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-[#C4A052]/40 animate-typing delay-200" />
+                              </div>
+                              Drafting in your voice
+                            </div>
+                            <span className="text-[#C4A052]">{confidenceScore}% confidence</span>
+                          </div>
+
+                          <div className="mt-auto pt-4 border-t border-white/[0.04]">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                disabled
+                                placeholder={activePreviewMode.prompt}
+                                className="w-full h-11 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 pr-12 text-sm text-[#FAFAF9] placeholder:text-[#5A5A5A] focus:outline-none"
+                              />
+                              <button className="absolute right-2 top-2 h-7 w-7 rounded-lg bg-gradient-to-br from-[#E8DCC4] to-[#C4A052] flex items-center justify-center hover:opacity-90 transition-opacity">
+                                <ArrowRight className="h-3 w-3 text-[#0A0A0B]" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="liquid-card liquid-interactive rounded-2xl p-5 group">
+                          {activePreviewPanel.type === "decisions" && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">{activePreviewPanel.title}</span>
+                                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#5A5A5A]">
+                                  <CheckCircle2 className="h-3 w-3 text-[#28C840]" />
+                                  Auto-approve ready
+                                </div>
+                              </div>
+                              <div className="space-y-3">
+                                {activePreviewPanel.items.map((item) => (
+                                  <div
+                                    key={item.title}
+                                    className="group rounded-xl border border-white/[0.05] bg-[#0A0A0B] p-3 transition-colors duration-300 hover:border-[#C4A052]/30"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm text-[#FAFAF9]">{item.title}</p>
+                                        <p className="text-xs text-[#5A5A5A]">{item.meta}</p>
+                                      </div>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${TAG_STYLES[item.tone] ?? TAG_STYLES.neutral}`}>
+                                        {item.tag}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="text-xs text-[#5A5A5A]">{activePreviewPanel.footer}</p>
+                            </div>
+                          )}
+
+                          {activePreviewPanel.type === "search" && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Semantic search</span>
+                                <span className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">Top matches</span>
+                              </div>
+                              <div className="relative">
+                                <Search className="absolute left-3 top-3 h-4 w-4 text-[#5A5A5A]" />
+                                <input
+                                  type="text"
+                                  value={activePreviewPanel.query}
+                                  readOnly
+                                  className="w-full h-10 bg-white/[0.03] border border-white/[0.06] rounded-xl pl-10 pr-4 text-sm text-[#FAFAF9]"
+                                />
+                              </div>
+                              <div className="space-y-3">
+                                {activePreviewPanel.results.map((result) => (
+                                  <div
+                                    key={result.title}
+                                    className="rounded-xl border border-white/[0.05] bg-[#0A0A0B] p-3 transition-colors duration-300 hover:border-[#C4A052]/30"
+                                  >
+                                    <p className="text-sm text-[#FAFAF9]">{result.title}</p>
+                                    <p className="text-xs text-[#5A5A5A]">{result.meta}</p>
+                                    <p className="text-xs text-[#8A8A8A] mt-2">
+                                      <span className="text-[#C4A052]">"{result.highlight}"</span>
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {activePreviewPanel.type === "draft" && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Draft preview</span>
+                                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#5A5A5A]">
+                                  <CheckCircle2 className="h-3 w-3 text-[#28C840]" />
+                                  Ready to send
+                                </div>
+                              </div>
+                              <div className="rounded-xl border border-white/[0.05] bg-[#0A0A0B] p-3 space-y-3">
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">Subject</p>
+                                  <p className="text-sm text-[#FAFAF9]">{activePreviewPanel.subject}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">Body</p>
+                                  <p className="text-xs text-[#8A8A8A] leading-relaxed">{activePreviewPanel.body}</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {activePreviewPanel.suggestions.map((suggestion) => (
+                                  <button
+                                    key={suggestion}
+                                    className="px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.06] text-xs text-[#8A8A8A] hover:text-[#FAFAF9] hover:border-[#C4A052]/40 transition-all hover:-translate-y-0.5"
+                                  >
+                                    {suggestion}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="grid grid-cols-3 gap-3">
+                                {activePreviewPanel.stats.map((stat) => (
+                                  <div
+                                    key={stat.label}
+                                    className="rounded-lg bg-[#0A0A0B] border border-white/[0.04] p-3"
+                                  >
+                                    <p className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">{stat.label}</p>
+                                    <p className="text-sm text-[#FAFAF9]">{stat.value}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {activePreviewPanel.type === "rules" && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-[#5A5A5A]">Automation rules</span>
+                                <span className="text-[10px] uppercase tracking-wider text-[#5A5A5A]">Guardrails</span>
+                              </div>
+                              <div className="space-y-3">
+                                {activePreviewPanel.rules.map((rule) => {
+                                  const ruleStateClass = rule.state === "On"
+                                    ? "bg-[#28C840]/10 text-[#28C840] border border-[#28C840]/20"
+                                    : "bg-[#C4A052]/10 text-[#C4A052] border border-[#C4A052]/20"
+                                  return (
+                                    <div
+                                      key={rule.title}
+                                      className="rounded-xl border border-white/[0.05] bg-[#0A0A0B] p-3 flex items-center justify-between gap-3"
+                                    >
+                                      <div>
+                                        <p className="text-sm text-[#FAFAF9]">{rule.title}</p>
+                                        <p className="text-xs text-[#5A5A5A]">{rule.meta}</p>
+                                      </div>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${ruleStateClass}`}>
+                                        {rule.state}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                              <p className="text-xs text-[#5A5A5A]">{activePreviewPanel.footer}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+
+                    </div>
                   </div>
                 </div>
               </div>
@@ -800,6 +1442,7 @@ export function LandingPage() {
           </div>
         </div>
       </footer>
+
       {/* Tracing Beam - The Thread */}
       <div className="fixed left-6 top-0 bottom-0 w-[1px] hidden xl:block pointer-events-none z-50">
         <div className="absolute top-0 bottom-0 w-full bg-[#FAFAF9]/[0.05]" />
