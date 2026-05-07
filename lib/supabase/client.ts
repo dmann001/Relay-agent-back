@@ -1,12 +1,3 @@
-import { createClient } from "@supabase/supabase-js"
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase environment variables for client auth")
-}
-
 const AUTH_STORAGE_PREFERENCE_KEY = "relay_auth_storage"
 
 export const getAuthStoragePreference = (): "local" | "session" => {
@@ -38,6 +29,8 @@ const authStorage = {
   },
 }
 
+const noAuthError = { message: "Supabase auth disabled in this build", status: 503 }
+
 export const setAuthStoragePreference = (rememberMe: boolean) => {
   if (typeof window === "undefined") return
   window.localStorage.setItem(
@@ -46,11 +39,17 @@ export const setAuthStoragePreference = (rememberMe: boolean) => {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = {
   auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    storage: authStorage,
+    getSession: async () => ({ data: { session: null }, error: null }),
+    onAuthStateChange: (_callback: (event: string, session: any) => void) => ({
+      data: { subscription: { unsubscribe: () => {} } },
+    }),
+    signOut: async () => ({ error: noAuthError }),
+    signInWithPassword: async () => ({ error: noAuthError }),
+    signUp: async () => ({ data: { session: null }, error: noAuthError }),
+    signInWithOAuth: async () => ({ error: noAuthError }),
+    setAuthCookie: async () => ({ error: noAuthError }),
   },
-})
+  storage: authStorage,
+}

@@ -2,9 +2,14 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import type { Session, User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase/client"
 import { storage } from "@/lib/storage"
+
+type User = any
+
+type Session = {
+  user: User | null
+} | null
 
 type AuthContextValue = {
   session: Session | null
