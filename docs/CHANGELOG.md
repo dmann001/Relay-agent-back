@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 ## Added
 - Created project backlog with GitHub Issues written as user stories, organized across five milestones: Project Infrastructure, User Management And Gmail Auth, Agentic Dashboard, UI / Settings & User Preferences, and Testing & Final Deployment.
 - Added `/docs/WORKING_AGREEMENT.md` defining team meeting schedule, communication expectations, accountability rules, GitHub workflow, and testing requirements.
+- [PR #12](https://github.com/dmann001/Relay-agent-back/pull/23)
 
 ---
 
