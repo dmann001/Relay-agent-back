@@ -2,16 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
----
-
-# [Unreleased]
-
-## Planned
-- Merge a README.md file with team information and a non-technical project description.  
-  [PR #11](https://github.com/dmann001/Relay-agent-back/pull/11)
-
----
-
 # 2026-05-22
 
 ## Added
