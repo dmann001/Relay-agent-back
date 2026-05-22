@@ -65,7 +65,7 @@ All accountability measures aim to resolve issues constructively and fairly.
   - Changes are merged into `main` via Pull Requests only.
 
 - **Pull Request Review Expectations:**  
-  - At least **one team member** must review and approve a Pull Request before merging.
+  - A Pull Request requires at least one approving review from a team member other than the author before it can be merged.
   - Pull Requests should include a clear description of changes.
 
 - **Branch Naming Conventions:**  
