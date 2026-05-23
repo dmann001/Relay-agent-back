@@ -5,6 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "concurrently \"next dev\" \"ts-node --project tsconfig.server.json server/index.ts\"",
+    "test": "jest",
     "lint": "eslint .",
     "start": "next start"
   },
@@ -75,6 +76,8 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^10.4.0",
+    "jest": "^30.4.2",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "ts-node": "^10.9.2",
