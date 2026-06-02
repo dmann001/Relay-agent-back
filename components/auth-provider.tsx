@@ -37,15 +37,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error("[Auth] Failed to load session:", error)
       }
-      setSession(data.session ?? null)
+      const nextSession = data.session ?? null
+      setSession(nextSession)
+      if (nextSession?.user?.id) {
+        await storage.loadForUser(nextSession.user.id)
+      } else {
+        storage.reset()
+      }
+      if (!isMounted) return
       setIsLoading(false)
     }
 
     loadSession()
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, nextSession) => {
+      async (_event: string, nextSession: Session | null) => {
         setSession(nextSession)
+        if (nextSession?.user?.id) {
+          await storage.loadForUser(nextSession.user.id)
+        } else {
+          storage.reset()
+        }
         setIsLoading(false)
       }
     )
@@ -81,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("[Auth] Sign out failed:", error)
           return
         }
-        storage.clear()
+        await storage.clear()
         router.replace("/login")
       },
     }),

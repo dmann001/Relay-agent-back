@@ -20,7 +20,7 @@ const PREVIEW_MODES = [
     icon: Sparkles,
     summary: "Summaries that collapse 147 emails into 6 decisions.",
     prompt: "Show only revenue-impacting threads",
-    status: "Syncing 2 inboxes - 12s to complete",
+    status: "Syncing Gmail - 12s to complete",
     progress: 72,
     signals: [
       { label: "Threads scanned", value: "412" },
@@ -48,13 +48,13 @@ const PREVIEW_MODES = [
     id: "search",
     label: "Semantic Search",
     icon: Search,
-    summary: "Search by meaning across Gmail and Outlook.",
+    summary: "Search by meaning across Gmail.",
     prompt: "Find the clause about renewal windows",
     status: "Vector index updated 2m ago",
     progress: 91,
     signals: [
       { label: "Matches", value: "12 threads" },
-      { label: "Accounts", value: "3 connected" },
+      { label: "Account", value: "1 connected" },
       { label: "Recall", value: "97%" }
     ],
     messages: [
@@ -1247,9 +1247,9 @@ export function LandingPage() {
               },
               {
                 icon: <Globe className="h-6 w-6" />,
-                title: "Universal Sync",
-                description: "Connects with Gmail, Outlook, and IMAP. One interface for everything.",
-                meta: "IMAP/SMTP"
+                title: "Gmail Sync",
+                description: "Connect your Gmail account and work from one focused email agent.",
+                meta: "GMAIL API"
               },
               {
                 icon: <Clock className="h-6 w-6" />,

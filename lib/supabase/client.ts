@@ -1,55 +1,64 @@
-const AUTH_STORAGE_PREFERENCE_KEY = "relay_auth_storage"
+import { createClient } from "@supabase/supabase-js"
 
-export const getAuthStoragePreference = (): "local" | "session" => {
-  if (typeof window === "undefined") return "local"
-  const preference = window.localStorage.getItem(AUTH_STORAGE_PREFERENCE_KEY)
-  return preference === "session" ? "session" : "local"
+type AuthStoragePreference = "session"
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+const disabledAuthError = {
+  message: "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+  status: 503,
 }
 
-const getPreferredStorage = (): Storage | undefined => {
+const getSessionStorage = (): Storage | undefined => {
   if (typeof window === "undefined") return undefined
-  const preference = getAuthStoragePreference()
-  return preference === "session" ? window.sessionStorage : window.localStorage
+  return window.sessionStorage
 }
 
 const authStorage = {
-  getItem: (key: string) => {
-    const storage = getPreferredStorage()
-    return storage ? storage.getItem(key) : null
-  },
+  getItem: (key: string) => getSessionStorage()?.getItem(key) ?? null,
   setItem: (key: string, value: string) => {
-    const storage = getPreferredStorage()
-    if (!storage) return
-    storage.setItem(key, value)
+    getSessionStorage()?.setItem(key, value)
   },
   removeItem: (key: string) => {
-    if (typeof window === "undefined") return
-    window.localStorage.removeItem(key)
-    window.sessionStorage.removeItem(key)
+    getSessionStorage()?.removeItem(key)
   },
 }
 
-const noAuthError = { message: "Supabase auth disabled in this build", status: 503 }
-
-export const setAuthStoragePreference = (rememberMe: boolean) => {
-  if (typeof window === "undefined") return
-  window.localStorage.setItem(
-    AUTH_STORAGE_PREFERENCE_KEY,
-    rememberMe ? "local" : "session"
-  )
-}
-
-export const supabase = {
+const disabledSupabase = {
   auth: {
     getSession: async () => ({ data: { session: null }, error: null }),
     onAuthStateChange: (_callback: (event: string, session: any) => void) => ({
       data: { subscription: { unsubscribe: () => {} } },
     }),
-    signOut: async () => ({ error: noAuthError }),
-    signInWithPassword: async () => ({ error: noAuthError }),
-    signUp: async () => ({ data: { session: null }, error: noAuthError }),
-    signInWithOAuth: async () => ({ error: noAuthError }),
-    setAuthCookie: async () => ({ error: noAuthError }),
+    signOut: async () => ({ error: disabledAuthError }),
+    signInWithPassword: async () => ({ error: disabledAuthError }),
+    signUp: async () => ({ data: { session: null }, error: disabledAuthError }),
+    signInWithOAuth: async () => ({ error: disabledAuthError }),
   },
-  storage: authStorage,
+  from: (_table: string) => ({
+    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: disabledAuthError }) }) }),
+    insert: async () => ({ error: disabledAuthError }),
+    upsert: async () => ({ error: disabledAuthError }),
+    delete: () => ({ eq: async () => ({ error: disabledAuthError }) }),
+  }),
+}
+
+export const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          persistSession: true,
+          storage: authStorage,
+        },
+      })
+    : (disabledSupabase as any)
+
+export const getAuthStoragePreference = (): AuthStoragePreference => "session"
+
+export const setAuthStoragePreference = (_rememberMe: boolean) => {
+  // App data is stored in Supabase. Auth session persistence is intentionally
+  // limited to sessionStorage so Relay does not keep app state in localStorage.
 }

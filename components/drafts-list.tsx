@@ -74,7 +74,7 @@ export function DraftsList() {
                     To: {draft.to.join(", ") || "(No Recipients)"}
                   </span>
                   <Badge variant="outline" className="h-5 px-1.5 border-white/[0.08] bg-transparent">
-                    <ProviderIcon provider={draft.provider} className="h-3 w-3" />
+                    <ProviderIcon className="h-3 w-3" />
                   </Badge>
                   <Badge className="h-5 px-2 text-[10px] bg-[#FEBC2E]/10 text-[#FEBC2E] border-0">
                     <Clock className="mr-1 h-3 w-3" />

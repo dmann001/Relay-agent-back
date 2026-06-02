@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -69,7 +69,6 @@ export function InboxList() {
   const [showCompose, setShowCompose] = useState(false)
   const searchParams = useSearchParams()
   const router = useRouter()
-  const providerFilter = searchParams.get("provider") as Email["provider"] | null
 
   // Infinite scroll ref
   const loadMoreRef = useRef<HTMLDivElement>(null)
@@ -79,7 +78,6 @@ export function InboxList() {
   const accountParam = searchParams.get("account")
 
   const { toast } = useToast()
-  const filterByProvider = useMemo(() => providerFilter, [providerFilter])
 
   const applyUpdatedAuth = (accountId: string, auth?: { accessToken?: string; expiryDate?: number }) => {
     if (!auth || (!auth.accessToken && !auth.expiryDate)) return
@@ -91,14 +89,8 @@ export function InboxList() {
 
   const applyFilters = (source: Email[]) => {
     const filtered = source.filter((e) => !e.isArchived)
-    const byProvider = filterByProvider
-      ? filtered.filter((e) => e.provider === filterByProvider)
-      : filtered
 
-    return byProvider.filter((email) => {
-      if (email.provider !== "gmail") {
-        return categoryFilter.primary
-      }
+    return filtered.filter((email) => {
       const category = email.gmailCategory || "primary"
       return categoryFilter[category]
     })
@@ -106,7 +98,7 @@ export function InboxList() {
 
   // Quick sync - only fetch new emails since last sync (faster)
   const handleQuickSync = async () => {
-    const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
+    const accounts = storage.getAccounts()
     const existingEmails = storage.getEmails()
     const settings = storage.getSettings()
 
@@ -128,7 +120,7 @@ export function InboxList() {
       let newEmailCount = 0
 
       for (const account of accounts) {
-        if (account.provider === "gmail" && account.accessToken) {
+        if (account.accessToken) {
           console.log(`[QuickSync] Checking for new emails since ${lastSync || 'beginning'}`)
 
           const response = await fetch("/api/emails", {
@@ -171,7 +163,7 @@ export function InboxList() {
                 try {
                   const intentResults = await api.ai.batchClassifyIntents(newEmails, settings.openaiApiKey)
                   const intentMap = new Map(intentResults.map(r => [r.emailId, r.intent]))
-                  newEmails.forEach(email => {
+                  newEmails.forEach((email: Email) => {
                     const intent = intentMap.get(email.id)
                     if (intent) {
                       email.intent = intent
@@ -216,7 +208,7 @@ export function InboxList() {
   // Smart sync - uses incremental History API when possible, falls back to quickSync
   const handleSmartSync = async (silent: boolean = false) => {
     if (!silent) setIsSyncing(true)
-    const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
+    const accounts = storage.getAccounts()
     const settings = storage.getSettings()
 
     if (accounts.length === 0) {
@@ -235,7 +227,7 @@ export function InboxList() {
       let newEmailCount = 0
 
       for (const account of accounts) {
-        if (account.provider === "gmail" && account.accessToken) {
+        if (account.accessToken) {
           const lastHistoryId = storage.getHistoryId(account.id)
 
           console.log(`[SmartSync] Account ${account.email}, historyId: ${lastHistoryId || 'none'}`)
@@ -404,7 +396,7 @@ export function InboxList() {
     }
   }, [gmailAuthSuccess, accountParam])
 
-  // Load emails from localStorage on mount + background sync
+  // Load emails from the Supabase-backed storage cache on mount + background sync
   useEffect(() => {
     // Show cached emails immediately (no loading spinner)
     const loadedEmails = storage.getEmails()
@@ -417,21 +409,21 @@ export function InboxList() {
     setIsLoading(false)
 
     // Background sync (only if accounts exist)
-    const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
+    const accounts = storage.getAccounts()
     if (accounts.length > 0) {
       handleQuickSync() // Use quickSync for reliability
     }
-  }, [filterByProvider])
+  }, [])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [filterByProvider, categoryFilter, searchQuery])
+  }, [categoryFilter, searchQuery])
 
 
   // Full sync - fetch all emails with pagination support
   const handleSyncEmails = async (isInitial: boolean = true) => {
     setIsSyncing(true)
-    const accounts = storage.getAccounts().filter(a => !filterByProvider || a.provider === filterByProvider)
+    const accounts = storage.getAccounts()
     const settings = storage.getSettings()
 
     if (accounts.length === 0) {
@@ -449,7 +441,7 @@ export function InboxList() {
       let updatedTokens = { ...accountTokens }
 
       for (const account of accounts) {
-        if (account.provider === "gmail" && account.accessToken) {
+        if (account.accessToken) {
           // Determine which token to use
           const pageToken = isInitial ? undefined : accountTokens[account.id]
 
@@ -945,9 +937,9 @@ export function InboxList() {
                     {email.from.name}
                   </span>
                   <Badge className="h-5 px-1.5 bg-white/[0.03] border border-white/[0.08]">
-                    <ProviderIcon provider={email.provider} className="h-3 w-3" />
+                    <ProviderIcon className="h-3 w-3" />
                   </Badge>
-                  {email.provider === "gmail" && email.gmailCategory && (
+                  {email.gmailCategory && (
                     <Badge className="h-5 px-2 text-[10px] capitalize bg-[#E8DCC4]/10 text-[#E8DCC4] border-0">
                       {email.gmailCategory}
                     </Badge>
@@ -963,18 +955,26 @@ export function InboxList() {
                   )}
                   {/* Urgency indicator */}
                   {email.sentiment?.urgency === 'critical' && (
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-500" title="Critical urgency" />
+                    <span title="Critical urgency">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                    </span>
                   )}
                   {email.sentiment?.urgency === 'high' && (
-                    <AlertTriangle className="h-3.5 w-3.5 text-orange-500" title="High urgency" />
+                    <span title="High urgency">
+                      <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+                    </span>
                   )}
                   {/* Priority indicator */}
                   {email.priorityScore !== undefined && email.priorityScore >= 70 && (
-                    <TrendingUp className="h-3.5 w-3.5 text-[#E8DCC4]" title={`Priority: ${email.priorityScore}`} />
+                    <span title={`Priority: ${email.priorityScore}`}>
+                      <TrendingUp className="h-3.5 w-3.5 text-[#E8DCC4]" />
+                    </span>
                   )}
                   {/* Meeting indicator */}
                   {email.meetingRequest?.detected && (
-                    <Calendar className="h-3.5 w-3.5 text-purple-500" title="Meeting request detected" />
+                    <span title="Meeting request detected">
+                      <Calendar className="h-3.5 w-3.5 text-purple-500" />
+                    </span>
                   )}
                 </div>
                 <div className={cn("mb-2 text-sm truncate text-[#FAFAF9]", !email.read ? "font-semibold" : "font-normal")}>

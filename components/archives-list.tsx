@@ -79,7 +79,7 @@ export function ArchivesList() {
                 <div className="mb-1 flex items-center gap-2">
                   <span className="text-sm font-medium text-[#FAFAF9]">{email.from.name}</span>
                   <Badge variant="outline" className="h-5 px-1.5 border-white/[0.08] bg-transparent">
-                    <ProviderIcon provider={email.provider} className="h-3 w-3" />
+                    <ProviderIcon className="h-3 w-3" />
                   </Badge>
                   <Badge className="h-5 px-2 text-[10px] bg-[#E8DCC4]/10 text-[#E8DCC4] border-0">
                     <Archive className="mr-1 h-3 w-3" />

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { storage } from "@/lib/storage"
 
 type Theme = "dark" | "light" | "system"
 
@@ -25,12 +26,10 @@ const ThemeProviderContext = React.createContext<ThemeProviderState>(initialStat
 export function ThemeProvider({
   children,
   defaultTheme = "system",
-  storageKey = "relay-ui-theme",
+  storageKey: _storageKey = "relay-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = React.useState<Theme>(() =>
-    typeof window !== "undefined" ? (localStorage.getItem(storageKey) as Theme) || defaultTheme : defaultTheme,
-  )
+  const [theme, setTheme] = React.useState<Theme>(defaultTheme)
 
   React.useEffect(() => {
     const root = window.document.documentElement
@@ -49,9 +48,9 @@ export function ThemeProvider({
 
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
-      setTheme(theme)
+    setTheme: (nextTheme: Theme) => {
+      setTheme(nextTheme)
+      storage.updateSettings({ theme: nextTheme })
     },
   }
 

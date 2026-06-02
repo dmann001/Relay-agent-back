@@ -24,7 +24,7 @@ export function SettingsContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
 
-  // Load data from localStorage on mount
+  // Load data from the Supabase-backed storage cache on mount
   useEffect(() => {
     const loadedAccounts = storage.getAccounts()
     const loadedSettings = storage.getSettings()
@@ -169,7 +169,7 @@ export function SettingsContent() {
                         </div>
                         <div>
                           <div className="font-medium text-[#FAFAF9]">
-                            {account.provider === "gmail" ? "Gmail" : "Outlook"}
+                            Gmail
                           </div>
                           <div className="text-sm text-[#8A8A8A]">{account.email}</div>
                         </div>

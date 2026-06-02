@@ -3,7 +3,7 @@
 export interface EmailAccount {
   id: string;
   email: string;
-  provider: 'gmail' | 'outlook';
+  provider: 'gmail';
   accessToken?: string;
   refreshToken?: string;
   expiryDate?: number;
@@ -163,7 +163,7 @@ export interface Email {
   date: string;
   read: boolean;
   labels: string[];
-  provider: 'gmail' | 'outlook';
+  provider: 'gmail';
   messageId?: string;
   gmailCategory?: 'primary' | 'promotions' | 'social' | 'updates' | 'forums';
   aiSummary?: string;
@@ -215,7 +215,7 @@ export interface Draft {
   body: string;
   inReplyTo?: string;
   threadId?: string;
-  provider: 'gmail' | 'outlook';
+  provider: 'gmail';
   lastEdited: string;
   aiGenerated?: boolean;
 }
@@ -259,7 +259,7 @@ export interface AppSettings {
   };
 }
 
-export interface LocalStorageData {
+export interface AppStorageData {
   accounts: EmailAccount[];
   emails: Email[];
   drafts: Draft[];

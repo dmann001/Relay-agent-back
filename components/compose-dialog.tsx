@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,12 +37,6 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
   const isEditingDraft = Boolean(draft?.id)
 
   const { toast } = useToast()
-  const defaultProvider = useMemo(() => {
-    if (draft?.provider) return draft.provider
-    const accounts = storage.getAccounts()
-    return accounts[0]?.provider || "gmail"
-  }, [draft?.provider])
-
   useEffect(() => {
     if (!open) return
 
@@ -175,7 +169,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
       body,
       inReplyTo: replyTo?.messageId || draft?.inReplyTo,
       threadId: replyTo?.threadId || draft?.threadId,
-      provider: defaultProvider,
+      provider: "gmail",
       lastEdited: now,
       aiGenerated: Boolean(replyTo?.originalBody),
     }
@@ -229,11 +223,20 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
 
     setIsGeneratingDraft(true)
     try {
-      const draft = await api.ai.generateDraft(
-        replyTo.originalBody,
-        subject,
-        "professional"
-      )
+      const response = await fetch("/api/ai/generate-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: settings.openaiApiKey,
+          email: replyTo.originalBody,
+          instructions: `Draft a professional reply with subject: ${subject}`,
+        }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Could not generate draft")
+      }
+      const { draft } = await response.json()
       setBody(draft)
       toast({ title: "Draft generated!", description: "AI has created a draft response for you" })
     } catch (error: any) {
@@ -398,4 +401,3 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     </Dialog>
   )
 }
-

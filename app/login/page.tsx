@@ -58,8 +58,8 @@ export default function LoginPage() {
   }, [])
 
   useEffect(() => {
-    const preference = getAuthStoragePreference()
-    signInForm.setValue("rememberMe", preference === "local")
+    getAuthStoragePreference()
+    signInForm.setValue("rememberMe", false)
   }, [signInForm])
 
   const signUpForm = useForm<SignUpValues>({
@@ -266,7 +266,7 @@ export default function LoginPage() {
               {[
                 { icon: Sparkles, text: "AI-powered email summarization", color: "from-[#E8DCC4] to-[#C4A052]" },
                 { icon: Zap, text: "Context-aware reply drafting", color: "from-[#FEBC2E] to-[#FF9500]" },
-                { icon: Shield, text: "Privacy-first local storage", color: "from-[#28C840] to-[#1E9432]" },
+                { icon: Shield, text: "Supabase-backed data storage", color: "from-[#28C840] to-[#1E9432]" },
               ].map((feature, i) => (
                 <div
                   key={i}

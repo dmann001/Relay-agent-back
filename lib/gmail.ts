@@ -27,7 +27,7 @@ const getAuthorizedClient = async (
     const accessTokenResponse = await authClient.getAccessToken();
     if (accessTokenResponse?.token) {
       updatedAccessToken = accessTokenResponse.token;
-      updatedExpiryDate = authClient.credentials.expiry_date;
+      updatedExpiryDate = authClient.credentials.expiry_date ?? undefined;
     }
   }
 

@@ -2,27 +2,21 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
-import { Inbox, Mail, Archive, Settings, FileText, Sparkles, LogOut, SendHorizontal } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { Inbox, Mail, Archive, Settings, FileText, LogOut, SendHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { ProviderIcon } from "@/components/provider-icon"
 import { RelayedModeToggle } from "@/components/relayed-mode-toggle"
 import { storage } from "@/lib/storage"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-provider"
-import type { Email } from "@/types"
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const { user, signOut } = useAuth()
-  const providerParam = searchParams.get("provider")
   const [counts, setCounts] = useState({
     inbox: 0,
-    gmail: 0,
-    outlook: 0,
     drafts: 0,
     archives: 0,
     sent: 0,
@@ -32,13 +26,9 @@ export function AppSidebar() {
     const emails = storage.getEmails()
     const nonArchived = emails.filter((e) => !e.isArchived)
     const unread = nonArchived.filter((e) => !e.read)
-    const byProvider = (provider: Email["provider"]) =>
-      nonArchived.filter((e) => e.provider === provider)
 
     setCounts({
       inbox: unread.length,
-      gmail: byProvider("gmail").filter((e) => !e.read).length,
-      outlook: byProvider("outlook").filter((e) => !e.read).length,
       drafts: storage.getDrafts().length,
       archives: storage.getArchivedEmails().length,
       sent: storage.getSentEmails().length,
@@ -62,13 +52,10 @@ export function AppSidebar() {
   }, [])
 
   const navigation = [
-    { name: "Unified Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
-    { name: "Gmail", href: "/inbox?provider=gmail", icon: "gmail", count: counts.gmail },
-    { name: "Outlook", href: "/inbox?provider=outlook", icon: "outlook", count: counts.outlook },
+    { name: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
     { name: "Sent", href: "/sent", icon: SendHorizontal, count: counts.sent },
     { name: "Drafts", href: "/drafts", icon: FileText, count: counts.drafts },
     { name: "Archives", href: "/archives", icon: Archive, count: counts.archives },
-    { name: "AI Agent", href: "/agent", icon: Sparkles },
   ]
 
   return (
@@ -92,12 +79,8 @@ export function AppSidebar() {
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {navigation.map((item) => {
-          const isProviderItem = item.href.startsWith("/inbox?provider=")
-          const isActive = isProviderItem
-            ? pathname === "/inbox" && providerParam === item.href.split("provider=")[1]
-            : pathname === item.href && (item.href !== "/inbox" || !providerParam)
-          const IconComponent = typeof item.icon === "string" ? null : item.icon
-          const isProviderIcon = typeof item.icon === "string"
+          const isActive = pathname === item.href
+          const IconComponent = item.icon
 
           return (
             <Link
@@ -111,11 +94,7 @@ export function AppSidebar() {
               )}
               title={item.name}
             >
-              {isProviderIcon ? (
-                <ProviderIcon provider={item.icon as "gmail" | "outlook"} className="mr-3 h-4 w-4" />
-              ) : (
-                IconComponent && <IconComponent className={cn("mr-3 h-4 w-4", isActive && "text-[#E8DCC4]")} />
-              )}
+              <IconComponent className={cn("mr-3 h-4 w-4", isActive && "text-[#E8DCC4]")} />
               <span>{item.name}</span>
               {item.count && item.count > 0 && (
                 <Badge
@@ -170,4 +149,3 @@ export function AppSidebar() {
     </aside>
   )
 }
-
