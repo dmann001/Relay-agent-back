@@ -1305,7 +1305,7 @@ export function LandingPage() {
           {/* Section Header */}
           <div className="text-center mb-16">
             <span className="inline-block text-xs font-mono tracking-[0.3em] text-[#C4A052] uppercase mb-4">
-              // Access
+              {"// Access"}
             </span>
             <h2 className="text-4xl md:text-5xl font-light tracking-[-0.03em] mb-4 text-[#FAFAF9]">
               Fair pricing. <span className="text-[#8A8A8A]">Unlimited power.</span>

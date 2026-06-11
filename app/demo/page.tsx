@@ -185,7 +185,7 @@ function SimulationView({ scenarioId, onExit }: { scenarioId: ScenarioId, onExit
 
     // INITIALIZATION & RUNNER
     useEffect(() => {
-        let timeoutIds: NodeJS.Timeout[] = []
+        const timeoutIds: NodeJS.Timeout[] = []
 
         // Reset state
         setStep(0)
@@ -242,7 +242,7 @@ function SimulationView({ scenarioId, onExit }: { scenarioId: ScenarioId, onExit
         else if (scenarioId === 'search') {
             // Step 1: User types
             runStep(500, () => {
-                let text = "Find the PDF about the Q3 budget"
+                const text = "Find the PDF about the Q3 budget"
                 let i = 0
                 setIsTyping(true)
                 const type = setInterval(() => {
@@ -278,7 +278,7 @@ function SimulationView({ scenarioId, onExit }: { scenarioId: ScenarioId, onExit
             runStep(500, () => setMessages([{ role: 'agent', text: "Drafting a reply to Sarah..." }]))
             // Step 2: User input shorthand
             runStep(1500, () => {
-                let text = "Tell her we are delayed by 2 days due to API issues"
+                const text = "Tell her we are delayed by 2 days due to API issues"
                 let i = 0
                 setIsTyping(true)
                 const type = setInterval(() => {
