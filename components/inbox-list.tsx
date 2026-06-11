@@ -438,7 +438,7 @@ export function InboxList() {
 
     try {
       let totalNewEmails = 0
-      let updatedTokens = { ...accountTokens }
+      const updatedTokens = { ...accountTokens }
 
       for (const account of accounts) {
         if (account.accessToken) {

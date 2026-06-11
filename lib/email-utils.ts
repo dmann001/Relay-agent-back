@@ -1,5 +1,5 @@
 // Utility functions for email content processing
-import DOMPurify from 'isomorphic-dompurify';
+import DOMPurify from 'dompurify';
 
 /**
  * Sanitizes HTML content by removing dangerous tags and attributes
