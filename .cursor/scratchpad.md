@@ -31,6 +31,40 @@ Commands
 - `pnpm dev` (Next.js + Express)
 - `pnpm build`
 - `pnpm lint`
+- `pnpm test`
+- `pnpm test:ci`
+
+Quality tooling
+- ESLint 9 flat config in `eslint.config.mjs`.
+- Uses Next.js core-web-vitals and TypeScript recommended configurations.
+- Legacy compatibility overrides currently disable:
+  - `@typescript-eslint/no-explicit-any`
+  - `react-hooks/immutability`
+  - `react-hooks/purity`
+  - `react-hooks/set-state-in-effect`
+  - `react/no-unescaped-entities`
+- Lint exits successfully but reports 56 existing warnings, primarily unused
+  variables/imports and React hook dependency advisories.
+- Jest 29 config is in `jest.config.mjs` and uses the Node environment.
+- Unit tests are in `lib/email-utils.test.ts`.
+- GitHub Actions workflow is in `.github/workflows/ci.yml`.
+- CI installs with pnpm, then runs lint, tests, and the production build.
+
+Dependency notes
+- Replaced `isomorphic-dompurify` with browser-native `dompurify`.
+- Removed `jest-environment-jsdom`.
+- The project dependency tree no longer contains `jsdom`.
+- `email-utils` is currently consumed only by the client component
+  `components/thread-view.tsx`.
+
+Latest verification
+- `pnpm lint`: passes with 56 warnings.
+- `pnpm test:ci`: passes, 11 tests.
+- `pnpm build`: passes.
+- Build still warns about multiple lockfiles because a separate
+  `C:\Users\dhruv\pnpm-lock.yaml` is detected outside this repository.
+- `next@16.0.0` is reported by pnpm as vulnerable and should be upgraded in a
+  separate compatibility-focused change.
 
 Env vars (core)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
