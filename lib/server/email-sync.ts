@@ -244,7 +244,7 @@ export async function loadMoreMailbox(
   const state = await getSyncState(account.id);
   const tokens = parseMailboxPageTokens(state?.pagination_token);
   const tokenKey = mailbox === 'inbox' ? 'inbox' : 'sent';
-  let pageToken = mailbox === 'inbox' ? tokens.inbox : tokens.sent;
+  const pageToken = mailbox === 'inbox' ? tokens.inbox : tokens.sent;
   const query = mailbox === 'inbox' ? INBOX_QUERY : SENT_QUERY;
 
   // Accounts synced before pagination tokens were stored: walk Gmail pages
