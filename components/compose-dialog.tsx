@@ -224,7 +224,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     try {
       const newFiles = await Promise.all(fileList.map(readFile))
       setAttachments((prev) => [...prev, ...newFiles])
-    } catch (error) {
+    } catch {
       toast({ title: "Attachment failed", description: "Could not read one of the files.", variant: "destructive" })
     }
   }

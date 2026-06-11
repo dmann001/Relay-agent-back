@@ -12,9 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
@@ -37,28 +35,20 @@ import {
   AlertCircle,
   Settings,
   Play,
-  Archive,
   Filter,
   ListTodo,
-  Calendar,
-  MessageSquare,
-  Heart,
   BarChart3,
   RefreshCw,
   Trash2,
   Plus,
-  ChevronRight,
   Loader2,
 } from "lucide-react"
 
 import type {
-  Email,
   ExtractedTask,
   Reminder,
   SmartFilter,
-  ArchiveRule,
   AgentUsageStats,
-  ReplySuggestion,
 } from "@/types"
 
 // Status configuration
@@ -88,7 +78,6 @@ export function AgentActions() {
   const [tasks, setTasks] = useState<ExtractedTask[]>([])
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [filters, setFilters] = useState<SmartFilter[]>([])
-  const [archiveRules, setArchiveRules] = useState<ArchiveRule[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [settings, setSettings] = useState(storage.getSettings())
 
@@ -109,7 +98,6 @@ export function AgentActions() {
     setTasks(storage.getTasks())
     setReminders(storage.getReminders())
     setFilters(storage.getSmartFilters())
-    setArchiveRules(storage.getArchiveRules())
     setSettings(storage.getSettings())
   }
 
@@ -161,7 +149,7 @@ export function AgentActions() {
         description: `Extracted ${totalTasks} tasks from ${emails.length} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to extract tasks", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -187,7 +175,7 @@ export function AgentActions() {
         description: `Analyzed ${processed} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to analyze sentiment", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -212,7 +200,7 @@ export function AgentActions() {
         description: `Scored ${processed} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to score priorities", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -237,7 +225,7 @@ export function AgentActions() {
         description: `Categorized ${processed} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to categorize emails", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -268,7 +256,7 @@ export function AgentActions() {
         description: `Generated suggestions for ${processed} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to generate reply suggestions", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -293,7 +281,7 @@ export function AgentActions() {
         description: `Summarized ${processed} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to summarize emails", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -318,7 +306,7 @@ export function AgentActions() {
         description: `Processed ${processed} emails`,
       })
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to detect meetings", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -387,7 +375,7 @@ export function AgentActions() {
       setNewFilterQuery("")
       setNewFilterName("")
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to create filter", variant: "destructive" })
     } finally {
       setIsCreatingFilter(false)
@@ -414,7 +402,7 @@ export function AgentActions() {
         })
       }
       loadData()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to auto-archive", variant: "destructive" })
     } finally {
       setIsLoading(false)
@@ -431,12 +419,6 @@ export function AgentActions() {
   // Delete task
   const deleteTask = (taskId: string) => {
     storage.removeTask(taskId)
-    loadData()
-  }
-
-  // Dismiss reminder
-  const dismissReminder = (reminderId: string) => {
-    storage.updateReminder(reminderId, { active: false })
     loadData()
   }
 
@@ -659,7 +641,7 @@ export function AgentActions() {
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-muted-foreground">{action.usage}</span>
                             <div className="flex items-center gap-2">
-                              {action.onRun && action.status !== "coming-soon" && (
+                              {action.onRun && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -674,7 +656,7 @@ export function AgentActions() {
                                   )}
                                 </Button>
                               )}
-                              {action.feature && action.status !== "coming-soon" && (
+                              {action.feature && (
                                 <Switch
                                   checked={isEnabled}
                                   onCheckedChange={() => toggleFeature(action.feature!)}

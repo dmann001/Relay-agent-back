@@ -51,37 +51,26 @@ function getPriorityLabel(score: number): { label: string; color: string; icon: 
   return { label: 'Low', color: 'text-muted-foreground bg-muted', icon: Clock }
 }
 
+function calculatePriority(email: Email, vipSenders: string[]): number {
+  let score = email.priorityScore || 50
+
+  if (vipSenders.includes(email.from.email.toLowerCase())) score += 20
+  if (email.sentiment?.urgency === 'critical') score += 30
+  else if (email.sentiment?.urgency === 'high') score += 20
+  else if (email.sentiment?.urgency === 'medium') score += 10
+  if (!email.read) score += 10
+  if (email.meetingRequest?.detected) score += 15
+
+  const hoursOld = (Date.now() - new Date(email.date).getTime()) / (1000 * 60 * 60)
+  if (hoursOld < 1) score += 15
+  else if (hoursOld < 24) score += 10
+
+  return Math.min(100, score)
+}
+
 export function PriorityFeed({ emails }: PriorityFeedProps) {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const vipSenders = storage.getVipSenders()
-
-  // Calculate priority score for emails without one
-  const calculatePriority = (email: Email): number => {
-    let score = email.priorityScore || 50
-
-    // VIP sender bonus
-    if (vipSenders.includes(email.from.email.toLowerCase())) {
-      score += 20
-    }
-
-    // Urgency bonus
-    if (email.sentiment?.urgency === 'critical') score += 30
-    else if (email.sentiment?.urgency === 'high') score += 20
-    else if (email.sentiment?.urgency === 'medium') score += 10
-
-    // Unread bonus
-    if (!email.read) score += 10
-
-    // Meeting request bonus
-    if (email.meetingRequest?.detected) score += 15
-
-    // Recency bonus (emails from last 24h get boost)
-    const hoursOld = (Date.now() - new Date(email.date).getTime()) / (1000 * 60 * 60)
-    if (hoursOld < 1) score += 15
-    else if (hoursOld < 24) score += 10
-
-    return Math.min(100, score)
-  }
 
   // Sort and filter emails
   const sortedEmails = useMemo(() => {
@@ -109,7 +98,7 @@ export function PriorityFeed({ emails }: PriorityFeedProps) {
 
     // Sort by calculated priority
     return filtered
-      .map(email => ({ ...email, calculatedPriority: calculatePriority(email) }))
+      .map(email => ({ ...email, calculatedPriority: calculatePriority(email, vipSenders) }))
       .sort((a, b) => b.calculatedPriority - a.calculatedPriority)
   }, [emails, activeFilter, vipSenders])
 
@@ -247,4 +236,3 @@ export function PriorityFeed({ emails }: PriorityFeedProps) {
     </div>
   )
 }
-

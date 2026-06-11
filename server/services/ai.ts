@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { vectorStore } from './vector_store';
-import { Email, SentimentResult, MeetingRequest, ExtractedTask } from '../../types';
+import { Email, SentimentResult, MeetingRequest } from '../../types';
 
 // Lazy initialization of OpenAI client
 const getOpenAI = () => {

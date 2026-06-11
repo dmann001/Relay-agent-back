@@ -461,7 +461,7 @@ export function RelayedHub() {
 
     if (lowerCommand.includes("summar")) {
       const intentSpread = Object.entries(intentCounts)
-        .filter(([_, count]) => count > 0)
+        .filter(([, count]) => count > 0)
         .map(([intent, count]) => `${intentConfig[intent as EmailIntent]?.label || intent}: ${count}`)
         .join("\n- ")
 
@@ -583,7 +583,7 @@ export function RelayedHub() {
         topEmails,
       })
       return { content: aiResponse.response }
-    } catch (error) {
+    } catch {
       return {
         content:
           "Try: \n- What needs my attention?\n- Summarize my inbox\n- Find emails about [topic]\n- Show decisions needed\n- Show meetings",

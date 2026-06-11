@@ -28,20 +28,24 @@ const authStorage = {
 const disabledSupabase = {
   auth: {
     getSession: async () => ({ data: { session: null }, error: null }),
-    onAuthStateChange: (_callback: (event: string, session: any) => void) => ({
-      data: { subscription: { unsubscribe: () => {} } },
-    }),
+    onAuthStateChange: (_callback: (event: string, session: any) => void) => {
+      void _callback
+      return { data: { subscription: { unsubscribe: () => {} } } }
+    },
     signOut: async () => ({ error: disabledAuthError }),
     signInWithPassword: async () => ({ error: disabledAuthError }),
     signUp: async () => ({ data: { session: null }, error: disabledAuthError }),
     signInWithOAuth: async () => ({ error: disabledAuthError }),
   },
-  from: (_table: string) => ({
-    select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: disabledAuthError }) }) }),
-    insert: async () => ({ error: disabledAuthError }),
-    upsert: async () => ({ error: disabledAuthError }),
-    delete: () => ({ eq: async () => ({ error: disabledAuthError }) }),
-  }),
+  from: (_table: string) => {
+    void _table
+    return {
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: disabledAuthError }) }) }),
+      insert: async () => ({ error: disabledAuthError }),
+      upsert: async () => ({ error: disabledAuthError }),
+      delete: () => ({ eq: async () => ({ error: disabledAuthError }) }),
+    }
+  },
 }
 
 export const supabase =
@@ -59,6 +63,7 @@ export const supabase =
 export const getAuthStoragePreference = (): AuthStoragePreference => "session"
 
 export const setAuthStoragePreference = (_rememberMe: boolean) => {
+  void _rememberMe
   // App data is stored in Supabase. Auth session persistence is intentionally
   // limited to sessionStorage so Relay does not keep app state in localStorage.
 }

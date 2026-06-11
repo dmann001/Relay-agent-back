@@ -1,12 +1,8 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/auth-provider"
 import "./globals.css"
-
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Relay - AI-Powered Email Client",
@@ -22,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
-        <ThemeProvider defaultTheme="dark" storageKey="relay-ui-theme">
+        <ThemeProvider defaultTheme="dark">
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
       </body>

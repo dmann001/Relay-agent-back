@@ -9,7 +9,6 @@ import {
   TrendingUp,
   Clock,
   AlertTriangle,
-  MessageSquare,
   Heart,
   Bell,
   X,
@@ -73,7 +72,7 @@ export function AmbientIndicators({ emails }: AmbientIndicatorsProps) {
     }, {} as Record<string, number>)
 
     const highVolumeSenders = Object.entries(senderCounts)
-      .filter(([_, count]) => count >= 3)
+      .filter(([, count]) => count >= 3)
       .sort((a, b) => b[1] - a[1])
 
     if (highVolumeSenders.length > 0) {

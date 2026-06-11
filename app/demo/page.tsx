@@ -12,11 +12,8 @@ import {
     X,
     ChevronLeft,
     Sparkles,
-    Zap,
-    Command,
     Clock
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 
 // --- TYPES ---
 
@@ -165,13 +162,11 @@ function SelectionView({ onSelect }: { onSelect: (id: ScenarioId) => void }) {
 // --- SIMULATION VIEW ---
 
 function SimulationView({ scenarioId, onExit }: { scenarioId: ScenarioId, onExit: () => void }) {
-    const [step, setStep] = useState(0)
     const [messages, setMessages] = useState<{ role: 'user' | 'agent', text: any }[]>([])
     const [inputValue, setInputValue] = useState("")
     const [isTyping, setIsTyping] = useState(false)
     const [isAgentThinking, setIsAgentThinking] = useState(false)
     const [emails, setEmails] = useState<any[]>([])
-    const [activePanel, setActivePanel] = useState<'list' | 'email' | 'search'>('list')
     const [completed, setCompleted] = useState(false)
 
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -188,7 +183,6 @@ function SimulationView({ scenarioId, onExit }: { scenarioId: ScenarioId, onExit
         const timeoutIds: NodeJS.Timeout[] = []
 
         // Reset state
-        setStep(0)
         setMessages([])
         setInputValue("")
         setCompleted(false)
@@ -201,12 +195,9 @@ function SimulationView({ scenarioId, onExit }: { scenarioId: ScenarioId, onExit
                 { id: 4, from: "Newsletter", subject: "Tech Weekly", time: "07:30 AM", priority: "low", preview: "The latest in AI..." },
                 { id: 5, from: "Cloudflare", subject: "Invoice #9921", time: "06:15 AM", priority: "low", preview: "Your monthly invoice is ready..." }
             ])
-            setActivePanel('list')
         } else if (scenarioId === 'search') {
-            setActivePanel('list') // empty list initially
             setEmails([])
         } else if (scenarioId === 'draft') {
-            setActivePanel('email')
             setEmails([{ id: 1, from: "Sarah Connors", subject: "Project Timeline", time: "11:20 AM", body: "Hey, are we still on track for the launch next Tuesday? Need to know by EOD." }])
         }
 

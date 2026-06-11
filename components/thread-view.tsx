@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { AgentBanner } from "@/components/agent-banner"
-import { Sparkles, Reply, Forward, Archive, Trash2, MoreHorizontal, Loader2, Wand2, Paperclip, Download, MessageSquare, ListTodo, Calendar, TrendingUp, Smile, Frown, Meh, AlertTriangle, Send, RefreshCw } from "lucide-react"
+import { Sparkles, Reply, Forward, Archive, Trash2, MoreHorizontal, Loader2, Wand2, Paperclip, Download, MessageSquare, ListTodo, Calendar, TrendingUp, Smile, Frown, Meh, Send, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { storage } from "@/lib/storage"
 import { api } from "@/lib/api"
@@ -290,7 +290,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
       })
 
       toast({ title: "Suggestions Ready", description: "AI generated 3 reply options" })
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to generate suggestions", variant: "destructive" })
     } finally {
       setIsLoadingSuggestions(false)
@@ -324,7 +324,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
       } else {
         toast({ title: "No Tasks Found", description: "No action items detected in this email" })
       }
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to extract tasks", variant: "destructive" })
     } finally {
       setIsExtractingTasks(false)

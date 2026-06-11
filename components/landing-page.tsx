@@ -194,7 +194,7 @@ export function LandingPage() {
       }, 500) // Wait for fade out
     }, 4000) // Change every 4 seconds
     return () => clearInterval(interval)
-  }, [])
+  }, [placeholders.length])
 
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -235,19 +235,6 @@ export function LandingPage() {
   const confidenceScore = Math.min(99, activePreviewMode.progress + 6)
   const recallScore = Math.min(99, activePreviewMode.progress + 3)
   const automationScore = Math.min(99, activePreviewMode.progress + 9)
-  const runwayActions = activePreviewMode.chips.map((chip, index) => ({
-    label: chip,
-    eta: `${(index + 1) * 4}m`,
-    state: index === 0 ? "Queued" : index === 1 ? "Staged" : "Auto",
-    tone: index === 2 ? "auto" : index === 1 ? "high" : "info"
-  }))
-  const guardrailSettings = [
-    { label: "VIP senders require approval", state: "Locked", tone: "critical" },
-    { label: "Finance threads require review", state: "Review", tone: "high" },
-    { label: "Auto-send outside hours", state: activePreviewMode.id === "autopilot" ? "Paused" : "Locked", tone: "info" }
-  ]
-
-
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-[#FAFAF9] selection:bg-[#E8DCC4]/20 overflow-x-hidden">
       {/* Living Void Background: Deep Noir with Gold Mesh */}

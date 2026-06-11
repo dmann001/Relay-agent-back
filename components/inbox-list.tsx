@@ -162,7 +162,7 @@ export function InboxList() {
     } finally {
       setIsSyncing(false)
     }
-  }, [loadPage, toast])
+  }, [emails.length, loadPage, toast])
 
   // Handle OAuth callback redirect - tokens are already stored server-side.
   useEffect(() => {
@@ -193,7 +193,7 @@ export function InboxList() {
         if (accounts.length > 0 && gmailAuthSuccess !== "success") {
           await handleSync(true)
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setIsLoading(false)
           setHasAccounts(false)
