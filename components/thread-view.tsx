@@ -1,16 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { AgentBanner } from "@/components/agent-banner"
-import { Sparkles, Reply, Forward, Archive, Trash2, MoreHorizontal, Loader2, Wand2, Paperclip, Download, MessageSquare, ListTodo, Calendar, TrendingUp, Smile, Frown, Meh, AlertTriangle, Send } from "lucide-react"
+import { Sparkles, Reply, Forward, Archive, Trash2, MoreHorizontal, Loader2, Wand2, Paperclip, Download, MessageSquare, ListTodo, Calendar, TrendingUp, Smile, Frown, Meh, AlertTriangle, Send, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { storage } from "@/lib/storage"
 import { api } from "@/lib/api"
+import { emailApi } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
 import { formatEmailContent, formatFileSize } from "@/lib/email-utils"
 import type { Email } from "@/types"
@@ -28,6 +30,8 @@ function formatTimestamp(date: string): string {
 
 export function ThreadView({ threadId }: { threadId: string }) {
   const [email, setEmail] = useState<Email | null>(null)
+  const [isLoadingEmail, setIsLoadingEmail] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [draftContent, setDraftContent] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [replySuggestions, setReplySuggestions] = useState<Array<{ type: 'short' | 'medium' | 'detailed'; content: string; tone: string }>>([])
@@ -35,23 +39,61 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const [extractedTasks, setExtractedTasks] = useState<Array<{ title: string; deadline?: string; priority: 'low' | 'medium' | 'high' }>>([])
   const [isExtractingTasks, setIsExtractingTasks] = useState(false)
   const [isSendingReply, setIsSendingReply] = useState(false)
+  const router = useRouter()
   const { toast } = useToast()
   const summariesEnabled = storage.getSettings().aiFeatures.autoSummarize
 
-  // Load email from storage
+  // The email list is served from the Relay DB metadata cache, but the full
+  // body is fetched LIVE from Gmail when the email is opened.
   useEffect(() => {
-    const emails = storage.getEmails()
-    const foundEmail = emails.find((e) => e.id === threadId)
-    if (foundEmail) {
-      if (!foundEmail.read) {
-        const now = new Date().toISOString()
-        storage.updateEmail(foundEmail.id, { read: true, lastInteraction: now })
-        setEmail({ ...foundEmail, read: true, lastInteraction: now })
-      } else {
-        storage.recordEmailInteraction(foundEmail.id)
-        setEmail(foundEmail)
+    let cancelled = false
+
+    const load = async () => {
+      setIsLoadingEmail(true)
+      setLoadError(null)
+
+      // Show cached metadata instantly while the body loads.
+      const cached = storage.getEmails().find((e) => e.id === threadId)
+      if (cached) setEmail(cached)
+
+      try {
+        const fullEmail = await emailApi.getEmail(threadId)
+        if (cancelled) return
+
+        // Preserve any locally cached AI enrichments.
+        setEmail((prev) => prev ? {
+          ...fullEmail,
+          aiSummary: prev.aiSummary || fullEmail.aiSummary,
+          aiLabels: prev.aiLabels?.length ? prev.aiLabels : fullEmail.aiLabels,
+          sentiment: prev.sentiment || fullEmail.sentiment,
+          priorityScore: prev.priorityScore ?? fullEmail.priorityScore,
+          read: true,
+        } : { ...fullEmail, read: true })
+
+        // Mark as read in Gmail + DB cache (fire and forget).
+        if (!fullEmail.read) {
+          void emailApi.modifyEmail(threadId, "markRead").catch(() => {})
+        }
+        storage.updateEmail(threadId, { read: true, lastInteraction: new Date().toISOString() })
+      } catch (error: any) {
+        if (cancelled) return
+        if (!cached) {
+          setLoadError(error?.message || "Could not load this email from Gmail")
+        } else {
+          toast({
+            title: "Showing cached preview",
+            description: "Could not fetch the full email from Gmail",
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (!cancelled) setIsLoadingEmail(false)
       }
     }
+
+    void load()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId])
 
   // Auto-generation disabled: drafts are only generated on user request.
@@ -127,72 +169,42 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
   }
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!email || !draftContent.trim()) return
 
-    const draft = {
-      id: `draft_${Date.now()}`,
-      to: [email.from.email],
-      subject: `Re: ${email.subject}`,
-      body: draftContent,
-      inReplyTo: email.id,
-      threadId: email.threadId,
-      provider: email.provider,
-      lastEdited: new Date().toISOString(),
-      aiGenerated: true,
+    try {
+      await emailApi.saveDraft({
+        to: [email.from.email],
+        subject: email.subject.startsWith("Re:") ? email.subject : `Re: ${email.subject}`,
+        body: draftContent,
+        threadId: email.threadId,
+        inReplyToMessageId: email.messageId || email.id,
+      })
+      toast({
+        title: "Draft Saved",
+        description: "Saved to Gmail Drafts",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Draft save failed",
+        description: error.message || "Could not save draft to Gmail",
+        variant: "destructive",
+      })
     }
-
-    storage.addDraft(draft as any)
-    toast({
-      title: "Draft Saved",
-      description: "Your draft has been saved successfully",
-    })
   }
 
   const handleSendReply = async () => {
     if (!email || !draftContent.trim()) return
 
-    const accounts = storage.getAccounts()
-    const gmailAccount = accounts.find(a => a.provider === 'gmail')
-
-    if (!gmailAccount?.accessToken) {
-      toast({
-        title: "No Gmail account",
-        description: "Please connect a Gmail account in Settings",
-        variant: "destructive",
-      })
-      return
-    }
-
     setIsSendingReply(true)
     try {
-      const response = await fetch("/api/emails/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accessToken: gmailAccount.accessToken,
-          refreshToken: gmailAccount.refreshToken,
-          expiryDate: gmailAccount.expiryDate,
-          to: [email.from.email],
-          subject: email.subject.startsWith("Re:") ? email.subject : `Re: ${email.subject}`,
-          body: draftContent,
-          threadId: email.threadId,
-          inReplyToMessageId: email.messageId || email.id,
-        }),
+      await emailApi.sendEmail({
+        to: [email.from.email],
+        subject: email.subject.startsWith("Re:") ? email.subject : `Re: ${email.subject}`,
+        body: draftContent,
+        threadId: email.threadId,
+        inReplyToMessageId: email.messageId || email.id,
       })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Failed to send reply")
-      }
-
-      const result = await response.json()
-      if (result.auth?.accessToken || result.auth?.expiryDate) {
-        const updates: { accessToken?: string; expiryDate?: number } = {}
-        if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
-        if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
-        storage.updateAccount(gmailAccount.id, updates)
-      }
 
       toast({
         title: "Reply sent!",
@@ -222,45 +234,11 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
 
     if (!attachment.attachmentId) return
-    const accounts = storage.getAccounts()
-    const gmailAccount = accounts.find(a => a.provider === 'gmail')
-    if (!gmailAccount?.accessToken) {
-      toast({
-        title: "No Gmail account",
-        description: "Please connect a Gmail account in Settings",
-        variant: "destructive",
-      })
-      return
-    }
 
     try {
-      const response = await fetch("/api/emails/attachment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accessToken: gmailAccount.accessToken,
-          refreshToken: gmailAccount.refreshToken,
-          expiryDate: gmailAccount.expiryDate,
-          messageId: email.id,
-          attachmentId: attachment.attachmentId,
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Failed to fetch attachment")
-      }
-
-      const result = await response.json()
-      if (result.auth?.accessToken || result.auth?.expiryDate) {
-        const updates: { accessToken?: string; expiryDate?: number } = {}
-        if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
-        if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
-        storage.updateAccount(gmailAccount.id, updates)
-      }
-
+      const data = await emailApi.getAttachment(email.id, attachment.attachmentId)
       const link = document.createElement('a');
-      link.href = `data:${attachment.mimeType};base64,${result.data}`;
+      link.href = `data:${attachment.mimeType};base64,${data}`;
       link.download = attachment.filename || 'attachment';
       link.click();
     } catch (error: any) {
@@ -353,18 +331,55 @@ export function ThreadView({ threadId }: { threadId: string }) {
     }
   }
 
-  // Archive email
-  const handleArchive = () => {
+  // Archive email - removes the INBOX label in Gmail, then updates the cache.
+  const handleArchive = async () => {
     if (!email) return
-    storage.archiveEmail(email.id)
-    toast({ title: "Email Archived", description: "Email has been moved to archive" })
+    try {
+      await emailApi.modifyEmail(email.id, "archive")
+      storage.incrementUsageStat('emailsArchived', 1, 0.5)
+      toast({ title: "Email Archived", description: "Removed from Inbox in Gmail too" })
+      router.push("/inbox")
+    } catch (error: any) {
+      toast({
+        title: "Archive failed",
+        description: error.message || "Could not archive this email",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Delete email - moves it to Gmail Trash (no permanent delete).
+  const handleTrash = async () => {
+    if (!email) return
+    try {
+      await emailApi.modifyEmail(email.id, "trash")
+      toast({ title: "Moved to Trash", description: "You can restore it from Trash" })
+      router.push("/inbox")
+    } catch (error: any) {
+      toast({
+        title: "Delete failed",
+        description: error.message || "Could not move this email to Trash",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (!email && isLoadingEmail) {
+    return (
+      <div className="flex h-full items-center justify-center bg-[#0A0A0B]">
+        <div className="text-center">
+          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#E8DCC4]" />
+          <p className="mt-2 text-sm text-[#8A8A8A]">Fetching email from Gmail...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!email) {
     return (
       <div className="flex h-full items-center justify-center bg-[#0A0A0B]">
         <div className="text-center">
-          <p className="text-[#8A8A8A]">Email not found</p>
+          <p className="text-[#8A8A8A]">{loadError || "Email not found"}</p>
         </div>
       </div>
     )
@@ -404,7 +419,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
             <Button size="icon" onClick={handleArchive} title="Archive" className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] border-0">
               <Archive className="h-4 w-4" />
             </Button>
-            <Button size="icon" className="text-[#8A8A8A] hover:text-red-400 hover:bg-red-500/10 border-0">
+            <Button size="icon" onClick={handleTrash} title="Move to Trash" className="text-[#8A8A8A] hover:text-red-400 hover:bg-red-500/10 border-0">
               <Trash2 className="h-4 w-4" />
             </Button>
             <Button size="icon" className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] border-0">
@@ -560,9 +575,26 @@ export function ThreadView({ threadId }: { threadId: string }) {
                 <span className="text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</span>
               </div>
 
-              {/* Email Body */}
+              {/* Email Body - fetched live from Gmail */}
+              {isLoadingEmail && !email.body ? (
+                <div className="flex items-center gap-2 py-6 text-sm text-[#8A8A8A]">
+                  <Loader2 className="h-4 w-4 animate-spin text-[#E8DCC4]" />
+                  Loading full email from Gmail...
+                </div>
+              ) : null}
               {(() => {
-                const { html, isHtml } = formatEmailContent(email.body, email.bodyPlain);
+                const { html, isHtml } = formatEmailContent(
+                  email.body,
+                  email.bodyPlain || email.snippet
+                );
+
+                if (!html.trim() && !isLoadingEmail) {
+                  return (
+                    <p className="text-sm text-[#8A8A8A] italic py-4">
+                      This email has no body content.
+                    </p>
+                  );
+                }
 
                 if (isHtml) {
                   return (

@@ -176,6 +176,10 @@ export interface Email {
     attachmentId?: string;
     data?: string;
   }>;
+  // Metadata-cache fields (DB stores metadata only; body fetched on open)
+  snippet?: string;
+  isTrashed?: boolean;
+  isStarred?: boolean;
   // New AI-powered fields
   sentiment?: SentimentResult;
   priorityScore?: number; // 0-100

@@ -739,3 +739,44 @@ create policy embeddings_delete_own
   on public.embeddings
   for delete
   using (user_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- Gmail metadata-cache sync (see supabase/migrations/20260611_gmail_metadata_sync.sql)
+-- Relay DB stores email METADATA only; full bodies are fetched live from Gmail.
+-- ---------------------------------------------------------------------------
+
+alter table public.emails
+  add column if not exists is_starred boolean not null default false,
+  add column if not exists is_trashed boolean not null default false,
+  add column if not exists trashed_at timestamptz,
+  add column if not exists is_inbox boolean not null default false,
+  add column if not exists is_sent boolean not null default false,
+  add column if not exists labels text[] not null default '{}',
+  add column if not exists to_recipients jsonb not null default '[]'::jsonb;
+
+create index if not exists emails_user_inbox_idx
+  on public.emails(user_id, is_inbox, is_trashed, received_at desc);
+create index if not exists emails_user_sent_idx
+  on public.emails(user_id, is_sent, received_at desc);
+create index if not exists emails_user_trash_idx
+  on public.emails(user_id, is_trashed, received_at desc);
+
+alter table public.drafts
+  add column if not exists gmail_draft_id text,
+  add column if not exists snippet text not null default '',
+  add column if not exists status text not null default 'saved';
+
+alter table public.drafts
+  drop constraint if exists drafts_status_check;
+alter table public.drafts
+  add constraint drafts_status_check check (status in ('saved', 'saving', 'failed'));
+
+-- Full (non-partial) unique index: Postgres ON CONFLICT inference cannot use
+-- partial indexes, and the drafts sync upserts on (account_id, gmail_draft_id).
+drop index if exists public.drafts_account_gmail_draft_idx;
+create unique index if not exists drafts_account_gmail_draft_uidx
+  on public.drafts(account_id, gmail_draft_id);
+
+alter table public.email_sync_state
+  add column if not exists initial_sync_done boolean not null default false,
+  add column if not exists trash_synced_at timestamptz;
