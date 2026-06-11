@@ -79,6 +79,17 @@ const createDefaultData = (): RelayStorageData => ({
   usageStats: defaultUsageStats(),
 });
 
+// The Supabase blob is a metadata cache only: full email bodies are never
+// persisted (they are fetched live from Gmail when an email is opened).
+const stripEmailBodies = (emails: Email[]): Email[] =>
+  emails.map((email) => ({
+    ...email,
+    body: '',
+    bodyPlain: (email.snippet || email.bodyPlain || '').slice(0, 200),
+    snippet: (email.snippet || email.bodyPlain || '').slice(0, 200),
+    attachments: undefined,
+  }));
+
 const normalizeData = (value?: Partial<RelayStorageData> | null): RelayStorageData => {
   const base = createDefaultData();
   const parsed = value || {};
@@ -88,7 +99,7 @@ const normalizeData = (value?: Partial<RelayStorageData> | null): RelayStorageDa
     ...base,
     ...parsed,
     accounts: parsed.accounts || [],
-    emails: parsed.emails || [],
+    emails: stripEmailBodies(parsed.emails || []),
     drafts: parsed.drafts || [],
     paginationTokens: parsed.paginationTokens || {},
     historyIds: parsed.historyIds || {},

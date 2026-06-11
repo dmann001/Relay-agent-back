@@ -1,16 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Loader2, Send, Sparkles, X, Paperclip, Trash2 } from "lucide-react"
+import { Check, CloudOff, Loader2, Send, Sparkles, X, Paperclip, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { storage } from "@/lib/storage"
-import { api } from "@/lib/api"
-import type { Draft } from "@/types"
+import { emailApi, type RemoteDraft } from "@/lib/email-api"
 
 interface ComposeDialogProps {
   open: boolean
@@ -22,8 +21,12 @@ interface ComposeDialogProps {
     messageId?: string
     originalBody?: string
   }
-  draft?: Draft
+  draft?: RemoteDraft
 }
+
+type DraftStatus = "idle" | "saving" | "saved" | "failed"
+
+const AUTOSAVE_DELAY_MS = 2500
 
 export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDialogProps) {
   const [to, setTo] = useState("")
@@ -34,17 +37,29 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false)
   const [showCc, setShowCc] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; mimeType: string; data: string; size: number }>>([])
-  const isEditingDraft = Boolean(draft?.id)
 
+  // Draft autosave state: drafts are saved to Gmail; the Relay DB keeps only
+  // the gmailDraftId + a small preview.
+  const [draftId, setDraftId] = useState<string | null>(null)
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>("idle")
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skipNextAutosave = useRef(true)
+
+  const isEditingDraft = Boolean(draft?.id)
   const { toast } = useToast()
+
   useEffect(() => {
     if (!open) return
+
+    skipNextAutosave.current = true
+    setDraftStatus(draft ? "saved" : "idle")
+    setDraftId(draft?.id || null)
 
     if (draft) {
       setTo(draft.to.join(", "))
       setCc(draft.cc?.join(", ") || "")
       setSubject(draft.subject)
-      setBody(draft.body)
+      setBody(draft.body || draft.snippet || "")
       setShowCc(Boolean(draft.cc?.length))
       setAttachments([])
       return
@@ -68,15 +83,82 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     setAttachments([])
   }, [open, draft, replyTo])
 
+  const parseRecipients = (value: string) =>
+    value.split(",").map((e) => e.trim()).filter(Boolean)
+
+  const saveDraft = async (silent: boolean = true): Promise<string | null> => {
+    if (!to.trim() && !subject.trim() && !body.trim()) {
+      if (!silent) {
+        toast({ title: "Nothing to save", description: "Add recipients, subject, or message first." })
+      }
+      return null
+    }
+
+    setDraftStatus("saving")
+    try {
+      const result = await emailApi.saveDraft({
+        draftId: draftId || undefined,
+        to: parseRecipients(to),
+        cc: cc ? parseRecipients(cc) : undefined,
+        subject: subject.trim(),
+        body,
+        threadId: replyTo?.threadId,
+        inReplyToMessageId: replyTo?.messageId,
+      })
+      setDraftId(result.draftId)
+      setDraftStatus("saved")
+      if (!silent) {
+        toast({
+          title: "Draft saved",
+          description: "Saved to Gmail Drafts.",
+        })
+      }
+      return result.draftId
+    } catch (error: any) {
+      setDraftStatus("failed")
+      if (!silent) {
+        toast({
+          title: "Draft save failed",
+          description: error.message || "Could not save draft to Gmail",
+          variant: "destructive",
+        })
+      }
+      return null
+    }
+  }
+
+  // Autosave to Gmail while typing (debounced).
+  useEffect(() => {
+    if (!open || isSending) return
+    if (skipNextAutosave.current) {
+      skipNextAutosave.current = false
+      return
+    }
+    if (!to.trim() && !subject.trim() && !body.trim()) return
+
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(() => {
+      void saveDraft(true)
+    }, AUTOSAVE_DELAY_MS)
+
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [to, cc, subject, body, open])
+
   // Reset form when dialog closes
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
       setTo("")
       setCc("")
       setSubject("")
       setBody("")
       setShowCc(false)
       setAttachments([])
+      setDraftId(null)
+      setDraftStatus("idle")
     }
     onOpenChange(isOpen)
   }
@@ -86,65 +168,35 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
       toast({ title: "Missing recipient", description: "Please enter a recipient email", variant: "destructive" })
       return
     }
-
     if (!subject.trim()) {
       toast({ title: "Missing subject", description: "Please enter a subject", variant: "destructive" })
       return
     }
-
     if (!body.trim()) {
       toast({ title: "Missing message", description: "Please enter a message", variant: "destructive" })
       return
     }
 
-    const accounts = storage.getAccounts()
-    const gmailAccount = accounts.find(a => a.provider === 'gmail')
-
-    if (!gmailAccount?.accessToken) {
-      toast({ title: "No Gmail account", description: "Please connect a Gmail account in Settings", variant: "destructive" })
-      return
-    }
-
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     setIsSending(true)
     try {
-      const response = await fetch("/api/emails/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accessToken: gmailAccount.accessToken,
-          refreshToken: gmailAccount.refreshToken,
-          expiryDate: gmailAccount.expiryDate,
-          to: to.split(",").map(e => e.trim()).filter(Boolean),
-          cc: cc ? cc.split(",").map(e => e.trim()).filter(Boolean) : undefined,
-          subject,
-          body,
-          threadId: replyTo?.threadId,
-          inReplyToMessageId: replyTo?.messageId,
-          attachments: attachments.map((file) => ({
-            filename: file.filename,
-            mimeType: file.mimeType,
-            data: file.data,
-          })),
-        }),
+      await emailApi.sendEmail({
+        to: parseRecipients(to),
+        cc: cc ? parseRecipients(cc) : undefined,
+        subject,
+        body,
+        threadId: replyTo?.threadId,
+        inReplyToMessageId: replyTo?.messageId,
+        attachments: attachments.map((file) => ({
+          filename: file.filename,
+          mimeType: file.mimeType,
+          data: file.data,
+        })),
+        // Sending a saved draft removes it from Gmail Drafts + the Relay DB.
+        draftId: draftId || undefined,
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Failed to send email")
-      }
-
-      const result = await response.json()
-      if (result.auth?.accessToken || result.auth?.expiryDate) {
-        const updates: { accessToken?: string; expiryDate?: number } = {}
-        if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
-        if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
-        storage.updateAccount(gmailAccount.id, updates)
-      }
-
       toast({ title: "Email sent!", description: `Your email to ${to} has been sent successfully.` })
-      if (draft?.id) {
-        storage.removeDraft(draft.id)
-      }
       handleOpenChange(false)
     } catch (error: any) {
       console.error("Send email error:", error)
@@ -152,38 +204,6 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     } finally {
       setIsSending(false)
     }
-  }
-
-  const handleSaveDraft = () => {
-    if (!to.trim() && !subject.trim() && !body.trim()) {
-      toast({ title: "Nothing to save", description: "Add recipients, subject, or message first." })
-      return
-    }
-
-    const now = new Date().toISOString()
-    const draftPayload: Draft = {
-      id: draft?.id || `draft_${Date.now()}`,
-      to: to.split(",").map((email) => email.trim()).filter(Boolean),
-      cc: cc ? cc.split(",").map((email) => email.trim()).filter(Boolean) : undefined,
-      subject: subject.trim() || "(No Subject)",
-      body,
-      inReplyTo: replyTo?.messageId || draft?.inReplyTo,
-      threadId: replyTo?.threadId || draft?.threadId,
-      provider: "gmail",
-      lastEdited: now,
-      aiGenerated: Boolean(replyTo?.originalBody),
-    }
-
-    if (draft?.id) {
-      storage.updateDraft(draft.id, draftPayload)
-    } else {
-      storage.addDraft(draftPayload)
-    }
-
-    toast({
-      title: "Draft saved",
-      description: isEditingDraft ? "Your draft has been updated." : "Your draft has been saved.",
-    })
   }
 
   const handleAddAttachment = async (files: FileList | null) => {
@@ -236,8 +256,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
         const errorData = await response.json()
         throw new Error(errorData.error || "Could not generate draft")
       }
-      const { draft } = await response.json()
-      setBody(draft)
+      const { draft: generated } = await response.json()
+      setBody(generated)
       toast({ title: "Draft generated!", description: "AI has created a draft response for you" })
     } catch (error: any) {
       console.error("Generate draft error:", error)
@@ -247,11 +267,44 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     }
   }
 
+  const draftStatusIndicator = () => {
+    switch (draftStatus) {
+      case "saving":
+        return (
+          <span className="flex items-center gap-1.5 text-xs text-[#8A8A8A]">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Saving draft...
+          </span>
+        )
+      case "saved":
+        return (
+          <span className="flex items-center gap-1.5 text-xs text-[#28C840]">
+            <Check className="h-3 w-3" />
+            Draft saved to Gmail
+          </span>
+        )
+      case "failed":
+        return (
+          <span className="flex items-center gap-1.5 text-xs text-red-400">
+            <CloudOff className="h-3 w-3" />
+            Draft save failed
+          </span>
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto border border-white/[0.06] bg-[#0A0A0B] text-[#FAFAF9] rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.98) 0%, rgba(10,10,11,1) 100%)', backdropFilter: 'blur(40px)' }}>
         <DialogHeader>
-          <DialogTitle className="text-[#FAFAF9]">{replyTo ? "Reply" : "New Email"}</DialogTitle>
+          <div className="flex items-center justify-between pr-6">
+            <DialogTitle className="text-[#FAFAF9]">
+              {replyTo ? "Reply" : isEditingDraft ? "Edit Draft" : "New Email"}
+            </DialogTitle>
+            {draftStatusIndicator()}
+          </div>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -377,8 +430,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
             Cancel
           </Button>
           <Button
-            onClick={handleSaveDraft}
-            disabled={isSending || isGeneratingDraft}
+            onClick={() => void saveDraft(false)}
+            disabled={isSending || isGeneratingDraft || draftStatus === "saving"}
             className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-xl"
           >
             Save Draft

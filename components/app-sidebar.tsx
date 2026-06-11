@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Inbox, Mail, Archive, Settings, FileText, LogOut, SendHorizontal } from "lucide-react"
+import { Inbox, Mail, Archive, Settings, FileText, LogOut, SendHorizontal, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { RelayedModeToggle } from "@/components/relayed-mode-toggle"
-import { storage } from "@/lib/storage"
+import { emailApi } from "@/lib/email-api"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-provider"
 
@@ -20,33 +20,36 @@ export function AppSidebar() {
     drafts: 0,
     archives: 0,
     sent: 0,
+    trash: 0,
   })
 
-  const refreshCounts = () => {
-    const emails = storage.getEmails()
-    const nonArchived = emails.filter((e) => !e.isArchived)
-    const unread = nonArchived.filter((e) => !e.read)
-
-    setCounts({
-      inbox: unread.length,
-      drafts: storage.getDrafts().length,
-      archives: storage.getArchivedEmails().length,
-      sent: storage.getSentEmails().length,
-    })
+  const refreshCounts = async () => {
+    try {
+      const { counts: serverCounts } = await emailApi.getCounts()
+      setCounts({
+        inbox: serverCounts.inboxUnread,
+        drafts: serverCounts.drafts,
+        archives: serverCounts.archives,
+        sent: serverCounts.sent,
+        trash: serverCounts.trash,
+      })
+    } catch {
+      // Not signed in yet, or backend unavailable - keep previous counts.
+    }
   }
 
   useEffect(() => {
-    refreshCounts()
-    const onRelayUpdate = () => refreshCounts()
+    void refreshCounts()
+    const onRelayUpdate = () => void refreshCounts()
     const onVisibility = () => {
-      if (document.visibilityState === "visible") refreshCounts()
+      if (document.visibilityState === "visible") void refreshCounts()
     }
-    window.addEventListener("focus", refreshCounts)
-    window.addEventListener("relay-storage-updated", onRelayUpdate)
+    window.addEventListener("focus", onRelayUpdate)
+    window.addEventListener("relay-emails-updated", onRelayUpdate)
     document.addEventListener("visibilitychange", onVisibility)
     return () => {
-      window.removeEventListener("focus", refreshCounts)
-      window.removeEventListener("relay-storage-updated", onRelayUpdate)
+      window.removeEventListener("focus", onRelayUpdate)
+      window.removeEventListener("relay-emails-updated", onRelayUpdate)
       document.removeEventListener("visibilitychange", onVisibility)
     }
   }, [])
@@ -56,6 +59,7 @@ export function AppSidebar() {
     { name: "Sent", href: "/sent", icon: SendHorizontal, count: counts.sent },
     { name: "Drafts", href: "/drafts", icon: FileText, count: counts.drafts },
     { name: "Archives", href: "/archives", icon: Archive, count: counts.archives },
+    { name: "Trash", href: "/trash", icon: Trash2, count: counts.trash },
   ]
 
   return (

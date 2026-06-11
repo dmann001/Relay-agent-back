@@ -11,11 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Mail, Trash2, Eye, EyeOff, Save, Loader2 } from "lucide-react"
 import { storage } from "@/lib/storage"
+import { emailApi, type ConnectedAccount } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
-import type { EmailAccount, AppSettings } from "@/types"
+import type { AppSettings } from "@/types"
 
 export function SettingsContent() {
-  const [accounts, setAccounts] = useState<EmailAccount[]>([])
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [openaiKey, setOpenaiKey] = useState("")
   const [showKey, setShowKey] = useState(false)
@@ -24,80 +25,66 @@ export function SettingsContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
 
-  // Load data from the Supabase-backed storage cache on mount
+  const loadAccounts = async () => {
+    try {
+      setAccounts(await emailApi.listAccounts())
+    } catch (error) {
+      console.error("[Settings] Failed to load accounts:", error)
+    }
+  }
+
+  // Accounts live server-side (tokens never reach the browser); settings stay
+  // in the Supabase-backed storage cache.
   useEffect(() => {
-    const loadedAccounts = storage.getAccounts()
+    void loadAccounts()
     const loadedSettings = storage.getSettings()
-    setAccounts(loadedAccounts)
     setSettings(loadedSettings)
     setOpenaiKey(loadedSettings.openaiApiKey || "")
   }, [])
 
-  // Handle OAuth callback
+  // Handle OAuth callback errors (success redirects to /inbox)
   useEffect(() => {
-    const gmailAuth = searchParams.get("gmail_auth")
-    const accountData = searchParams.get("account")
     const error = searchParams.get("error")
-
     if (error) {
       toast({
         title: "Authentication Error",
         description: `Failed to connect Gmail account: ${error}`,
         variant: "destructive",
       })
-    }
-
-    if (gmailAuth === "success" && accountData) {
-      try {
-        const account = JSON.parse(decodeURIComponent(accountData))
-        const newAccount: EmailAccount = {
-          id: account.id,
-          email: account.email,
-          provider: "gmail",
-          accessToken: account.accessToken,
-          refreshToken: account.refreshToken,
-          expiryDate: account.expiryDate,
-          connectedAt: new Date().toISOString(),
-        }
-        storage.addAccount(newAccount)
-        setAccounts(storage.getAccounts())
-        toast({
-          title: "Success",
-          description: `Gmail account ${account.email} connected successfully!`,
-        })
-        // Clean up URL
-        window.history.replaceState({}, document.title, "/settings")
-      } catch (error) {
-        console.error("Error processing account data:", error)
-      }
+      window.history.replaceState({}, document.title, "/settings")
     }
   }, [searchParams, toast])
 
   const handleConnectGmail = async () => {
     setIsConnecting(true)
     try {
-      const response = await fetch("/api/auth/gmail")
-      const data = await response.json()
-      if (data.url) {
-        window.location.href = data.url
-      }
-    } catch (error) {
+      const url = await emailApi.getGmailConnectUrl()
+      window.location.href = url
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to initiate Gmail authentication",
+        description: error.message || "Failed to initiate Gmail authentication",
         variant: "destructive",
       })
       setIsConnecting(false)
     }
   }
 
-  const handleDisconnect = (accountId: string) => {
-    storage.removeAccount(accountId)
-    setAccounts(storage.getAccounts())
-    toast({
-      title: "Account Disconnected",
-      description: "Email account has been disconnected",
-    })
+  const handleDisconnect = async (accountId: string) => {
+    try {
+      await emailApi.disconnectAccount(accountId)
+      await loadAccounts()
+      toast({
+        title: "Account Disconnected",
+        description: "Email account and its cached emails have been removed",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Disconnect failed",
+        description: error.message || "Could not disconnect the account",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleSaveApiKey = () => {

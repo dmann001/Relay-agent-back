@@ -5,8 +5,7 @@ import Link from "next/link"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Archive, RefreshCw, Undo2 } from "lucide-react"
+import { RefreshCw, Trash2, Undo2 } from "lucide-react"
 import { ProviderIcon } from "@/components/provider-icon"
 import { emailApi } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
@@ -25,28 +24,39 @@ function formatTimestamp(date: string): string {
   return emailDate.toLocaleDateString()
 }
 
-export function ArchivesList() {
+export function TrashList() {
   const [emails, setEmails] = useState<Email[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
   const { toast } = useToast()
 
-  const loadArchived = async () => {
+  const loadTrash = async () => {
     try {
-      const { emails: loaded } = await emailApi.listEmails("archive", { limit: 100 })
+      const { emails: loaded } = await emailApi.listEmails("trash", { limit: 100 })
       setEmails(loaded)
     } catch (error) {
-      console.error("[Archives] Failed to load:", error)
+      console.error("[Trash] Failed to load:", error)
     }
   }
 
+  // Trash is synced from Gmail only when the user opens this view.
   useEffect(() => {
     const init = async () => {
-      await loadArchived()
+      await loadTrash()
       setIsLoading(false)
+      try {
+        setIsSyncing(true)
+        await emailApi.sync("trash")
+        await loadTrash()
+      } catch (error) {
+        console.error("[Trash] Sync failed:", error)
+      } finally {
+        setIsSyncing(false)
+      }
     }
     void init()
 
-    const onUpdate = () => void loadArchived()
+    const onUpdate = () => void loadTrash()
     window.addEventListener("relay-emails-updated", onUpdate)
     return () => window.removeEventListener("relay-emails-updated", onUpdate)
   }, [])
@@ -56,27 +66,34 @@ export function ArchivesList() {
     [emails]
   )
 
-  // Unarchive = add the INBOX label back in Gmail, then refresh the cache.
-  const handleUnarchive = async (emailId: string) => {
+  const handleRestore = async (emailId: string) => {
     setEmails((prev) => prev.filter((e) => e.id !== emailId))
     try {
-      await emailApi.modifyEmail(emailId, "unarchive")
-      toast({ title: "Email Restored", description: "Moved back to Inbox" })
+      await emailApi.modifyEmail(emailId, "untrash")
+      toast({ title: "Email Restored", description: "Moved out of Trash in Gmail" })
     } catch (error: any) {
       toast({
         title: "Restore failed",
-        description: error.message || "Could not unarchive this email",
+        description: error.message || "Could not restore this email",
         variant: "destructive",
       })
-      await loadArchived()
+      await loadTrash()
     }
   }
 
   return (
     <div className="flex-1 overflow-auto bg-[#0A0A0B]">
-      <div className="border-b border-white/[0.04] px-6 py-5" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
-        <h1 className="text-2xl font-light tracking-tight text-[#FAFAF9]">Archives</h1>
-        <p className="text-sm text-[#8A8A8A]">Emails you've archived for reference</p>
+      <div className="border-b border-white/[0.04] px-6 py-5 flex items-center justify-between" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
+        <div>
+          <h1 className="text-2xl font-light tracking-tight text-[#FAFAF9]">Trash</h1>
+          <p className="text-sm text-[#8A8A8A]">Deleted emails - kept in Gmail Trash for 30 days</p>
+        </div>
+        {isSyncing && (
+          <span className="flex items-center gap-2 text-xs text-[#8A8A8A]">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Syncing from Gmail...
+          </span>
+        )}
       </div>
       {isLoading ? (
         <div className="flex h-[50vh] items-center justify-center">
@@ -85,10 +102,10 @@ export function ArchivesList() {
       ) : sortedEmails.length === 0 ? (
         <div className="flex h-[50vh] flex-col items-center justify-center">
           <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-6">
-            <Archive className="h-8 w-8 text-[#E8DCC4]" />
+            <Trash2 className="h-8 w-8 text-[#E8DCC4]" />
           </div>
-          <h3 className="text-xl font-light text-[#FAFAF9]">No archived emails</h3>
-          <p className="mt-2 text-sm text-[#8A8A8A]">Emails you archive will appear here</p>
+          <h3 className="text-xl font-light text-[#FAFAF9]">Trash is empty</h3>
+          <p className="mt-2 text-sm text-[#8A8A8A]">Emails you delete will appear here</p>
         </div>
       ) : (
         <div className="divide-y divide-white/[0.04]">
@@ -98,7 +115,6 @@ export function ArchivesList() {
               href={`/thread/${email.id}`}
               className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-white/[0.02]"
             >
-              <Checkbox className="mt-1 border-white/[0.15] data-[state=checked]:bg-[#E8DCC4] data-[state=checked]:text-[#0A0A0B]" />
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage src={email.from.avatar || "/placeholder.svg"} alt={email.from.name} />
                 <AvatarFallback className="bg-white/[0.06] text-[#FAFAF9]">
@@ -114,9 +130,9 @@ export function ArchivesList() {
                   <Badge variant="outline" className="h-5 px-1.5 border-white/[0.08] bg-transparent">
                     <ProviderIcon className="h-3 w-3" />
                   </Badge>
-                  <Badge className="h-5 px-2 text-[10px] bg-[#E8DCC4]/10 text-[#E8DCC4] border-0">
-                    <Archive className="mr-1 h-3 w-3" />
-                    Archived
+                  <Badge className="h-5 px-2 text-[10px] bg-red-500/10 text-red-400 border-0">
+                    <Trash2 className="mr-1 h-3 w-3" />
+                    Trash
                   </Badge>
                 </div>
                 <div className="mb-1 text-sm font-normal text-[#FAFAF9]">{email.subject}</div>
@@ -136,9 +152,9 @@ export function ArchivesList() {
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()
-                    void handleUnarchive(email.id)
+                    void handleRestore(email.id)
                   }}
-                  title="Unarchive"
+                  title="Restore"
                 >
                   <Undo2 className="h-4 w-4" />
                 </Button>

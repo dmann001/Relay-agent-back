@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw, SendHorizontal } from "lucide-react"
-import { storage } from "@/lib/storage"
+import { emailApi } from "@/lib/email-api"
 import type { Email } from "@/types"
 
 function formatTimestamp(date: string): string {
@@ -27,16 +27,27 @@ function formatTimestamp(date: string): string {
 export function SentList() {
   const [emails, setEmails] = useState<Email[]>([])
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const refreshSent = () => {
-    setEmails(storage.getSentEmails())
+  const loadSent = async () => {
+    try {
+      const { emails: loaded } = await emailApi.listEmails("sent", { limit: 100 })
+      setEmails(loaded)
+    } catch (error) {
+      console.error("[Sent] Failed to load:", error)
+    }
   }
 
   useEffect(() => {
-    refreshSent()
-    const onStorage = () => refreshSent()
-    window.addEventListener("relay-storage-updated", onStorage)
-    return () => window.removeEventListener("relay-storage-updated", onStorage)
+    const init = async () => {
+      await loadSent()
+      setIsLoading(false)
+    }
+    void init()
+
+    const onUpdate = () => void loadSent()
+    window.addEventListener("relay-emails-updated", onUpdate)
+    return () => window.removeEventListener("relay-emails-updated", onUpdate)
   }, [])
 
   const sortedEmails = useMemo(
@@ -46,37 +57,12 @@ export function SentList() {
 
   const handleSync = async () => {
     if (isSyncing) return
-    const accounts = storage.getAccounts().filter((a) => a.provider === "gmail")
-    if (accounts.length === 0) return
-
     setIsSyncing(true)
     try {
-      for (const account of accounts) {
-        const response = await fetch("/api/emails", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            accessToken: account.accessToken,
-            refreshToken: account.refreshToken,
-            expiryDate: account.expiryDate,
-            maxResults: 50,
-            mailbox: "sent",
-          }),
-        })
-
-        if (!response.ok) continue
-        const result = await response.json()
-        if (result.auth?.accessToken || result.auth?.expiryDate) {
-          const updates: { accessToken?: string; expiryDate?: number } = {}
-          if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
-          if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
-          storage.updateAccount(account.id, updates)
-        }
-        if (Array.isArray(result.emails) && result.emails.length > 0) {
-          storage.addEmails(result.emails)
-        }
-      }
-      refreshSent()
+      await emailApi.sync("sent")
+      await loadSent()
+    } catch (error) {
+      console.error("[Sent] Sync failed:", error)
     } finally {
       setIsSyncing(false)
     }
@@ -108,7 +94,11 @@ export function SentList() {
           )}
         </Button>
       </div>
-      {sortedEmails.length === 0 ? (
+      {isLoading ? (
+        <div className="flex h-[50vh] items-center justify-center">
+          <RefreshCw className="h-6 w-6 animate-spin text-[#E8DCC4]" />
+        </div>
+      ) : sortedEmails.length === 0 ? (
         <div className="flex h-[50vh] flex-col items-center justify-center">
           <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-6">
             <SendHorizontal className="h-8 w-8 text-[#E8DCC4]" />
@@ -145,7 +135,7 @@ export function SentList() {
                 </div>
                 <div className="mb-1 text-sm font-normal text-[#FAFAF9]">{email.subject}</div>
                 <p className="line-clamp-1 text-sm text-[#8A8A8A]">
-                  {(email.bodyPlain || email.body || "").replace(/<[^>]*>/g, "").slice(0, 120)}
+                  {(email.snippet || email.bodyPlain || "").replace(/<[^>]*>/g, "").slice(0, 120)}
                 </p>
               </div>
               <div className="shrink-0 text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</div>

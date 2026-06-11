@@ -1,47 +1,34 @@
+// Attachment download - fetched live from Gmail.
 import { NextRequest, NextResponse } from 'next/server';
-import { gmail } from '@/lib/gmail';
+import { requireUser } from '@/lib/server/supabase-admin';
+import { listGmailAccounts, getAuthorizedClient } from '@/lib/server/gmail-accounts';
+import { findAccountForMessage } from '@/lib/server/email-sync';
+import { getAttachment } from '@/lib/server/gmail-api';
+import { handleApiError } from '@/lib/server/api-utils';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { accessToken, refreshToken, expiryDate, messageId, attachmentId } = body;
+    const userId = await requireUser(request);
+    const { messageId, attachmentId } = await request.json();
 
-    if (!accessToken || !messageId || !attachmentId) {
+    if (!messageId || !attachmentId) {
       return NextResponse.json(
-        { error: 'Access token, messageId, and attachmentId are required' },
+        { error: 'messageId and attachmentId are required' },
         { status: 400 }
       );
     }
 
-    const result = await gmail.getAttachment(
-      accessToken,
-      messageId,
-      attachmentId,
-      refreshToken,
-      expiryDate
-    );
-
-    return NextResponse.json({
-      data: result.data,
-      auth: result.auth,
-    });
-  } catch (error: any) {
-    console.error('Attachment fetch error:', error);
-
-    if (error.code === 401 || error.message?.includes('invalid_grant')) {
-      return NextResponse.json(
-        {
-          error: 'Authentication expired',
-          message: 'Please reconnect your Gmail account in Settings',
-          code: 'AUTH_EXPIRED'
-        },
-        { status: 401 }
-      );
+    const accounts = await listGmailAccounts(userId);
+    const account = await findAccountForMessage(userId, accounts, messageId);
+    if (!account) {
+      return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch attachment' },
-      { status: 500 }
-    );
+    const client = await getAuthorizedClient(account);
+    const data = await getAttachment(client, messageId, attachmentId);
+
+    return NextResponse.json({ data });
+  } catch (error) {
+    return handleApiError(error);
   }
 }
