@@ -24,3 +24,6 @@ pnpm build
 ```
 
 See [SETUP.md](SETUP.md) for environment and OAuth configuration.
+
+See [Tests/testing.md](Tests/testing.md) for the test-suite layout, coverage
+thresholds, local commands, mocks, and CI job overview.

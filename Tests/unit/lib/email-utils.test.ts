@@ -3,7 +3,7 @@ import {
   formatFileSize,
   htmlToPlainText,
   isHTML,
-} from "./email-utils";
+} from "@/lib/email-utils";
 
 jest.mock("dompurify", () => ({
   __esModule: true,
