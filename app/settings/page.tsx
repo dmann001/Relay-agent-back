@@ -3,7 +3,7 @@ import { SettingsContent } from "@/components/settings-content"
 
 export default function SettingsPage() {
   return (
-    <div className="flex h-screen bg-[#0A0A0B] text-[#FAFAF9]">
+    <div className="flex h-screen bg-background text-foreground">
       {/* Noise Texture Overlay */}
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
@@ -39,4 +39,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-

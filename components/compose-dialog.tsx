@@ -1,16 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Loader2, Send, Sparkles, X, Paperclip, Trash2 } from "lucide-react"
+import { Check, CloudOff, Loader2, Send, X, Paperclip, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { storage } from "@/lib/storage"
-import { api } from "@/lib/api"
-import type { Draft } from "@/types"
+import { emailApi, type RemoteDraft } from "@/lib/email-api"
 
 interface ComposeDialogProps {
   open: boolean
@@ -22,8 +20,12 @@ interface ComposeDialogProps {
     messageId?: string
     originalBody?: string
   }
-  draft?: Draft
+  draft?: RemoteDraft
 }
+
+type DraftStatus = "idle" | "saving" | "saved" | "failed"
+
+const AUTOSAVE_DELAY_MS = 2500
 
 export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDialogProps) {
   const [to, setTo] = useState("")
@@ -31,20 +33,31 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [isSending, setIsSending] = useState(false)
-  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false)
   const [showCc, setShowCc] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; mimeType: string; data: string; size: number }>>([])
-  const isEditingDraft = Boolean(draft?.id)
 
+  // Draft autosave state: drafts are saved to Gmail; the Relay DB keeps only
+  // the gmailDraftId + a small preview.
+  const [draftId, setDraftId] = useState<string | null>(null)
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>("idle")
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skipNextAutosave = useRef(true)
+
+  const isEditingDraft = Boolean(draft?.id)
   const { toast } = useToast()
+
   useEffect(() => {
     if (!open) return
+
+    skipNextAutosave.current = true
+    setDraftStatus(draft ? "saved" : "idle")
+    setDraftId(draft?.id || null)
 
     if (draft) {
       setTo(draft.to.join(", "))
       setCc(draft.cc?.join(", ") || "")
       setSubject(draft.subject)
-      setBody(draft.body)
+      setBody(draft.body || draft.snippet || "")
       setShowCc(Boolean(draft.cc?.length))
       setAttachments([])
       return
@@ -68,15 +81,82 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     setAttachments([])
   }, [open, draft, replyTo])
 
+  const parseRecipients = (value: string) =>
+    value.split(",").map((e) => e.trim()).filter(Boolean)
+
+  const saveDraft = async (silent: boolean = true): Promise<string | null> => {
+    if (!to.trim() && !subject.trim() && !body.trim()) {
+      if (!silent) {
+        toast({ title: "Nothing to save", description: "Add recipients, subject, or message first." })
+      }
+      return null
+    }
+
+    setDraftStatus("saving")
+    try {
+      const result = await emailApi.saveDraft({
+        draftId: draftId || undefined,
+        to: parseRecipients(to),
+        cc: cc ? parseRecipients(cc) : undefined,
+        subject: subject.trim(),
+        body,
+        threadId: replyTo?.threadId,
+        inReplyToMessageId: replyTo?.messageId,
+      })
+      setDraftId(result.draftId)
+      setDraftStatus("saved")
+      if (!silent) {
+        toast({
+          title: "Draft saved",
+          description: "Saved to Gmail Drafts.",
+        })
+      }
+      return result.draftId
+    } catch (error: any) {
+      setDraftStatus("failed")
+      if (!silent) {
+        toast({
+          title: "Draft save failed",
+          description: error.message || "Could not save draft to Gmail",
+          variant: "destructive",
+        })
+      }
+      return null
+    }
+  }
+
+  // Autosave to Gmail while typing (debounced).
+  useEffect(() => {
+    if (!open || isSending) return
+    if (skipNextAutosave.current) {
+      skipNextAutosave.current = false
+      return
+    }
+    if (!to.trim() && !subject.trim() && !body.trim()) return
+
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(() => {
+      void saveDraft(true)
+    }, AUTOSAVE_DELAY_MS)
+
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [to, cc, subject, body, open])
+
   // Reset form when dialog closes
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
       setTo("")
       setCc("")
       setSubject("")
       setBody("")
       setShowCc(false)
       setAttachments([])
+      setDraftId(null)
+      setDraftStatus("idle")
     }
     onOpenChange(isOpen)
   }
@@ -86,65 +166,35 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
       toast({ title: "Missing recipient", description: "Please enter a recipient email", variant: "destructive" })
       return
     }
-
     if (!subject.trim()) {
       toast({ title: "Missing subject", description: "Please enter a subject", variant: "destructive" })
       return
     }
-
     if (!body.trim()) {
       toast({ title: "Missing message", description: "Please enter a message", variant: "destructive" })
       return
     }
 
-    const accounts = storage.getAccounts()
-    const gmailAccount = accounts.find(a => a.provider === 'gmail')
-
-    if (!gmailAccount?.accessToken) {
-      toast({ title: "No Gmail account", description: "Please connect a Gmail account in Settings", variant: "destructive" })
-      return
-    }
-
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     setIsSending(true)
     try {
-      const response = await fetch("/api/emails/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accessToken: gmailAccount.accessToken,
-          refreshToken: gmailAccount.refreshToken,
-          expiryDate: gmailAccount.expiryDate,
-          to: to.split(",").map(e => e.trim()).filter(Boolean),
-          cc: cc ? cc.split(",").map(e => e.trim()).filter(Boolean) : undefined,
-          subject,
-          body,
-          threadId: replyTo?.threadId,
-          inReplyToMessageId: replyTo?.messageId,
-          attachments: attachments.map((file) => ({
-            filename: file.filename,
-            mimeType: file.mimeType,
-            data: file.data,
-          })),
-        }),
+      await emailApi.sendEmail({
+        to: parseRecipients(to),
+        cc: cc ? parseRecipients(cc) : undefined,
+        subject,
+        body,
+        threadId: replyTo?.threadId,
+        inReplyToMessageId: replyTo?.messageId,
+        attachments: attachments.map((file) => ({
+          filename: file.filename,
+          mimeType: file.mimeType,
+          data: file.data,
+        })),
+        // Sending a saved draft removes it from Gmail Drafts + the Relay DB.
+        draftId: draftId || undefined,
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.message || "Failed to send email")
-      }
-
-      const result = await response.json()
-      if (result.auth?.accessToken || result.auth?.expiryDate) {
-        const updates: { accessToken?: string; expiryDate?: number } = {}
-        if (result.auth.accessToken) updates.accessToken = result.auth.accessToken
-        if (result.auth.expiryDate) updates.expiryDate = result.auth.expiryDate
-        storage.updateAccount(gmailAccount.id, updates)
-      }
-
       toast({ title: "Email sent!", description: `Your email to ${to} has been sent successfully.` })
-      if (draft?.id) {
-        storage.removeDraft(draft.id)
-      }
       handleOpenChange(false)
     } catch (error: any) {
       console.error("Send email error:", error)
@@ -152,38 +202,6 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     } finally {
       setIsSending(false)
     }
-  }
-
-  const handleSaveDraft = () => {
-    if (!to.trim() && !subject.trim() && !body.trim()) {
-      toast({ title: "Nothing to save", description: "Add recipients, subject, or message first." })
-      return
-    }
-
-    const now = new Date().toISOString()
-    const draftPayload: Draft = {
-      id: draft?.id || `draft_${Date.now()}`,
-      to: to.split(",").map((email) => email.trim()).filter(Boolean),
-      cc: cc ? cc.split(",").map((email) => email.trim()).filter(Boolean) : undefined,
-      subject: subject.trim() || "(No Subject)",
-      body,
-      inReplyTo: replyTo?.messageId || draft?.inReplyTo,
-      threadId: replyTo?.threadId || draft?.threadId,
-      provider: "gmail",
-      lastEdited: now,
-      aiGenerated: Boolean(replyTo?.originalBody),
-    }
-
-    if (draft?.id) {
-      storage.updateDraft(draft.id, draftPayload)
-    } else {
-      storage.addDraft(draftPayload)
-    }
-
-    toast({
-      title: "Draft saved",
-      description: isEditingDraft ? "Your draft has been updated." : "Your draft has been saved.",
-    })
   }
 
   const handleAddAttachment = async (files: FileList | null) => {
@@ -204,63 +222,58 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     try {
       const newFiles = await Promise.all(fileList.map(readFile))
       setAttachments((prev) => [...prev, ...newFiles])
-    } catch (error) {
+    } catch {
       toast({ title: "Attachment failed", description: "Could not read one of the files.", variant: "destructive" })
     }
   }
 
-  const handleGenerateDraft = async () => {
-    if (!replyTo?.originalBody) {
-      toast({ title: "No context", description: "AI draft generation requires the original email context", variant: "destructive" })
-      return
-    }
-
-    const settings = storage.getSettings()
-    if (!settings.openaiApiKey) {
-      toast({ title: "API Key Required", description: "Please add your OpenAI API key in Settings", variant: "destructive" })
-      return
-    }
-
-    setIsGeneratingDraft(true)
-    try {
-      const response = await fetch("/api/ai/generate-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: settings.openaiApiKey,
-          email: replyTo.originalBody,
-          instructions: `Draft a professional reply with subject: ${subject}`,
-        }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Could not generate draft")
-      }
-      const { draft } = await response.json()
-      setBody(draft)
-      toast({ title: "Draft generated!", description: "AI has created a draft response for you" })
-    } catch (error: any) {
-      console.error("Generate draft error:", error)
-      toast({ title: "Failed to generate draft", description: error.message || "Could not generate draft", variant: "destructive" })
-    } finally {
-      setIsGeneratingDraft(false)
+  const draftStatusIndicator = () => {
+    switch (draftStatus) {
+      case "saving":
+        return (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Saving draft...
+          </span>
+        )
+      case "saved":
+        return (
+          <span className="flex items-center gap-1.5 text-xs text-[#28C840]">
+            <Check className="h-3 w-3" />
+            Draft saved to Gmail
+          </span>
+        )
+      case "failed":
+        return (
+          <span className="flex items-center gap-1.5 text-xs text-red-400">
+            <CloudOff className="h-3 w-3" />
+            Draft save failed
+          </span>
+        )
+      default:
+        return null
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto border border-white/[0.06] bg-[#0A0A0B] text-[#FAFAF9] rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.98) 0%, rgba(10,10,11,1) 100%)', backdropFilter: 'blur(40px)' }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle className="text-[#FAFAF9]">{replyTo ? "Reply" : "New Email"}</DialogTitle>
+          <div className="flex items-center justify-between pr-6">
+            <DialogTitle className="text-foreground">
+              {replyTo ? "Reply" : isEditingDraft ? "Edit Draft" : "New Email"}
+            </DialogTitle>
+            {draftStatusIndicator()}
+          </div>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* To field */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="to" className="text-[#FAFAF9]">To</Label>
+              <Label htmlFor="to" className="text-foreground">To</Label>
               {!showCc && (
-                <Button size="sm" onClick={() => setShowCc(true)} className="bg-transparent text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.03]">
+                <Button size="sm" onClick={() => setShowCc(true)} className="bg-transparent text-muted-foreground hover:bg-surface-hover hover:text-brand">
                   Add Cc
                 </Button>
               )}
@@ -272,7 +285,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
               value={to}
               onChange={(e) => setTo(e.target.value)}
               disabled={isSending}
-              className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+              className="rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
 
@@ -280,8 +293,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
           {showCc && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="cc" className="text-[#FAFAF9]">Cc</Label>
-                <Button size="sm" onClick={() => { setShowCc(false); setCc("") }} className="bg-transparent text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]">
+                <Label htmlFor="cc" className="text-foreground">Cc</Label>
+                <Button size="sm" onClick={() => { setShowCc(false); setCc("") }} className="bg-transparent text-muted-foreground hover:bg-surface-hover hover:text-foreground">
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -292,54 +305,37 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
                 value={cc}
                 onChange={(e) => setCc(e.target.value)}
                 disabled={isSending}
-                className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+                className="rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
           )}
 
           {/* Subject field */}
           <div className="space-y-2">
-            <Label htmlFor="subject" className="text-[#FAFAF9]">Subject</Label>
+            <Label htmlFor="subject" className="text-foreground">Subject</Label>
             <Input
               id="subject"
               placeholder="Email subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               disabled={isSending}
-              className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+              className="rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
 
           {/* Body field */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="body" className="text-[#FAFAF9]">Message</Label>
-              {replyTo?.originalBody && (
-                <Button
-                  size="sm"
-                  onClick={handleGenerateDraft}
-                  disabled={isGeneratingDraft || isSending}
-                  className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-lg"
-                >
-                  {isGeneratingDraft ? (
-                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-3 w-3 text-[#E8DCC4]" />
-                  )}
-                  AI Draft
-                </Button>
-              )}
-            </div>
+            <Label htmlFor="body" className="text-foreground">Message</Label>
             <Textarea
               id="body"
               placeholder="Write your message here..."
-              className="min-h-[200px] resize-none bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+              className="min-h-[200px] resize-none rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               disabled={isSending}
             />
             <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40 transition-colors">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-brand/50 hover:text-brand">
                 <Paperclip className="h-3.5 w-3.5" />
                 Add attachment
                 <input
@@ -350,17 +346,17 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
                 />
               </label>
               {attachments.length > 0 && (
-                <span className="text-xs text-[#8A8A8A]">{attachments.length} file(s) attached</span>
+                <span className="text-xs text-muted-foreground">{attachments.length} file(s) attached</span>
               )}
             </div>
             {attachments.length > 0 && (
-              <div className="space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+              <div className="space-y-2 rounded-xl border border-border bg-surface-subtle p-3">
                 {attachments.map((file, index) => (
                   <div key={`${file.filename}-${index}`} className="flex items-center justify-between text-xs">
-                    <span className="truncate text-[#FAFAF9]">{file.filename}</span>
+                    <span className="truncate text-foreground">{file.filename}</span>
                     <button
                       type="button"
-                      className="rounded-md px-2 py-1 text-[#8A8A8A] hover:text-red-400"
+                      className="rounded-md px-2 py-1 text-muted-foreground hover:text-destructive"
                       onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -373,17 +369,17 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
         </div>
 
         <DialogFooter>
-          <Button onClick={() => handleOpenChange(false)} disabled={isSending} className="border border-white/[0.08] bg-transparent text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] rounded-xl">
+          <Button onClick={() => handleOpenChange(false)} disabled={isSending} variant="outline" className="rounded-xl">
             Cancel
           </Button>
           <Button
-            onClick={handleSaveDraft}
-            disabled={isSending || isGeneratingDraft}
-            className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-xl"
+            onClick={() => void saveDraft(false)}
+            disabled={isSending || draftStatus === "saving"}
+            className="rounded-xl border border-border bg-surface-subtle text-foreground hover:bg-surface-hover"
           >
             Save Draft
           </Button>
-          <Button onClick={handleSend} disabled={isSending || !to.trim() || !subject.trim() || !body.trim()} className="bg-gradient-to-b from-[#E8DCC4] to-[#C4A052] hover:from-[#F5EDD8] hover:to-[#D4B062] text-[#0A0A0B] font-medium rounded-xl">
+          <Button onClick={handleSend} disabled={isSending || !to.trim() || !subject.trim() || !body.trim()} className="rounded-xl bg-brand font-medium text-brand-foreground hover:bg-brand-strong">
             {isSending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

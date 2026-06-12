@@ -10,6 +10,25 @@ to document the repository’s evolution.
 
 # [Unreleased]
 
+## Added
+- Reworked Gmail sync to a metadata-cache architecture: the Relay DB stores
+  email metadata only (sender, subject, snippet, labels, flags); full email
+  bodies are fetched live from Gmail when an email is opened
+- Gmail OAuth tokens are now stored server-side in `email_accounts`,
+  encrypted at rest (AES-256-GCM); tokens never reach the browser
+- Incremental sync via the Gmail History API with list-based fallback,
+  plus periodic background refresh while the inbox is open
+- Archive, delete (move to Trash), restore, and mark-read now call the Gmail
+  API first and then update the DB cache, keeping Gmail and Relay in sync
+- New Trash view (synced from Gmail only when opened)
+- Drafts are autosaved to Gmail Drafts; the DB stores only the
+  `gmailDraftId` plus a small preview with save status
+- New API routes: `/api/emails` (GET cached list), `/api/emails/sync`,
+  `/api/emails/[id]` (live body), `/api/emails/[id]/modify`,
+  `/api/emails/counts`, `/api/drafts`, `/api/accounts`
+- Requires `SUPABASE_SERVICE_ROLE_KEY` and `TOKEN_ENCRYPTION_KEY` env vars
+  and the SQL migration `supabase/migrations/20260611_gmail_metadata_sync.sql`
+
 ## Planned
 - Implement Gmail OAuth integration and account connection features (#14)
 - Configure Google Cloud and environment validation (#17, #20)

@@ -1,89 +1,66 @@
-// Fetch emails from Gmail
+// Email list - served from the Relay DB metadata cache (fast path).
+// The DB stores metadata only; bodies are fetched via /api/emails/[id].
 import { NextRequest, NextResponse } from 'next/server';
-import { gmail } from '@/lib/gmail';
+import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
+import { EMAIL_ROW_COLUMNS, inboxHasMorePages, rowToEmail, type EmailRow, type GmailCategory } from '@/lib/server/email-sync';
+import { handleApiError } from '@/lib/server/api-utils';
 
-export async function POST(request: NextRequest) {
+type ListMailbox = 'inbox' | 'sent' | 'archive' | 'trash';
+const GMAIL_CATEGORIES = new Set(['primary', 'promotions', 'social', 'updates', 'forums']);
+
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { accessToken, refreshToken, expiryDate, maxResults = 50, pageToken, existingIds, quickSync, lastSyncTime, categoryFilter, mailbox } = body;
+    const userId = await requireUser(request);
+    const params = request.nextUrl.searchParams;
+    const mailbox = (params.get('mailbox') || 'inbox') as ListMailbox;
+    const requestedCategory = params.get('category');
+    const category = requestedCategory && GMAIL_CATEGORIES.has(requestedCategory)
+      ? requestedCategory
+      : null;
+    const limit = Math.min(parseInt(params.get('limit') || '50', 10) || 50, 200);
+    const offset = Math.max(parseInt(params.get('offset') || '0', 10) || 0, 0);
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: 'Access token is required' },
-        { status: 400 }
-      );
+    let query = getSupabaseAdmin()
+      .from('emails')
+      .select(EMAIL_ROW_COLUMNS, { count: 'exact' })
+      .eq('user_id', userId)
+      .order('received_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    switch (mailbox) {
+      case 'sent':
+        query = query.eq('is_sent', true).eq('is_trashed', false);
+        break;
+      case 'archive':
+        query = query.eq('is_archived', true).eq('is_trashed', false);
+        break;
+      case 'trash':
+        query = query.eq('is_trashed', true);
+        break;
+      case 'inbox':
+      default:
+        query = query.eq('is_inbox', true).eq('is_trashed', false);
+        break;
     }
 
-    // Incremental sync mode - uses Gmail History API (most efficient)
-    if (body.incrementalSync) {
-      const result = await gmail.incrementalSync(
-        accessToken,
-        body.lastHistoryId,
-        refreshToken,
-        expiryDate
-      );
-      return NextResponse.json({
-        emails: result.emails,
-        newHistoryId: result.newHistoryId,
-        deletedIds: result.deletedIds,
-        auth: result.auth,
-        syncType: 'incremental'
-      });
+    if (mailbox === 'inbox' && category) {
+      query = query.eq('gmail_category', category);
     }
 
-    // Quick sync mode - only fetch new emails since last sync
-    if (quickSync) {
-      const result = await gmail.quickSync(accessToken, lastSyncTime, categoryFilter, mailbox, refreshToken, expiryDate);
-      return NextResponse.json({
-        emails: result.emails,
-        hasMore: result.hasMore,
-        auth: result.auth,
-        syncType: 'quick'
-      });
-    }
+    const { data, error, count } = await query;
+    if (error) throw error;
 
-    // Full sync mode with optional existing IDs to skip
-    const existingIdSet = existingIds ? new Set<string>(existingIds) : undefined;
-    const result = await gmail.fetchEmails(accessToken, maxResults, pageToken, existingIdSet, categoryFilter, mailbox, refreshToken, expiryDate);
+    const hasMore = mailbox === 'inbox'
+      ? await inboxHasMorePages(userId, category as GmailCategory | undefined)
+      : false;
 
     return NextResponse.json({
-      emails: result.emails,
-      nextPageToken: result.nextPageToken,
-      totalFetched: result.totalFetched,
-      newCount: result.newCount,
-      auth: result.auth,
-      syncType: 'full'
+      emails: ((data || []) as unknown as EmailRow[]).map(rowToEmail),
+      total: count ?? 0,
+      mailbox,
+      hasMore,
     });
-  } catch (error: any) {
-    console.error('Error fetching emails:', error);
-
-    // Check for Gmail API not enabled error
-    if (error.message?.includes('Gmail API has not been used') || error.code === 403) {
-      return NextResponse.json(
-        {
-          error: 'Gmail API not enabled',
-          message: 'Please enable the Gmail API in your Google Cloud Console. Visit: https://console.developers.google.com/apis/api/gmail.googleapis.com/overview',
-          code: 'GMAIL_API_DISABLED'
-        },
-        { status: 403 }
-      );
-    }
-
-    // Check for invalid token
-    if (error.code === 401 || error.message?.includes('invalid_grant')) {
-      return NextResponse.json(
-        {
-          error: 'Authentication expired',
-          message: 'Please reconnect your Gmail account in Settings',
-          code: 'AUTH_EXPIRED'
-        },
-        { status: 401 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch emails' },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleApiError(error);
   }
 }

@@ -19,7 +19,6 @@ interface SystemStatus {
     }
     services: {
         supabase: ServiceStatus
-        openai: ServiceStatus
     }
 }
 
@@ -139,7 +138,7 @@ export default function StatusPage() {
 
                 {/* Services Status */}
                 {status && (
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-4">
                         {/* Supabase */}
                         <Card>
                             <CardHeader className="pb-3">
@@ -160,25 +159,6 @@ export default function StatusPage() {
                             </CardContent>
                         </Card>
 
-                        {/* OpenAI */}
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-base">OpenAI Integration</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between">
-                                    <Badge variant="secondary" className={getStatusColor(status.services.openai.status)}>
-                                        <span className="flex items-center gap-1.5">
-                                            {getStatusIcon(status.services.openai.status)}
-                                            {status.services.openai.status.toUpperCase()}
-                                        </span>
-                                    </Badge>
-                                </div>
-                                <p className="mt-3 text-sm text-muted-foreground">
-                                    {status.services.openai.message}
-                                </p>
-                            </CardContent>
-                        </Card>
                     </div>
                 )}
             </div>

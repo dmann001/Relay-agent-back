@@ -1,34 +1,9 @@
-"use client"
-
-import { useState, useEffect } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { InboxList } from "@/components/inbox-list"
-import { RelayedHub } from "@/components/relayed"
-import { storage } from "@/lib/storage"
 
 export default function InboxPage() {
-  const [isRelayedMode, setIsRelayedMode] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
-
-  useEffect(() => {
-    setIsRelayedMode(storage.isRelayedMode())
-    setIsLoaded(true)
-  }, [])
-
-  // Prevent flash of wrong content
-  if (!isLoaded) {
-    return (
-      <div className="flex h-screen bg-[#0A0A0B]">
-        <AppSidebar />
-        <div className="flex flex-1 min-w-0 flex-col overflow-hidden items-center justify-center">
-          <div className="animate-pulse text-[#8A8A8A]">Loading...</div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex h-screen bg-[#0A0A0B] text-[#FAFAF9]">
+    <div className="flex h-screen bg-background text-foreground">
       {/* Noise Texture Overlay */}
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
@@ -60,10 +35,9 @@ export default function InboxPage() {
       <AppSidebar />
       <div className="relative z-10 flex flex-1 min-w-0 flex-col overflow-hidden">
         <div className="flex-1 min-h-0">
-          {isRelayedMode ? <RelayedHub /> : <InboxList />}
+          <InboxList />
         </div>
       </div>
     </div>
   )
 }
-

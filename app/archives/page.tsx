@@ -1,10 +1,9 @@
 import { AppSidebar } from "@/components/app-sidebar"
-import { SearchBar } from "@/components/search-bar"
 import { ArchivesList } from "@/components/archives-list"
 
 export default function ArchivesPage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0A0A0B] text-[#FAFAF9]">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Noise Texture Overlay */}
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
@@ -35,7 +34,6 @@ export default function ArchivesPage() {
 
       <AppSidebar />
       <div className="relative z-10 flex flex-1 flex-col">
-        <SearchBar />
         <div className="flex flex-1 overflow-hidden">
           <ArchivesList />
         </div>
@@ -43,4 +41,3 @@ export default function ArchivesPage() {
     </div>
   )
 }
-

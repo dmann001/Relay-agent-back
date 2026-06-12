@@ -1,189 +1,477 @@
-# Relay Agent Back Quality Assurance Strategy
+# Relay Testing Strategy, Quality Assurance, and CI/CD Planning
 
-## Purpose
+## Project Overview
 
-This document defines how the Relay Agent Back team will verify software quality, prevent regressions, and decide whether a change is ready to merge or release. The strategy applies to the Next.js frontend and API routes, the Express backend, Gmail OAuth and Gmail API integration, Supabase data access, and OpenAI-powered email features.
+Relay is an AI-powered unified email platform that integrates Gmail and Outlook into a single intelligent workspace. The system provides traditional email functionality alongside AI-powered capabilities such as semantic search, inbox prioritization, email summarization, and workflow automation.
 
-## A. Testing Goals
+Because Relay handles private email data and OAuth authentication credentials, maintaining software quality, reliability, and security is critical.
 
-Testing is important because Relay Agent Back handles private email content, OAuth credentials, generated drafts, and automated actions. A defect can expose user data, send an incorrect message, lose email state, or cause an AI feature to take an unintended action.
+---
 
-The team's testing goals are to:
+## Testing Tool Stack
 
-- Protect the confidentiality and integrity of email, account, and token data.
-- Verify that authentication and authorization boundaries cannot be bypassed.
-- Prevent regressions in inbox, thread, compose, archive, draft, and sent-email workflows.
-- Make AI output reviewable, bounded, and safe when responses are incomplete or incorrect.
-- Detect API, validation, and error-handling defects before code reaches `main`.
-- Keep the application usable across supported screen sizes and modern browsers.
-- Provide fast, repeatable feedback through automated checks on every push and pull request.
+| Category            | Tool           |
+| ------------------- | -------------- |
+| Unit Testing        | Jest           |
+| Integration Testing | Jest           |
+| End-to-End Testing  | Playwright     |
+| Linting             | ESLint         |
+| Type Checking       | TypeScript     |
+| CI/CD               | GitHub Actions |
+| Security Scanning   | CodeQL         |
+| Dependency Auditing | npm audit      |
 
-### Primary Risks
+---
 
-| Risk | Example impact | Required response |
-| --- | --- | --- |
-| Authentication failure | A user cannot connect Gmail, or one user accesses another user's account | Block release and investigate immediately |
-| Token or API-key exposure | OAuth refresh token, Supabase service key, or OpenAI key appears in logs or client code | Revoke the secret, block release, and complete a security review |
-| Incorrect email mutation | The wrong message is sent, archived, deleted, or modified | Block release; add a regression test before fixing |
-| Data corruption or loss | Email metadata, reminders, drafts, or embeddings are overwritten incorrectly | Block release and verify recovery procedures |
-| AI hallucination or unsafe automation | A generated reply invents facts or an inferred action is executed without confirmation | Disable the affected automation and require user confirmation |
-| External API failure | Gmail, Supabase, or OpenAI timeout causes a crash or inconsistent state | Show a recoverable error and preserve user data |
-| Injection or unsafe content | Malicious email HTML or user input executes script or alters a query | Block release and treat as a security incident |
-| Performance degradation | Inbox loading or AI processing becomes too slow for normal use | Measure the bottleneck and set a remediation target |
+# A. Testing Goals
 
-The most critical failures are unauthorized access, exposed secrets, sending or changing the wrong email, permanent data loss, and unreviewed AI actions. These are release-blocking defects.
+## Why Testing Is Important
 
-## B. Planned Types of Testing
+Relay manages sensitive user information including emails, attachments, OAuth tokens, and AI-generated outputs.
 
-### Smoke Testing
+Testing helps ensure:
 
-Smoke tests provide a quick confirmation that a deployed or locally built version is usable before deeper testing begins.
+* Users can reliably access their email accounts
+* Email synchronization remains accurate
+* AI-generated content is trustworthy
+* Security vulnerabilities are minimized
+* New features do not introduce regressions
 
-For each release candidate, a team member will manually verify:
+---
 
-1. The landing page and login page load without console errors.
-2. A user can connect a test Gmail account through OAuth.
-3. Inbox, thread, drafts, sent, archives, settings, and status pages open.
-4. Email synchronization returns data or a clear recoverable error.
-5. A draft can be created and reviewed without sending it.
-6. AI classification and draft generation return a result or a useful failure message.
-7. Sign-out or session expiry prevents further authenticated access.
+## Risks We Are Trying to Reduce
 
-Usability and visual checks will be performed at desktop and mobile widths in the latest Chrome and one additional modern browser. Reviewers will check keyboard navigation, loading states, empty states, error messages, overflow, contrast, and responsive layout. Real email sending will use a dedicated test account and an approved recipient.
+### Authentication Failures
 
-### Unit Testing
+Users may be unable to access their connected email accounts.
 
-Jest is the unit-testing framework. Unit tests must isolate external services with mocks or fakes so that CI never requires real Gmail, Supabase, or OpenAI credentials.
+### Email Synchronization Errors
 
-Unit-test priorities are:
+Missing, duplicated, or incorrectly synchronized emails could damage user trust.
 
-- Email HTML sanitization, plain-text conversion, HTML detection, and attachment-size formatting in `lib/email-utils.ts`.
-- Request validation and response mapping for API helpers.
-- AI command parsing, classification boundaries, and safe fallback behavior.
-- Gmail message and attachment transformation.
-- Storage and reminder state transitions.
-- Error handling for missing, malformed, and boundary-value input.
+### AI Hallucinations
 
-The initial coverage target is at least 70% statement and branch coverage for actively maintained utility and service modules. Authentication, authorization, email mutation, HTML sanitization, and AI action-confirmation logic target at least 80%. Coverage will be measured as the test suite expands; a threshold will become a CI gate after the baseline reaches these targets.
+The AI assistant may generate inaccurate summaries or recommendations.
 
-### Integration Testing
+### Data Corruption
 
-Integration tests will verify contracts between components while keeping third-party side effects controlled.
+Email metadata, threads, or attachment information could become inconsistent.
 
-Planned integration coverage includes:
+### Security Vulnerabilities
 
-- Next.js or Express API route plus validation and service layer.
-- Gmail OAuth callback plus token persistence and account identification.
-- Gmail API adapters plus email parsing, pagination, attachment handling, and error mapping.
-- Supabase client plus the project schema using an isolated test project or local instance.
-- OpenAI service plus structured-output validation using mocked API responses.
-- Frontend API client plus backend success, unauthorized, rate-limit, timeout, and server-error responses.
+OAuth tokens and user data must remain protected.
 
-Integration test data must use non-production accounts and databases. Tests must clean up records they create and must not send messages to real users.
+### API Failures
 
-### End-to-End Testing
+Relay depends on Gmail APIs and AI services that may become unavailable or rate-limited.
 
-Playwright is the planned E2E framework. E2E tests will run against a test environment with seeded data and mocked external APIs where practical.
+---
 
-Priority user workflows are:
+## Critical Failures
 
-1. Open the application, authenticate, and connect a Gmail test account.
-2. Synchronize the inbox, open an email thread, and view sanitized content.
-3. Search or filter messages and move between inbox, archive, drafts, and sent views.
-4. Generate an AI draft, edit it, confirm the recipient, and send through a test account.
-5. Submit an AI command, review the proposed action, and approve or cancel it.
-6. Handle expired authentication, API failure, empty inbox, and rate-limit states.
-7. Change settings and verify that the change persists after reload.
+The most critical failures for Relay are:
 
-No production account or production email recipient may be used by automated E2E tests.
+1. Unauthorized account access
+2. Email deletion or corruption
+3. Synchronization failures
+4. OAuth authentication failures
+5. Exposure of sensitive email content
+6. Incorrect AI actions performed on behalf of users
 
-### Performance and Load Testing
+---
 
-The first performance baseline will measure:
+## Quality Risk Matrix
 
-- Inbox API response time for small and large mailboxes.
-- Gmail synchronization time and pagination behavior.
-- OpenAI classification and draft-generation latency.
-- Supabase query latency for email metadata and vector retrieval.
-- Frontend page-load and interaction responsiveness.
+| Risk                          | Testing Method                              |
+| ----------------------------- | ------------------------------------------- |
+| OAuth Authentication Failure  | Unit Tests + Integration Tests              |
+| Email Synchronization Failure | Integration Tests                           |
+| AI Hallucinations             | Manual Validation + User Acceptance Testing |
+| Unauthorized Access           | Security Testing                            |
+| API Outages                   | Integration Testing                         |
+| Performance Degradation       | Load Testing                                |
+| Data Corruption               | Integration Testing                         |
+| Email Search Failures         | Unit Tests + E2E Testing                    |
 
-The team plans to use browser performance tools for client measurements and a scripted tool such as k6 for API load tests. Initial service targets are a p95 under 500 ms for internal API work that does not wait on an external provider, and clear progress or loading feedback for external operations exceeding one second. Tests will include concurrent requests, provider timeouts, retries, and rate limits. Results will be recorded before each major release and compared with the previous baseline.
+---
 
-### Security Testing
+# B. Planned Types of Testing
 
-Security verification will include:
+## Smoke Testing
 
-- Confirming secrets exist only in environment variables or protected GitHub secrets.
-- Scanning commits and logs for OAuth tokens, API keys, and Supabase service credentials.
-- Testing unauthenticated and cross-user access to protected routes and records.
-- Validating and constraining all route parameters, request bodies, email addresses, and AI output.
-- Testing stored and reflected cross-site scripting through malicious email HTML.
-- Verifying that database access uses parameterized APIs and row-level security where applicable.
-- Testing OAuth `state`, redirect handling, token expiry, token refresh, and revoked access.
-- Verifying rate limiting and safe error messages on sensitive and expensive endpoints.
-- Running dependency vulnerability review with `pnpm audit` during release preparation.
+Smoke testing will verify major user functionality after deployments.
 
-Critical and high-severity security defects block merging and release. Secrets found in history must be rotated even if the exposed value is later removed.
+### Manual Verification
 
-## C. Pull Request Quality Rules
+The team will manually verify:
 
-Every pull request must meet these conditions:
+* User login
+* Gmail account connection
+* Outlook account connection
+* Inbox loading
+* Email search
+* Compose email functionality
+* AI assistant availability
+* Email sending and receiving
+* Email deletion and archiving
 
-- Work is developed on a branch; direct pushes to `main` are not allowed.
-- The pull request explains the change, testing performed, risk, and any screenshots needed for UI work.
-- The pull request links the relevant issue or backlog item.
-- GitHub Actions dependency installation, lint, tests, and production build all pass.
-- New or changed behavior includes appropriate automated tests, or the pull request explains why automation is not yet practical.
-- One team member other than the author reviews and approves the change.
-- Review conversations are resolved before merge.
-- No secrets, production data, generated coverage output, or local environment files are committed.
-- High-risk changes to authentication, email mutation, data storage, or AI actions receive a second focused review.
-- The branch is up to date with `main` before merge.
+### Visual Verification
 
-Repository branch protection should require the `CI / quality` check and one approving review. Pull requests should use squash merging so each merged change has a clear history and can be reverted cleanly.
+The frontend team will review:
 
-## Quality Responsibilities
+* Page rendering
+* Responsive layouts
+* Navigation menus
+* Modal dialogs
+* Accessibility indicators
+* Dark/light mode compatibility
 
-Quality is shared by the team:
+---
 
-- The author adds tests, runs local checks, documents manual verification, and fixes CI failures.
-- The reviewer checks behavior, security implications, test quality, error handling, and maintainability.
-- The project manager confirms release-blocking issues are resolved and required evidence is collected.
-- The team member responsible for a service maintains its test data, mocks, and integration-test setup.
+## Unit Testing
 
-Defects will be recorded as GitHub Issues with reproduction steps, expected and actual behavior, severity, environment, and supporting evidence. Release-blocking defects are labeled `priority: critical` or `priority: high` and cannot be deferred without team agreement.
+### Framework
 
-## Automated CI Pipeline
+Jest
 
-The workflow at `.github/workflows/ci.yml` runs on every push and pull request. It:
+### Components to Test
 
-1. Checks out the repository.
-2. Installs the package-manager version declared in `package.json`.
-3. Configures Node.js 22 and the pnpm dependency cache.
-4. Installs dependencies from `pnpm-lock.yaml` with a frozen lockfile.
-5. Runs ESLint.
-6. Runs Jest in CI mode.
-7. Creates a production Next.js build.
+#### Authentication
 
-Local equivalents are:
+* OAuth token validation
+* Session handling
+* Login state management
+* User authorization checks
 
-```bash
-pnpm install --frozen-lockfile
-pnpm lint
-pnpm test:ci
-pnpm build
+#### Email Services
+
+* Email parsing
+* Thread grouping
+* Metadata extraction
+* Attachment processing
+
+#### AI Services
+
+* Prompt construction
+* Response formatting
+* Summary generation
+* Search ranking
+
+#### Utility Functions
+
+* Date formatting
+* Search ranking
+* Data transformation
+* Input validation
+
+### Coverage Goals
+
+Minimum targets:
+
+* Statements: 80%
+* Branches: 75%
+* Functions: 80%
+* Lines: 80%
+
+---
+
+## Integration Testing
+
+Integration testing ensures multiple services work together correctly.
+
+### Authentication + Database
+
+Verify user accounts are correctly created and updated.
+
+### Gmail API + Synchronization Service
+
+Verify emails synchronize correctly.
+
+### Outlook API + Synchronization Service
+
+Verify Outlook emails synchronize correctly.
+
+### AI Service + Email Data
+
+Verify email context is passed correctly to AI workflows.
+
+### Frontend + Backend
+
+Verify API responses are displayed correctly in the user interface.
+
+### Search + Vector Database
+
+Verify semantic search returns accurate results.
+
+### Email Operations
+
+Verify archive, delete, draft, and send actions update both Relay and provider state correctly.
+
+---
+
+## End-to-End (E2E) Testing
+
+### Framework
+
+Playwright
+
+### Critical User Workflows
+
+#### User Login Flow
+
+* Login
+* OAuth approval
+* Dashboard access
+
+#### Gmail Connection Workflow
+
+* Connect Gmail
+* Synchronize inbox
+* Display mailbox
+
+#### Outlook Connection Workflow
+
+* Connect Outlook
+* Synchronize inbox
+* Display mailbox
+
+#### Search Workflow
+
+* Submit search query
+* Retrieve results
+* Display matching emails
+
+#### Compose Workflow
+
+* Create draft
+* Send email
+* Confirm delivery
+
+#### Email Management Workflow
+
+* Archive email
+* Delete email
+* Restore email
+* Verify UI updates correctly
+
+#### AI Assistant Workflow
+
+* Submit prompt
+* Generate response
+* Display recommendation
+
+---
+
+## Performance and Load Testing
+
+Relay depends heavily on external APIs and synchronization processes.
+
+### Areas to Measure
+
+#### Mailbox Synchronization
+
+Measure time required to synchronize:
+
+* 100 emails
+* 1,000 emails
+* 10,000 emails
+
+#### Search Performance
+
+Measure semantic search response times.
+
+#### AI Response Latency
+
+Measure AI summary generation speed.
+
+#### Frontend Rendering
+
+Measure inbox loading performance.
+
+### Potential Bottlenecks
+
+* Gmail API latency
+* Outlook API latency
+* AI API latency
+* Vector search operations
+* Large inbox rendering
+* Database query performance
+
+### Performance Goals
+
+| Metric                | Target                        |
+| --------------------- | ----------------------------- |
+| Inbox Load Time       | < 3 seconds                   |
+| Search Response Time  | < 2 seconds                   |
+| AI Summary Generation | < 5 seconds                   |
+| Email Synchronization | < 30 seconds for 1,000 emails |
+
+---
+
+## Security Testing
+
+Security is a major concern because Relay manages private email data.
+
+### Authentication Security
+
+Verify:
+
+* OAuth validation
+* Session expiration
+* Unauthorized access prevention
+* Protected route enforcement
+
+### Input Validation
+
+Verify:
+
+* Invalid inputs rejected
+* Sanitization of user input
+* Prompt injection protection
+
+### API Protection
+
+Verify:
+
+* Rate limiting
+* Authentication middleware
+* Authorization checks
+
+### Secrets Management
+
+Verify:
+
+* API keys stored securely
+* Environment variables protected
+* No secrets committed to GitHub
+
+### Dependency Security
+
+Verify:
+
+* npm audit checks
+* GitHub Dependabot alerts
+* CodeQL analysis
+
+### Data Privacy
+
+Verify:
+
+* Email content is protected
+* OAuth tokens are encrypted
+* User data follows PIPEDA privacy requirements
+
+---
+
+## Planned Test Locations
+
+### Unit Tests
+
+```text
+tests/unit/
 ```
 
-The current CI pipeline does not require live third-party credentials. Tests that need external services must use mocks or a separately protected test environment.
+### Integration Tests
 
-## Current Baseline and Improvement Backlog
+```text
+tests/integration/
+```
 
-As of June 11, 2026:
+### End-to-End Tests
 
-- The Jest suite contains 11 passing tests for email utility behavior.
-- ESLint completes successfully but reports existing warnings that should be reduced over time.
-- The production Next.js build completes successfully.
-- Standalone `tsc --noEmit` is not yet a CI gate because unused UI components reference undeclared packages and two status comparisons require correction.
-- Automated integration, E2E, load, and security suites are planned work and should be tracked through GitHub Issues.
+```text
+tests/e2e/
+```
 
-The team will review this strategy at the end of each sprint and update it when architecture, risks, tooling, or release requirements change.
+### CI/CD Workflow
+
+```text
+.github/workflows/ci.yml
+```
+
+---
+
+# C. Pull Request Quality Rules
+
+The Relay team follows these quality standards.
+
+## Pull Request Requirements
+
+### Code Review
+
+Every Pull Request must be reviewed by at least one team member.
+
+### Protected Main Branch
+
+Direct pushes to main are prohibited.
+
+### Automated Validation
+
+All Pull Requests must pass:
+
+* ESLint
+* TypeScript checks
+* Unit tests
+* Integration tests
+* Build verification
+
+### CI Requirements
+
+GitHub Actions must report success before merging.
+
+### Security Verification
+
+CodeQL and dependency security checks must pass.
+
+### Documentation Updates
+
+Features affecting workflows must include documentation updates.
+
+### Coverage Requirements
+
+New code must not reduce established coverage thresholds.
+
+---
+
+# Team Responsibilities
+
+## Dhruv
+
+* Project management
+* Backend testing
+* CI/CD maintenance
+* Integration testing
+
+## Arshia
+
+* AI workflow testing
+* Semantic search validation
+* AI response verification
+
+## Smeet
+
+* Frontend testing
+* UI verification
+* Accessibility testing
+
+## Dipak
+
+* Security testing
+* Infrastructure validation
+* Deployment monitoring
+
+---
+
+# Continuous Improvement Strategy
+
+The team will continuously improve:
+
+* Test coverage
+* CI/CD automation
+* Security scanning
+* Accessibility compliance
+* Performance benchmarking
+
+Testing results will be reviewed during sprint retrospectives and improvements will be added to the project backlog.
+
+All new features will include testing before deployment to production.
