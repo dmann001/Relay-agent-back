@@ -11,6 +11,8 @@
 # production
 /build
 /coverage
+/playwright-report/
+/test-results/
 
 # debug
 npm-debug.log*
