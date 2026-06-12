@@ -20,6 +20,11 @@ export interface GmailAccountRow {
 export type MailboxPageTokens = {
   inbox?: string | null;
   sent?: string | null;
+  primary?: string | null;
+  social?: string | null;
+  promotions?: string | null;
+  updates?: string | null;
+  forums?: string | null;
 };
 
 export interface SyncStateRow {
@@ -39,6 +44,11 @@ export function parseMailboxPageTokens(raw: string | null | undefined): MailboxP
     return {
       inbox: parsed.inbox ?? null,
       sent: parsed.sent ?? null,
+      primary: parsed.primary ?? null,
+      social: parsed.social ?? null,
+      promotions: parsed.promotions ?? null,
+      updates: parsed.updates ?? null,
+      forums: parsed.forums ?? null,
     };
   } catch {
     // Legacy: a single opaque token string was stored for inbox pagination.

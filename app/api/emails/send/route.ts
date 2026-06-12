@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
         body: emailBody,
         threadId,
         inReplyToMessageId,
+        attachments,
       });
       sent = await sendDraft(client, gmailDraftId);
     } else {

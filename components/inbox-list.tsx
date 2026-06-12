@@ -16,6 +16,15 @@ import { useToast } from "@/hooks/use-toast"
 import type { Email } from "@/types"
 
 const ITEMS_PER_PAGE = 50
+type GmailCategory = NonNullable<Email["gmailCategory"]>
+
+const GMAIL_CATEGORIES: Array<{ value: GmailCategory; label: string }> = [
+  { value: "primary", label: "Primary" },
+  { value: "social", label: "Social" },
+  { value: "promotions", label: "Promotions" },
+  { value: "updates", label: "Updates" },
+  { value: "forums", label: "Forums" },
+]
 
 /** Page numbers to render, with ellipsis for long lists. */
 function getVisiblePages(current: number, total: number): Array<number | "ellipsis"> {
@@ -59,6 +68,7 @@ export function InboxList() {
   const [currentPage, setCurrentPage] = useState(1)
   const [isPaging, setIsPaging] = useState(false)
   const [hasMoreFromGmail, setHasMoreFromGmail] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<GmailCategory>("primary")
 
   const [showCompose, setShowCompose] = useState(false)
   const searchParams = useSearchParams()
@@ -72,12 +82,12 @@ export function InboxList() {
   const { toast } = useToast()
 
   // Step 1 of the sync flow: show cached emails from the Relay DB immediately.
-  const loadPage = useCallback(async (page: number) => {
+  const loadPage = useCallback(async (page: number, category: GmailCategory = selectedCategory) => {
     try {
       const { emails: loaded, total, hasMore } = await emailApi.listEmails("inbox", {
         limit: ITEMS_PER_PAGE,
         offset: (page - 1) * ITEMS_PER_PAGE,
-        category: "primary",
+        category,
       })
       setEmails(loaded)
       setTotalEmails(total)
@@ -86,7 +96,7 @@ export function InboxList() {
       if (error instanceof EmailApiError && error.code === "NO_SESSION") return
       console.error("[Inbox] Failed to load cached emails:", error)
     }
-  }, [])
+  }, [selectedCategory])
 
   // Step 2: in the background, ask Gmail for changes, then refresh the UI.
   const handleSync = useCallback(async (silent: boolean = false, force: boolean = false) => {
@@ -214,6 +224,7 @@ export function InboxList() {
   }
 
   const filteredEmails = applyFilters(emails)
+  const selectedCategoryLabel = GMAIL_CATEGORIES.find(({ value }) => value === selectedCategory)?.label || "Primary"
   const totalPages = Math.max(1, Math.ceil(totalEmails / ITEMS_PER_PAGE))
   const canGoNext = currentPage < totalPages || hasMoreFromGmail
   const canGoPrev = currentPage > 1
@@ -224,7 +235,7 @@ export function InboxList() {
     const { total, hasMore } = await emailApi.listEmails("inbox", {
       limit: 1,
       offset: 0,
-      category: "primary",
+      category: selectedCategory,
     })
     setTotalEmails(total)
     setHasMoreFromGmail(hasMore ?? false)
@@ -232,7 +243,11 @@ export function InboxList() {
   }
 
   const fetchMoreFromGmail = async (): Promise<{ total: number; hasMore: boolean }> => {
-    await emailApi.sync("inbox", { loadMore: true, force: true })
+    await emailApi.sync("inbox", {
+      loadMore: true,
+      force: true,
+      category: selectedCategory,
+    })
     return refreshInboxTotals()
   }
 
@@ -265,6 +280,28 @@ export function InboxList() {
   const handleNextPage = () => handleGoToPage(currentPage + 1)
   const handlePrevPage = () => handleGoToPage(currentPage - 1)
   const handleFirstPage = () => handleGoToPage(1)
+  const handleCategoryChange = async (category: GmailCategory) => {
+    if (category === selectedCategory || paginationDisabled) return
+
+    setSelectedCategory(category)
+    setCurrentPage(1)
+    setIsPaging(true)
+    try {
+      try {
+        await emailApi.sync("inbox", { force: true, category })
+      } catch (error: any) {
+        toast({
+          title: `${GMAIL_CATEGORIES.find(({ value }) => value === category)?.label || "Category"} sync failed`,
+          description: error.message || "Showing previously synced emails instead",
+          variant: "destructive",
+        })
+      }
+      await loadPage(1, category)
+    } finally {
+      setIsPaging(false)
+    }
+  }
+
   const handleLastPage = async () => {
     if (paginationDisabled) return
     setIsPaging(true)
@@ -416,13 +453,31 @@ export function InboxList() {
             <Mail className="h-8 w-8 text-brand" />
           </div>
           <h3 className="text-xl font-light text-foreground">
-            {hasAnyEmails ? "No primary emails match your search" : "No primary emails yet"}
+            {hasAnyEmails ? `No ${selectedCategoryLabel} emails match your search` : `No ${selectedCategoryLabel} emails yet`}
           </h3>
           <p className="mt-3 text-sm text-muted-foreground">
             {hasAnyEmails
               ? "Try a different search or sync to fetch more."
-              : "Connect your Gmail account and sync to see your emails here"}
+              : hasAccounts
+                ? `There are no ${selectedCategoryLabel} emails in the synced inbox.`
+                : "Connect your Gmail account and sync to see your emails here"}
           </p>
+          <label className="mx-auto mt-5 block w-fit">
+            <span className="sr-only">Email category</span>
+            <select
+              aria-label="Email category"
+              value={selectedCategory}
+              disabled={paginationDisabled}
+              onChange={(event) => void handleCategoryChange(event.target.value as GmailCategory)}
+              className="h-9 cursor-pointer rounded-lg border border-border bg-surface-raised px-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-surface-hover focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {GMAIL_CATEGORIES.map((category) => (
+                <option key={category.value} value={category.value}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="mt-8 flex gap-3 justify-center">
             <Button asChild variant="outline" className="rounded-xl">
               <Link href="/settings">
@@ -467,9 +522,27 @@ export function InboxList() {
           </Button>
         </div>
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-medium text-foreground">
-            Inbox <span className="text-muted-foreground">({filteredEmails.filter((e) => !e.read).length} unread)</span>
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-medium text-foreground">
+              Inbox <span className="text-muted-foreground">({filteredEmails.filter((e) => !e.read).length} unread)</span>
+            </h2>
+            <label className="relative">
+              <span className="sr-only">Email category</span>
+              <select
+                aria-label="Email category"
+                value={selectedCategory}
+                disabled={paginationDisabled}
+                onChange={(event) => void handleCategoryChange(event.target.value as GmailCategory)}
+                className="h-9 cursor-pointer rounded-lg border border-border bg-surface-raised px-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-surface-hover focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {GMAIL_CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="flex items-center gap-2">
             {(totalPages > 1 || hasMoreFromGmail) && renderPagination(true)}
             <Button

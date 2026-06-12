@@ -289,13 +289,25 @@ export async function getAttachment(
 // Sending & drafts
 // ---------------------------------------------------------------------------
 
-const buildRawMessage = (params: {
+export type OutgoingAttachment = {
+  filename: string;
+  mimeType: string;
+  data: string;
+};
+
+const sanitizeHeaderValue = (value: string): string =>
+  value.replace(/[\r\n"]/g, (character) => character === '"' ? "'" : '');
+
+const foldBase64 = (value: string): string =>
+  value.replace(/\s+/g, '').match(/.{1,76}/g)?.join('\r\n') || '';
+
+export const buildRawMessage = (params: {
   to: string[];
   cc?: string[];
   subject: string;
   body: string;
   inReplyToMessageId?: string;
-  attachments?: Array<{ filename: string; mimeType: string; data: string }>;
+  attachments?: OutgoingAttachment[];
 }): string => {
   const headers = [`To: ${params.to.join(', ')}`];
   if (params.cc && params.cc.length > 0) headers.push(`Cc: ${params.cc.join(', ')}`);
@@ -333,20 +345,24 @@ const buildRawMessage = (params: {
       '',
       htmlBody,
       '',
-      ...params.attachments.flatMap((attachment) => [
+      ...params.attachments.flatMap((attachment) => {
+        const filename = sanitizeHeaderValue(attachment.filename);
+        const mimeType = sanitizeHeaderValue(attachment.mimeType) || 'application/octet-stream';
+        return [
         `--${boundary}`,
-        `Content-Type: ${attachment.mimeType}; name="${attachment.filename}"`,
+        `Content-Type: ${mimeType}; name="${filename}"`,
         'Content-Transfer-Encoding: base64',
-        `Content-Disposition: attachment; filename="${attachment.filename}"`,
+        `Content-Disposition: attachment; filename="${filename}"`,
         '',
-        attachment.data,
+        foldBase64(attachment.data),
         '',
-      ]),
+        ];
+      }),
       `--${boundary}--`,
-    ].join('\n');
+    ].join('\r\n');
   } else {
     headers.push('Content-Type: text/html; charset=utf-8');
-    message = [...headers, '', htmlBody].join('\n');
+    message = [...headers, '', htmlBody].join('\r\n');
   }
 
   return Buffer.from(message)
@@ -365,7 +381,7 @@ export async function sendMessage(
     body: string;
     threadId?: string;
     inReplyToMessageId?: string;
-    attachments?: Array<{ filename: string; mimeType: string; data: string }>;
+    attachments?: OutgoingAttachment[];
   }
 ): Promise<{ id?: string | null; threadId?: string | null }> {
   const raw = buildRawMessage(params);
@@ -378,7 +394,15 @@ export async function sendMessage(
 
 export async function createDraft(
   client: OAuth2Client,
-  params: { to: string[]; cc?: string[]; subject: string; body: string; threadId?: string; inReplyToMessageId?: string }
+  params: {
+    to: string[];
+    cc?: string[];
+    subject: string;
+    body: string;
+    threadId?: string;
+    inReplyToMessageId?: string;
+    attachments?: OutgoingAttachment[];
+  }
 ): Promise<{ draftId: string; messageId?: string | null }> {
   const raw = buildRawMessage(params);
   const { data } = await getApi(client).users.drafts.create({
@@ -391,7 +415,15 @@ export async function createDraft(
 export async function updateDraft(
   client: OAuth2Client,
   draftId: string,
-  params: { to: string[]; cc?: string[]; subject: string; body: string; threadId?: string; inReplyToMessageId?: string }
+  params: {
+    to: string[];
+    cc?: string[];
+    subject: string;
+    body: string;
+    threadId?: string;
+    inReplyToMessageId?: string;
+    attachments?: OutgoingAttachment[];
+  }
 ): Promise<{ draftId: string; messageId?: string | null }> {
   const raw = buildRawMessage(params);
   const { data } = await getApi(client).users.drafts.update({
