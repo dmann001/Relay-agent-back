@@ -82,14 +82,14 @@ export function TrashList() {
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-[#0A0A0B]">
-      <div className="border-b border-white/[0.04] px-6 py-5 flex items-center justify-between" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
+    <div className="flex-1 overflow-auto bg-background">
+      <div className="flex items-center justify-between border-b border-border bg-surface-subtle px-6 py-5">
         <div>
-          <h1 className="text-2xl font-light tracking-tight text-[#FAFAF9]">Trash</h1>
-          <p className="text-sm text-[#8A8A8A]">Deleted emails - kept in Gmail Trash for 30 days</p>
+          <h1 className="text-2xl font-light tracking-tight text-foreground">Trash</h1>
+          <p className="text-sm text-muted-foreground">Deleted emails - kept in Gmail Trash for 30 days</p>
         </div>
         {isSyncing && (
-          <span className="flex items-center gap-2 text-xs text-[#8A8A8A]">
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <RefreshCw className="h-3 w-3 animate-spin" />
             Syncing from Gmail...
           </span>
@@ -97,27 +97,27 @@ export function TrashList() {
       </div>
       {isLoading ? (
         <div className="flex h-[50vh] items-center justify-center">
-          <RefreshCw className="h-6 w-6 animate-spin text-[#E8DCC4]" />
+          <RefreshCw className="h-6 w-6 animate-spin text-brand" />
         </div>
       ) : sortedEmails.length === 0 ? (
         <div className="flex h-[50vh] flex-col items-center justify-center">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-6">
-            <Trash2 className="h-8 w-8 text-[#E8DCC4]" />
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-surface-raised">
+            <Trash2 className="h-8 w-8 text-brand" />
           </div>
-          <h3 className="text-xl font-light text-[#FAFAF9]">Trash is empty</h3>
-          <p className="mt-2 text-sm text-[#8A8A8A]">Emails you delete will appear here</p>
+          <h3 className="text-xl font-light text-foreground">Trash is empty</h3>
+          <p className="mt-2 text-sm text-muted-foreground">Emails you delete will appear here</p>
         </div>
       ) : (
-        <div className="divide-y divide-white/[0.04]">
+        <div className="divide-y divide-border">
           {sortedEmails.map((email) => (
             <Link
               key={email.id}
               href={`/thread/${email.id}`}
-              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-white/[0.02]"
+              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-surface-hover"
             >
               <Avatar className="h-10 w-10 shrink-0">
-                <AvatarImage src={email.from.avatar || "/placeholder.svg"} alt={email.from.name} />
-                <AvatarFallback className="bg-white/[0.06] text-[#FAFAF9]">
+                <AvatarImage src={email.from.avatar} alt={email.from.name} />
+                <AvatarFallback className="bg-brand-soft text-brand-foreground">
                   {email.from.name
                     .split(" ")
                     .map((n) => n[0])
@@ -126,8 +126,8 @@ export function TrashList() {
               </Avatar>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2">
-                  <span className="text-sm font-medium text-[#FAFAF9]">{email.from.name}</span>
-                  <Badge variant="outline" className="h-5 px-1.5 border-white/[0.08] bg-transparent">
+                  <span className="text-sm font-medium text-foreground">{email.from.name}</span>
+                  <Badge variant="outline" className="h-5 border-border bg-surface-raised px-1.5">
                     <ProviderIcon className="h-3 w-3" />
                   </Badge>
                   <Badge className="h-5 px-2 text-[10px] bg-red-500/10 text-red-400 border-0">
@@ -135,8 +135,8 @@ export function TrashList() {
                     Trash
                   </Badge>
                 </div>
-                <div className="mb-1 text-sm font-normal text-[#FAFAF9]">{email.subject}</div>
-                <p className="line-clamp-1 text-sm text-[#8A8A8A]">
+                <div className="mb-1 text-sm font-normal text-foreground">{email.subject}</div>
+                <p className="line-clamp-1 text-sm text-muted-foreground">
                   {(email.snippet || email.bodyPlain || "")
                     .replace(/<[^>]*>/g, "")
                     .replace(/\s+/g, " ")
@@ -144,11 +144,11 @@ export function TrashList() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</span>
+                <span className="text-xs text-muted-foreground">{formatTimestamp(email.date)}</span>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+                  className="h-8 w-8 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()

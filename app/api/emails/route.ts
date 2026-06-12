@@ -6,12 +6,17 @@ import { EMAIL_ROW_COLUMNS, inboxHasMorePages, rowToEmail, type EmailRow } from 
 import { handleApiError } from '@/lib/server/api-utils';
 
 type ListMailbox = 'inbox' | 'sent' | 'archive' | 'trash';
+const GMAIL_CATEGORIES = new Set(['primary', 'promotions', 'social', 'updates', 'forums']);
 
 export async function GET(request: NextRequest) {
   try {
     const userId = await requireUser(request);
     const params = request.nextUrl.searchParams;
     const mailbox = (params.get('mailbox') || 'inbox') as ListMailbox;
+    const requestedCategory = params.get('category');
+    const category = requestedCategory && GMAIL_CATEGORIES.has(requestedCategory)
+      ? requestedCategory
+      : null;
     const limit = Math.min(parseInt(params.get('limit') || '50', 10) || 50, 200);
     const offset = Math.max(parseInt(params.get('offset') || '0', 10) || 0, 0);
 
@@ -36,6 +41,10 @@ export async function GET(request: NextRequest) {
       default:
         query = query.eq('is_inbox', true).eq('is_trashed', false);
         break;
+    }
+
+    if (mailbox === 'inbox' && category) {
+      query = query.eq('gmail_category', category);
     }
 
     const { data, error, count } = await query;

@@ -9,7 +9,7 @@ export default async function ThreadPage({
   const { id } = await params
 
   return (
-    <div className="flex h-screen bg-[#0A0A0B] text-[#FAFAF9]">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Noise Texture Overlay */}
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
@@ -39,10 +39,9 @@ export default async function ThreadPage({
       </div>
 
       <AppSidebar />
-      <div className="relative z-10 flex-1">
+      <div className="relative z-10 min-w-0 flex-1 overflow-hidden">
         <ThreadView threadId={id} />
       </div>
     </div>
   )
 }
-

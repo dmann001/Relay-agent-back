@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { storage } from "@/lib/storage"
 
 type Theme = "dark" | "light" | "system"
 
@@ -30,25 +29,33 @@ export function ThemeProvider({
   const [theme, setTheme] = React.useState<Theme>(defaultTheme)
 
   React.useEffect(() => {
+    const savedTheme = window.localStorage.getItem("relay-theme") as Theme | null
+    if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
+      setTheme(savedTheme)
+    }
+  }, [])
+
+  React.useEffect(() => {
     const root = window.document.documentElement
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
 
-    root.classList.remove("light", "dark")
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-
-      root.classList.add(systemTheme)
-      return
+    const applyTheme = () => {
+      const effectiveTheme = theme === "system" ? (media.matches ? "dark" : "light") : theme
+      root.classList.remove("light", "dark")
+      root.classList.add(effectiveTheme)
+      root.style.colorScheme = effectiveTheme
     }
 
-    root.classList.add(theme)
+    applyTheme()
+    if (theme === "system") media.addEventListener("change", applyTheme)
+    return () => media.removeEventListener("change", applyTheme)
   }, [theme])
 
   const value = {
     theme,
     setTheme: (nextTheme: Theme) => {
       setTheme(nextTheme)
-      storage.updateSettings({ theme: nextTheme })
+      window.localStorage.setItem("relay-theme", nextTheme)
     },
   }
 

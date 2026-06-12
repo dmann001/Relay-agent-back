@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth';
 import emailRoutes from './routes/emails';
-import aiRoutes from './routes/ai';
 import statusRoutes from './routes/status';
 
 const app = express();
@@ -25,7 +24,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/emails', emailRoutes);
-app.use('/api/ai', aiRoutes);
 app.use('/api/status', statusRoutes);
 
 // Health check

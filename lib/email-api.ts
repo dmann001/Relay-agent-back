@@ -99,13 +99,14 @@ export const emailApi = {
 
   async listEmails(
     mailbox: Mailbox,
-    options: { limit?: number; offset?: number } = {}
+    options: { limit?: number; offset?: number; category?: Email['gmailCategory'] } = {}
   ): Promise<{ emails: Email[]; total: number; hasMore?: boolean }> {
     const params = new URLSearchParams({
       mailbox,
       limit: String(options.limit ?? 50),
       offset: String(options.offset ?? 0),
     });
+    if (options.category) params.set('category', options.category);
     return request(`/api/emails?${params.toString()}`);
   },
 

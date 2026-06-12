@@ -5,9 +5,8 @@ import { AuthProvider } from "@/components/auth-provider"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Relay - AI-Powered Email Client",
-  description: "Gmail-focused AI email client with summaries and smart automation",
-  generator: "v0.app",
+  title: "Relay Email",
+  description: "A focused Gmail email client",
 }
 
 export default function RootLayout({

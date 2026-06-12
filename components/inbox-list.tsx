@@ -6,26 +6,14 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Sparkles, RefreshCw, Mail, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle, TrendingUp, Smile, Frown, Meh, Calendar, PenSquare, Filter, Tag, Users, MessageCircle, Archive, Trash2 } from "lucide-react"
+import { RefreshCw, Mail, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PenSquare, Archive, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { AiLabelBadge } from "@/components/ai-label-badge"
 import { ProviderIcon } from "@/components/provider-icon"
 import { SearchBar } from "@/components/search-bar"
 import { ComposeDialog } from "@/components/compose-dialog"
-import { storage } from "@/lib/storage"
 import { emailApi, EmailApiError } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
 import type { Email } from "@/types"
-
-// Gmail category filter type
-interface CategoryFilter {
-  primary: boolean;
-  promotions: boolean;
-  social: boolean;
-  updates: boolean;
-  forums: boolean;
-}
 
 const ITEMS_PER_PAGE = 50
 
@@ -72,16 +60,6 @@ export function InboxList() {
   const [isPaging, setIsPaging] = useState(false)
   const [hasMoreFromGmail, setHasMoreFromGmail] = useState(false)
 
-  // Show all Gmail categories by default; users can narrow to Primary via the filter.
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>({
-    primary: true,
-    promotions: true,
-    social: true,
-    updates: true,
-    forums: true,
-  })
-  const [showCategoryFilter, setShowCategoryFilter] = useState(false)
-
   const [showCompose, setShowCompose] = useState(false)
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -99,15 +77,11 @@ export function InboxList() {
       const { emails: loaded, total, hasMore } = await emailApi.listEmails("inbox", {
         limit: ITEMS_PER_PAGE,
         offset: (page - 1) * ITEMS_PER_PAGE,
+        category: "primary",
       })
       setEmails(loaded)
       setTotalEmails(total)
       setHasMoreFromGmail(hasMore ?? false)
-      // Mirror metadata into local storage so AI features (Relayed mode,
-      // agent actions) keep working. Metadata only - no bodies.
-      if (page === 1 && loaded.length > 0) {
-        storage.addEmails(loaded)
-      }
     } catch (error: any) {
       if (error instanceof EmailApiError && error.code === "NO_SESSION") return
       console.error("[Inbox] Failed to load cached emails:", error)
@@ -223,17 +197,8 @@ export function InboxList() {
     }
   }, [hasAccounts, handleSync])
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [categoryFilter, searchQuery])
-
   const applyFilters = (source: Email[]) => {
     let filtered = source.filter((e) => !e.isArchived && !e.isTrashed)
-
-    filtered = filtered.filter((email) => {
-      const category = email.gmailCategory || "primary"
-      return categoryFilter[category]
-    })
 
     if (searchQuery.trim()) {
       const lower = searchQuery.toLowerCase()
@@ -256,7 +221,11 @@ export function InboxList() {
   const paginationDisabled = isPaging || isSyncing
 
   const refreshInboxTotals = async () => {
-    const { total, hasMore } = await emailApi.listEmails("inbox", { limit: 1, offset: 0 })
+    const { total, hasMore } = await emailApi.listEmails("inbox", {
+      limit: 1,
+      offset: 0,
+      category: "primary",
+    })
     setTotalEmails(total)
     setHasMoreFromGmail(hasMore ?? false)
     return { total, hasMore: hasMore ?? false }
@@ -320,7 +289,7 @@ export function InboxList() {
         disabled={!canGoPrev || paginationDisabled}
         onClick={handleFirstPage}
         title="First page"
-        className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
       >
         <ChevronsLeft className="h-4 w-4" />
       </Button>
@@ -330,7 +299,7 @@ export function InboxList() {
         disabled={!canGoPrev || paginationDisabled}
         onClick={handlePrevPage}
         title="Previous page"
-        className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" />
       </Button>
@@ -338,7 +307,7 @@ export function InboxList() {
       <div className="flex items-center gap-0.5">
         {visiblePages.map((page, index) =>
           page === "ellipsis" ? (
-            <span key={`ellipsis-${index}`} className="px-1 text-sm text-[#5A5A5A]">
+            <span key={`ellipsis-${index}`} className="px-1 text-sm text-muted-foreground">
               …
             </span>
           ) : (
@@ -351,8 +320,8 @@ export function InboxList() {
               className={cn(
                 "min-w-8 h-8 px-2 text-sm rounded-lg",
                 page === currentPage
-                  ? "bg-[#E8DCC4]/20 text-[#E8DCC4] hover:bg-[#E8DCC4]/25"
-                  : "text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+                  ? "bg-brand-soft text-brand-strong hover:bg-brand-soft"
+                  : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
               )}
             >
               {page}
@@ -367,7 +336,7 @@ export function InboxList() {
         disabled={!canGoNext || paginationDisabled}
         onClick={handleNextPage}
         title="Next page"
-        className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
       >
         <ChevronRight className="h-4 w-4" />
       </Button>
@@ -377,13 +346,13 @@ export function InboxList() {
         disabled={!canGoNext || paginationDisabled}
         onClick={handleLastPage}
         title="Last page"
-        className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
       >
         <ChevronsRight className="h-4 w-4" />
       </Button>
 
       {!compact && (
-        <span className="ml-1 text-xs text-[#5A5A5A] whitespace-nowrap">
+        <span className="ml-1 whitespace-nowrap text-xs text-muted-foreground">
           {totalEmails} total
         </span>
       )}
@@ -429,10 +398,10 @@ export function InboxList() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#0A0A0B]">
+      <div className="flex h-full items-center justify-center bg-background">
         <div className="text-center">
-          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#E8DCC4]" />
-          <p className="mt-2 text-sm text-[#8A8A8A]">Loading emails...</p>
+          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand" />
+          <p className="mt-2 text-sm text-muted-foreground">Loading emails...</p>
         </div>
       </div>
     )
@@ -441,21 +410,21 @@ export function InboxList() {
   if (filteredEmails.length === 0 && !isSyncing) {
     const hasAnyEmails = emails.length > 0
     return (
-      <div className="flex h-full items-center justify-center bg-[#0A0A0B]">
+      <div className="flex h-full items-center justify-center bg-background">
         <div className="max-w-md text-center">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-6">
-            <Mail className="h-8 w-8 text-[#E8DCC4]" />
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-surface-raised">
+            <Mail className="h-8 w-8 text-brand" />
           </div>
-          <h3 className="text-xl font-light text-[#FAFAF9]">
-            {hasAnyEmails ? "No emails match your filters" : "No emails yet"}
+          <h3 className="text-xl font-light text-foreground">
+            {hasAnyEmails ? "No primary emails match your search" : "No primary emails yet"}
           </h3>
-          <p className="mt-3 text-sm text-[#8A8A8A]">
+          <p className="mt-3 text-sm text-muted-foreground">
             {hasAnyEmails
-              ? "Try changing the category filter or sync to fetch more."
+              ? "Try a different search or sync to fetch more."
               : "Connect your Gmail account and sync to see your emails here"}
           </p>
           <div className="mt-8 flex gap-3 justify-center">
-            <Button asChild className="bg-white/[0.03] border border-white/[0.08] text-[#FAFAF9] hover:bg-white/[0.06] rounded-xl">
+            <Button asChild variant="outline" className="rounded-xl">
               <Link href="/settings">
                 <Settings className="mr-2 h-4 w-4" />
                 Go to Settings
@@ -464,7 +433,7 @@ export function InboxList() {
             <Button
               onClick={() => handleSync(false, true)}
               disabled={isSyncing}
-              className="bg-gradient-to-b from-[#FAFAF9] to-[#E8E8E6] hover:from-[#FFFFFF] hover:to-[#F5F5F3] text-[#0A0A0B] rounded-xl"
+              className="rounded-xl bg-brand text-brand-foreground hover:bg-brand-strong"
             >
               {isSyncing ? (
                 <>
@@ -484,51 +453,30 @@ export function InboxList() {
     )
   }
 
-  // Toggle a category in the filter
-  const toggleCategory = (category: keyof CategoryFilter) => {
-    setCategoryFilter(prev => ({ ...prev, [category]: !prev[category] }))
-  }
-
-  const activeCategoryCount = Object.values(categoryFilter).filter(v => v).length
-
   return (
-    <div className="flex h-full flex-col bg-[#0A0A0B]">
-      <div className="border-b border-white/[0.04] px-6 py-5 space-y-4" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.95) 0%, rgba(10,10,11,0.98) 100%)' }}>
+    <div className="flex h-full flex-col bg-background">
+      <div className="space-y-4 border-b border-border bg-surface-subtle px-6 py-5">
         <div className="flex items-center justify-between gap-4">
           <SearchBar onSearch={setSearchQuery} />
           <Button
             onClick={() => setShowCompose(true)}
-            className="shrink-0 bg-gradient-to-b from-[#E8DCC4] to-[#C4A052] hover:from-[#F5EDD8] hover:to-[#D4B062] text-[#0A0A0B] font-medium rounded-xl border-0"
+            className="shrink-0 rounded-xl border-0 bg-brand font-medium text-brand-foreground shadow-sm hover:bg-brand-strong"
           >
             <PenSquare className="mr-2 h-4 w-4" />
             Compose
           </Button>
         </div>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-medium text-[#FAFAF9]">
-              Inbox <span className="text-[#8A8A8A]">({filteredEmails.filter((e) => !e.read).length} unread)</span>
-            </h2>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowCategoryFilter(!showCategoryFilter)}
-              className={cn("border-white/[0.08] text-[#FAFAF9] hover:bg-white/[0.03] rounded-lg", showCategoryFilter && "bg-white/[0.06]")}
-            >
-              <Filter className="mr-2 h-3 w-3" />
-              Filter
-              {activeCategoryCount < 5 && (
-                <Badge className="ml-2 bg-[#E8DCC4]/20 text-[#E8DCC4] border-0">{activeCategoryCount}</Badge>
-              )}
-            </Button>
-          </div>
+          <h2 className="text-base font-medium text-foreground">
+            Inbox <span className="text-muted-foreground">({filteredEmails.filter((e) => !e.read).length} unread)</span>
+          </h2>
           <div className="flex items-center gap-2">
             {(totalPages > 1 || hasMoreFromGmail) && renderPagination(true)}
             <Button
               size="sm"
               onClick={() => handleSync(false, true)}
               disabled={isSyncing}
-              className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-lg"
+              className="rounded-lg border border-border bg-surface-raised text-foreground hover:bg-surface-hover"
             >
               {isSyncing ? (
                 <>
@@ -544,90 +492,22 @@ export function InboxList() {
             </Button>
           </div>
         </div>
-
-        {/* Category Filter Panel */}
-        {showCategoryFilter && (
-          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-white/[0.04]">
-            <span className="text-sm text-[#8A8A8A] mr-2">Show:</span>
-            <Button
-              size="sm"
-              onClick={() => toggleCategory('primary')}
-              className={cn("rounded-lg", categoryFilter.primary ? "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]" : "border border-white/[0.08] bg-transparent text-[#FAFAF9] hover:bg-white/[0.03]")}
-            >
-              <Mail className="mr-2 h-3 w-3" />
-              Primary
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => toggleCategory('promotions')}
-              className={cn("rounded-lg", categoryFilter.promotions ? "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]" : "border border-white/[0.08] bg-transparent text-[#FAFAF9] hover:bg-white/[0.03]")}
-            >
-              <Tag className="mr-2 h-3 w-3" />
-              Promotions
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => toggleCategory('social')}
-              className={cn("rounded-lg", categoryFilter.social ? "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]" : "border border-white/[0.08] bg-transparent text-[#FAFAF9] hover:bg-white/[0.03]")}
-            >
-              <Users className="mr-2 h-3 w-3" />
-              Social
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => toggleCategory('updates')}
-              className={cn("rounded-lg", categoryFilter.updates ? "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]" : "border border-white/[0.08] bg-transparent text-[#FAFAF9] hover:bg-white/[0.03]")}
-            >
-              <RefreshCw className="mr-2 h-3 w-3" />
-              Updates
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => toggleCategory('forums')}
-              className={cn("rounded-lg", categoryFilter.forums ? "bg-[#E8DCC4] text-[#0A0A0B] hover:bg-[#F5EDD8]" : "border border-white/[0.08] bg-transparent text-[#FAFAF9] hover:bg-white/[0.03]")}
-            >
-              <MessageCircle className="mr-2 h-3 w-3" />
-              Forums
-            </Button>
-            <div className="border-l border-white/[0.08] h-6 mx-2" />
-            <Button
-              size="sm"
-              onClick={() => setCategoryFilter({ primary: true, promotions: true, social: true, updates: true, forums: true })}
-              className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
-            >
-              Select All
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setCategoryFilter({ primary: true, promotions: false, social: false, updates: false, forums: false })}
-              className="text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
-            >
-              Primary Only
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Compose Dialog */}
       <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
 
       <div className="flex-1 overflow-auto">
-        <div className="px-6 py-3 border-b border-white/[0.04]">
-          <span className="text-sm font-medium text-[#8A8A8A]">
-            Inbox <span className="text-[#5A5A5A]">[{filteredEmails.length}]</span>
-          </span>
-        </div>
-        <div className="divide-y divide-white/[0.04]">
+        <div className="divide-y divide-border">
           {filteredEmails.map((email) => (
             <Link
               key={email.id}
               href={`/thread/${email.id}`}
               className={cn(
-                "group flex items-start gap-6 px-6 py-5 transition-all hover:bg-white/[0.02]",
-                !email.read && "bg-[#E8DCC4]/[0.03]"
+                "group flex items-start gap-6 px-6 py-5 transition-all hover:bg-surface-hover",
+                !email.read && "bg-brand-soft/35"
               )}
             >
-              <Checkbox className="mt-1" />
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage src={email.from.avatar} alt={email.from.name} />
                 <AvatarFallback>
@@ -640,50 +520,22 @@ export function InboxList() {
               </Avatar>
               <div className="min-w-0 flex-1 overflow-hidden">
                 <div className="mb-2 flex items-center gap-2.5">
-                  <span className={cn("text-sm text-[#FAFAF9]", !email.read && "font-semibold")}>
+                  <span className={cn("text-sm text-foreground", !email.read && "font-semibold")}>
                     {email.from.name}
                   </span>
-                  <Badge className="h-5 px-1.5 bg-white/[0.03] border border-white/[0.08]">
+                  <Badge className="h-5 border border-border bg-surface-raised px-1.5 text-foreground">
                     <ProviderIcon className="h-3 w-3" />
                   </Badge>
                   {email.gmailCategory && (
-                    <Badge className="h-5 px-2 text-[10px] capitalize bg-[#E8DCC4]/10 text-[#E8DCC4] border-0">
+                    <Badge className="h-5 border-0 bg-brand-soft px-2 text-[10px] capitalize text-brand-strong">
                       {email.gmailCategory}
                     </Badge>
                   )}
-                  {email.aiSummary && <Sparkles className="h-3.5 w-3.5 text-[#E8DCC4]" />}
-                  {email.sentiment && (
-                    <span title={`Sentiment: ${email.sentiment.sentiment}`}>
-                      {email.sentiment.sentiment === 'positive' && <Smile className="h-3.5 w-3.5 text-green-500" />}
-                      {email.sentiment.sentiment === 'negative' && <Frown className="h-3.5 w-3.5 text-red-500" />}
-                      {email.sentiment.sentiment === 'neutral' && <Meh className="h-3.5 w-3.5 text-gray-400" />}
-                    </span>
-                  )}
-                  {email.sentiment?.urgency === 'critical' && (
-                    <span title="Critical urgency">
-                      <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-                    </span>
-                  )}
-                  {email.sentiment?.urgency === 'high' && (
-                    <span title="High urgency">
-                      <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
-                    </span>
-                  )}
-                  {email.priorityScore !== undefined && email.priorityScore >= 70 && (
-                    <span title={`Priority: ${email.priorityScore}`}>
-                      <TrendingUp className="h-3.5 w-3.5 text-[#E8DCC4]" />
-                    </span>
-                  )}
-                  {email.meetingRequest?.detected && (
-                    <span title="Meeting request detected">
-                      <Calendar className="h-3.5 w-3.5 text-purple-500" />
-                    </span>
-                  )}
                 </div>
-                <div className={cn("mb-2 text-sm truncate text-[#FAFAF9]", !email.read ? "font-semibold" : "font-normal")}>
+                <div className={cn("mb-2 truncate text-sm text-foreground", !email.read ? "font-semibold" : "font-normal")}>
                   {email.subject}
                 </div>
-                <p className="line-clamp-2 text-sm text-[#8A8A8A] leading-relaxed">
+                <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                   {(email.snippet || email.bodyPlain || '')
                     .replace(/<[^>]*>/g, '')
                     .replace(/&nbsp;/g, ' ')
@@ -691,21 +543,14 @@ export function InboxList() {
                     .trim()
                     .slice(0, 200)}
                 </p>
-                {email.aiLabels && email.aiLabels.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {email.aiLabels.map((label) => (
-                      <AiLabelBadge key={label} label={label as any} />
-                    ))}
-                  </div>
-                )}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-2">
-                <span className="text-xs text-[#5A5A5A]">{formatTimestamp(email.date)}</span>
+                <span className="text-xs text-muted-foreground">{formatTimestamp(email.date)}</span>
                 <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.05]"
+                    className="h-7 w-7 text-muted-foreground hover:bg-surface-hover hover:text-brand"
                     title="Archive"
                     onClick={(e) => handleQuickAction(e, email.id, "archive")}
                   >
@@ -727,9 +572,9 @@ export function InboxList() {
         </div>
         <div ref={loadMoreRef} />
         {filteredEmails.length > 0 && (totalPages > 1 || hasMoreFromGmail) && (
-          <div className="flex flex-col items-center gap-2 p-4 border-t border-white/[0.04]">
+          <div className="flex flex-col items-center gap-2 border-t border-border p-4">
             {renderPagination()}
-            <span className="text-xs text-[#5A5A5A]">
+            <span className="text-xs text-muted-foreground">
               Page {currentPage} of {hasMoreFromGmail ? `${totalPages}+` : totalPages}
             </span>
           </div>

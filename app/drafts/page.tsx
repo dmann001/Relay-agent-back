@@ -1,10 +1,9 @@
 import { AppSidebar } from "@/components/app-sidebar"
-import { SearchBar } from "@/components/search-bar"
 import { DraftsList } from "@/components/drafts-list"
 
 export default function DraftsPage() {
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0A0A0B] text-[#FAFAF9]">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {/* Noise Texture Overlay */}
       <div
         className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
@@ -35,7 +34,6 @@ export default function DraftsPage() {
 
       <AppSidebar />
       <div className="relative z-10 flex flex-1 flex-col">
-        <SearchBar />
         <div className="flex flex-1 overflow-hidden">
           <DraftsList />
         </div>
@@ -43,4 +41,3 @@ export default function DraftsPage() {
     </div>
   )
 }
-

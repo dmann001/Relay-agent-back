@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
-import { Loader2, Mail, ArrowLeft, ArrowRight, Check, Sparkles, Shield, Zap, Eye, EyeOff } from "lucide-react"
+import { Loader2, Mail, ArrowLeft, ArrowRight, Check, Shield, Eye, EyeOff } from "lucide-react"
 import { getAuthStoragePreference, setAuthStoragePreference, supabase } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
@@ -252,21 +252,21 @@ export default function LoginPage() {
             {/* Headline */}
             <div className="space-y-3">
               <h1 className="text-3xl md:text-4xl font-light tracking-[-0.03em] leading-[1.1]">
-                The future of email
+                Your Gmail inbox
                 <br />
-                <span className="text-[#5A5A5A]">is autonomous.</span>
+                <span className="text-[#5A5A5A]">in one focused client.</span>
               </h1>
               <p className="text-base text-[#8A8A8A] max-w-md leading-relaxed font-light">
-                Relay turns your inbox into an intelligent agent that understands context, drafts replies, and handles the busywork.
+                Read, organize, draft, and send Gmail messages without leaving Relay.
               </p>
             </div>
 
             {/* Feature List */}
             <div className="space-y-3">
               {[
-                { icon: Sparkles, text: "AI-powered email summarization", color: "from-[#E8DCC4] to-[#C4A052]" },
-                { icon: Zap, text: "Context-aware reply drafting", color: "from-[#FEBC2E] to-[#FF9500]" },
-                { icon: Shield, text: "Supabase-backed data storage", color: "from-[#28C840] to-[#1E9432]" },
+                { icon: Mail, text: "Inbox, sent, drafts, archive, and trash", color: "from-[#E8DCC4] to-[#C4A052]" },
+                { icon: Check, text: "Compose, reply, attachments, and Gmail sync", color: "from-[#FEBC2E] to-[#FF9500]" },
+                { icon: Shield, text: "Server-side OAuth token handling", color: "from-[#28C840] to-[#1E9432]" },
               ].map((feature, i) => (
                 <div
                   key={i}
@@ -280,25 +280,6 @@ export default function LoginPage() {
               ))}
             </div>
 
-            {/* Testimonial / Social Proof */}
-            <div className="pt-6 border-t border-white/[0.04]">
-              <div className="flex items-center gap-3">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="h-8 w-8 rounded-full bg-gradient-to-br from-[#3A3A3A] to-[#2A2A2A] border-2 border-[#0A0A0B] flex items-center justify-center"
-                    >
-                      <span className="text-[10px] font-medium text-[#8A8A8A]">{String.fromCharCode(64 + i)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <p className="text-sm text-[#FAFAF9]">Join 2,000+ early adopters</p>
-                  <p className="text-xs text-[#5A5A5A]">Already saving 4+ hours daily</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -320,7 +301,7 @@ export default function LoginPage() {
               </h2>
               <p className="text-[#8A8A8A] text-sm">
                 {activeTab === "signin"
-                  ? "Sign in to manage your inbox and AI workflows."
+                  ? "Sign in to manage your Gmail inbox."
                   : "Start your journey to inbox zero."}
               </p>
             </div>
