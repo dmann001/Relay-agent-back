@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
-import { storage } from "@/lib/storage"
 
 type User = any
 
@@ -20,7 +19,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const PUBLIC_ROUTES = new Set(["/", "/login", "/demo"])
+const PUBLIC_ROUTES = new Set(["/", "/login"])
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -39,11 +38,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const nextSession = data.session ?? null
       setSession(nextSession)
-      if (nextSession?.user?.id) {
-        await storage.loadForUser(nextSession.user.id)
-      } else {
-        storage.reset()
-      }
       if (!isMounted) return
       setIsLoading(false)
     }
@@ -53,11 +47,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event: string, nextSession: Session | null) => {
         setSession(nextSession)
-        if (nextSession?.user?.id) {
-          await storage.loadForUser(nextSession.user.id)
-        } else {
-          storage.reset()
-        }
         setIsLoading(false)
       }
     )
@@ -93,7 +82,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("[Auth] Sign out failed:", error)
           return
         }
-        await storage.clear()
         router.replace("/login")
       },
     }),

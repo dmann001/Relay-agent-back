@@ -21,11 +21,11 @@ export function SearchBar({
 
   return (
     <div className="relative">
-      <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8A8A8A]" />
+      <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"
         placeholder="Search emails..."
-        className="h-11 w-full max-w-md pl-11 pr-10 text-sm bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20 backdrop-blur-xl"
+        className="h-11 w-full max-w-md rounded-xl border-input bg-surface-raised pl-11 pr-10 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
@@ -40,7 +40,7 @@ export function SearchBar({
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-2 top-1/2 h-7 w-7 -translate-y-1/2 text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]"
+          className="absolute right-2 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
           onClick={() => setQuery("")}
           title="Clear search"
         >
@@ -49,7 +49,7 @@ export function SearchBar({
       )}
       {isSearching && (
         <div className="absolute right-3 top-1/2 -translate-y-1/2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#E8DCC4] border-t-transparent" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
         </div>
       )}
     </div>

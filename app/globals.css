@@ -9,101 +9,96 @@
 
 @layer base {
   :root {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --radius: 0.5rem;
-    --sidebar: 0 0% 99%;
-    --sidebar-foreground: 0 0% 14.5%;
-    --sidebar-primary: 0 0% 20.5%;
-    --sidebar-primary-foreground: 0 0% 98.5%;
-    --sidebar-accent: 0 0% 96%;
-    --sidebar-accent-foreground: 0 0% 20.5%;
-    --sidebar-border: 0 0% 92.2%;
-    --sidebar-ring: 0 0% 70.8%;
+    --background: #f5f3ee;
+    --foreground: #181712;
+    --card: #ffffff;
+    --card-foreground: #181712;
+    --popover: #ffffff;
+    --popover-foreground: #181712;
+    --primary: #9a741d;
+    --primary-foreground: #ffffff;
+    --secondary: #ebe7dd;
+    --secondary-foreground: #24221c;
+    --muted: #eeeae1;
+    --muted-foreground: #625e54;
+    --accent: #e7dfca;
+    --accent-foreground: #332a16;
+    --destructive: #c53939;
+    --destructive-foreground: #ffffff;
+    --border: #d8d2c5;
+    --input: #d8d2c5;
+    --ring: #a47b22;
+    --radius: 0.75rem;
+    --sidebar: #ebe7de;
+    --sidebar-foreground: #211f1a;
+    --sidebar-primary: #9a741d;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #ddd6c7;
+    --sidebar-accent-foreground: #211f1a;
+    --sidebar-border: #d2ccbf;
+    --sidebar-ring: #a47b22;
+    --surface-raised: #ffffff;
+    --surface-subtle: #eeeae1;
+    --surface-hover: #e5dfd4;
+    --brand: #9a741d;
+    --brand-strong: #765612;
+    --brand-soft: #e8ddbd;
+    --brand-foreground: #17130a;
+  }
+
+  .dark {
+    --background: #111113;
+    --foreground: #f7f5ef;
+    --card: #1a1a1d;
+    --card-foreground: #f7f5ef;
+    --popover: #1a1a1d;
+    --popover-foreground: #f7f5ef;
+    --primary: #d7bc78;
+    --primary-foreground: #17130a;
+    --secondary: #262629;
+    --secondary-foreground: #f7f5ef;
+    --muted: #232326;
+    --muted-foreground: #aaa69d;
+    --accent: #302b20;
+    --accent-foreground: #f4e8c8;
+    --destructive: #e05b5b;
+    --destructive-foreground: #ffffff;
+    --border: #343438;
+    --input: #3b3b40;
+    --ring: #d7bc78;
+    --sidebar: #0c0c0e;
+    --sidebar-foreground: #f7f5ef;
+    --sidebar-primary: #d7bc78;
+    --sidebar-primary-foreground: #17130a;
+    --sidebar-accent: #242426;
+    --sidebar-accent-foreground: #f7f5ef;
+    --sidebar-border: #29292d;
+    --sidebar-ring: #d7bc78;
+    --surface-raised: #1a1a1d;
+    --surface-subtle: #171719;
+    --surface-hover: #252529;
+    --brand: #d7bc78;
+    --brand-strong: #ead49a;
+    --brand-soft: #3a3221;
+    --brand-foreground: #17130a;
   }
 }
 
-/* Custom Scrollbar - Noir Gold */
 ::-webkit-scrollbar {
   width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0A0A0B;
+  background: var(--background);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: var(--border);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #C4A052;
-}
-
-
-.dark {
-  --background: oklch(0.20 0 0);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.22 0 0);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.22 0 0);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.70 0.15 250);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.28 0 0);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.28 0 0);
-  --muted-foreground: oklch(0.70 0 0);
-  --accent: oklch(0.30 0 0);
-  --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.55 0.20 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.30 0 0);
-  --input: oklch(0.25 0 0);
-  --ring: oklch(0.50 0.15 250);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.18 0 0);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.70 0.15 250);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.25 0 0);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.30 0 0);
-  --sidebar-ring: oklch(0.50 0.15 250);
-}
-
-
-
-:root {
-  --background: #0a0a0b;
-  --foreground: #fafaf9;
+  background: var(--brand);
 }
 
 /* Noir Gold Animations */
@@ -308,6 +303,13 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-hover: var(--surface-hover);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-foreground: var(--brand-foreground);
 }
 
 @layer base {

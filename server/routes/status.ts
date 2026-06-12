@@ -11,8 +11,7 @@ router.get('/', async (req, res) => {
             NODE_ENV: process.env.NODE_ENV,
         },
         services: {
-            supabase: { status: 'unknown', message: '' },
-            openai: { status: 'unknown', message: '' }
+            supabase: { status: 'unknown', message: '' }
         }
     };
 
@@ -33,7 +32,7 @@ router.get('/', async (req, res) => {
     } else {
         try {
             // Simple query to check connection with timeout
-            const queryPromise = supabase.from('embeddings').select('id').limit(1);
+            const queryPromise = supabase.from('emails').select('id').limit(1);
             const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Connection timeout')), 5000)
             );
@@ -71,14 +70,6 @@ router.get('/', async (req, res) => {
                 };
             }
         }
-    }
-
-    // Check OpenAI
-    if (!process.env.OPENAI_API_KEY) {
-        status.services.openai = { status: 'disconnected', message: 'Missing OPENAI_API_KEY' };
-    } else {
-        // We don't make a call to save latency/cost, just check config
-        status.services.openai = { status: 'configured', message: 'API Key present' };
     }
 
     res.json(status);

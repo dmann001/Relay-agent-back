@@ -131,6 +131,7 @@ async function upsertSentMetadata(userId: string, accountId: string, meta: Gmail
       is_archived: false,
       is_starred: meta.isStarred,
       is_trashed: false,
+      trashed_at: null,
       is_inbox: meta.isInbox,
       is_sent: true,
       labels: meta.labels,

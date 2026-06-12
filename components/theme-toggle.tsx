@@ -23,8 +23,11 @@ export function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-      className="h-12 w-12"
+      onClick={() => {
+        const effectiveTheme = document.documentElement.classList.contains("dark") ? "dark" : "light"
+        setTheme(effectiveTheme === "light" ? "dark" : "light")
+      }}
+      className="relative h-9 w-9 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent"
       title={title}
     >
       <Sun className="h-6 w-6 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />

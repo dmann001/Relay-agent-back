@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Check, CloudOff, Loader2, Send, Sparkles, X, Paperclip, Trash2 } from "lucide-react"
+import { Check, CloudOff, Loader2, Send, X, Paperclip, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { storage } from "@/lib/storage"
 import { emailApi, type RemoteDraft } from "@/lib/email-api"
 
 interface ComposeDialogProps {
@@ -34,7 +33,6 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [isSending, setIsSending] = useState(false)
-  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false)
   const [showCc, setShowCc] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; mimeType: string; data: string; size: number }>>([])
 
@@ -224,46 +222,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     try {
       const newFiles = await Promise.all(fileList.map(readFile))
       setAttachments((prev) => [...prev, ...newFiles])
-    } catch (error) {
+    } catch {
       toast({ title: "Attachment failed", description: "Could not read one of the files.", variant: "destructive" })
-    }
-  }
-
-  const handleGenerateDraft = async () => {
-    if (!replyTo?.originalBody) {
-      toast({ title: "No context", description: "AI draft generation requires the original email context", variant: "destructive" })
-      return
-    }
-
-    const settings = storage.getSettings()
-    if (!settings.openaiApiKey) {
-      toast({ title: "API Key Required", description: "Please add your OpenAI API key in Settings", variant: "destructive" })
-      return
-    }
-
-    setIsGeneratingDraft(true)
-    try {
-      const response = await fetch("/api/ai/generate-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: settings.openaiApiKey,
-          email: replyTo.originalBody,
-          instructions: `Draft a professional reply with subject: ${subject}`,
-        }),
-      })
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Could not generate draft")
-      }
-      const { draft: generated } = await response.json()
-      setBody(generated)
-      toast({ title: "Draft generated!", description: "AI has created a draft response for you" })
-    } catch (error: any) {
-      console.error("Generate draft error:", error)
-      toast({ title: "Failed to generate draft", description: error.message || "Could not generate draft", variant: "destructive" })
-    } finally {
-      setIsGeneratingDraft(false)
     }
   }
 
@@ -271,7 +231,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     switch (draftStatus) {
       case "saving":
         return (
-          <span className="flex items-center gap-1.5 text-xs text-[#8A8A8A]">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
             Saving draft...
           </span>
@@ -297,10 +257,10 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto border border-white/[0.06] bg-[#0A0A0B] text-[#FAFAF9] rounded-2xl" style={{ background: 'linear-gradient(180deg, rgba(20,20,22,0.98) 0%, rgba(10,10,11,1) 100%)', backdropFilter: 'blur(40px)' }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl sm:max-w-[600px]">
         <DialogHeader>
           <div className="flex items-center justify-between pr-6">
-            <DialogTitle className="text-[#FAFAF9]">
+            <DialogTitle className="text-foreground">
               {replyTo ? "Reply" : isEditingDraft ? "Edit Draft" : "New Email"}
             </DialogTitle>
             {draftStatusIndicator()}
@@ -311,9 +271,9 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
           {/* To field */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="to" className="text-[#FAFAF9]">To</Label>
+              <Label htmlFor="to" className="text-foreground">To</Label>
               {!showCc && (
-                <Button size="sm" onClick={() => setShowCc(true)} className="bg-transparent text-[#8A8A8A] hover:text-[#E8DCC4] hover:bg-white/[0.03]">
+                <Button size="sm" onClick={() => setShowCc(true)} className="bg-transparent text-muted-foreground hover:bg-surface-hover hover:text-brand">
                   Add Cc
                 </Button>
               )}
@@ -325,7 +285,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
               value={to}
               onChange={(e) => setTo(e.target.value)}
               disabled={isSending}
-              className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+              className="rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
 
@@ -333,8 +293,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
           {showCc && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="cc" className="text-[#FAFAF9]">Cc</Label>
-                <Button size="sm" onClick={() => { setShowCc(false); setCc("") }} className="bg-transparent text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03]">
+                <Label htmlFor="cc" className="text-foreground">Cc</Label>
+                <Button size="sm" onClick={() => { setShowCc(false); setCc("") }} className="bg-transparent text-muted-foreground hover:bg-surface-hover hover:text-foreground">
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -345,54 +305,37 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
                 value={cc}
                 onChange={(e) => setCc(e.target.value)}
                 disabled={isSending}
-                className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+                className="rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
           )}
 
           {/* Subject field */}
           <div className="space-y-2">
-            <Label htmlFor="subject" className="text-[#FAFAF9]">Subject</Label>
+            <Label htmlFor="subject" className="text-foreground">Subject</Label>
             <Input
               id="subject"
               placeholder="Email subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               disabled={isSending}
-              className="bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+              className="rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
 
           {/* Body field */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="body" className="text-[#FAFAF9]">Message</Label>
-              {replyTo?.originalBody && (
-                <Button
-                  size="sm"
-                  onClick={handleGenerateDraft}
-                  disabled={isGeneratingDraft || isSending}
-                  className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-lg"
-                >
-                  {isGeneratingDraft ? (
-                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-3 w-3 text-[#E8DCC4]" />
-                  )}
-                  AI Draft
-                </Button>
-              )}
-            </div>
+            <Label htmlFor="body" className="text-foreground">Message</Label>
             <Textarea
               id="body"
               placeholder="Write your message here..."
-              className="min-h-[200px] resize-none bg-white/[0.03] border-white/[0.08] text-[#FAFAF9] placeholder:text-[#5A5A5A] rounded-xl focus:border-[#E8DCC4]/30 focus:ring-1 focus:ring-[#E8DCC4]/20"
+              className="min-h-[200px] resize-none rounded-xl border-input bg-background text-foreground placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               disabled={isSending}
             />
             <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-[#8A8A8A] hover:text-[#E8DCC4] hover:border-[#E8DCC4]/40 transition-colors">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-brand/50 hover:text-brand">
                 <Paperclip className="h-3.5 w-3.5" />
                 Add attachment
                 <input
@@ -403,17 +346,17 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
                 />
               </label>
               {attachments.length > 0 && (
-                <span className="text-xs text-[#8A8A8A]">{attachments.length} file(s) attached</span>
+                <span className="text-xs text-muted-foreground">{attachments.length} file(s) attached</span>
               )}
             </div>
             {attachments.length > 0 && (
-              <div className="space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+              <div className="space-y-2 rounded-xl border border-border bg-surface-subtle p-3">
                 {attachments.map((file, index) => (
                   <div key={`${file.filename}-${index}`} className="flex items-center justify-between text-xs">
-                    <span className="truncate text-[#FAFAF9]">{file.filename}</span>
+                    <span className="truncate text-foreground">{file.filename}</span>
                     <button
                       type="button"
-                      className="rounded-md px-2 py-1 text-[#8A8A8A] hover:text-red-400"
+                      className="rounded-md px-2 py-1 text-muted-foreground hover:text-destructive"
                       onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -426,17 +369,17 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
         </div>
 
         <DialogFooter>
-          <Button onClick={() => handleOpenChange(false)} disabled={isSending} className="border border-white/[0.08] bg-transparent text-[#8A8A8A] hover:text-[#FAFAF9] hover:bg-white/[0.03] rounded-xl">
+          <Button onClick={() => handleOpenChange(false)} disabled={isSending} variant="outline" className="rounded-xl">
             Cancel
           </Button>
           <Button
             onClick={() => void saveDraft(false)}
-            disabled={isSending || isGeneratingDraft || draftStatus === "saving"}
-            className="border border-white/[0.08] bg-white/[0.03] text-[#FAFAF9] hover:bg-white/[0.06] rounded-xl"
+            disabled={isSending || draftStatus === "saving"}
+            className="rounded-xl border border-border bg-surface-subtle text-foreground hover:bg-surface-hover"
           >
             Save Draft
           </Button>
-          <Button onClick={handleSend} disabled={isSending || !to.trim() || !subject.trim() || !body.trim()} className="bg-gradient-to-b from-[#E8DCC4] to-[#C4A052] hover:from-[#F5EDD8] hover:to-[#D4B062] text-[#0A0A0B] font-medium rounded-xl">
+          <Button onClick={handleSend} disabled={isSending || !to.trim() || !subject.trim() || !body.trim()} className="rounded-xl bg-brand font-medium text-brand-foreground hover:bg-brand-strong">
             {isSending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

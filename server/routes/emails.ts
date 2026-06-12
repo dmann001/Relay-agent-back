@@ -1,6 +1,5 @@
 import express from 'express';
 import { google } from 'googleapis';
-import { Email } from '../../types'; // We'll need to make sure types are accessible or duplicated
 
 const router = express.Router();
 

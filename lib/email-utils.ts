@@ -46,7 +46,8 @@ export function sanitizeEmailHTML(html: string): string {
         console.warn('HTML entity decoding failed:', e);
     }
 
-    // Configure DOMPurify - be more aggressive about removing styles that cause visual issues
+    // Preserve safe inline presentation styles because most HTML email layouts
+    // depend on them. DOMPurify still removes unsafe elements and event handlers.
     let clean = DOMPurify.sanitize(decoded, {
         USE_PROFILES: { html: true },
         ADD_TAGS: ['center', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'colgroup', 'col'],
@@ -56,7 +57,7 @@ export function sanitizeEmailHTML(html: string): string {
             'colspan', 'rowspan', 'scope', 'headers', 'dir'
         ],
         FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'meta', 'link', 'style'],
-        FORBID_ATTR: ['onmouseover', 'onclick', 'onload', 'onerror', 'onfocus', 'onblur', 'onchange', 'style', 'border'],
+        FORBID_ATTR: ['onmouseover', 'onclick', 'onload', 'onerror', 'onfocus', 'onblur', 'onchange'],
         WHOLE_DOCUMENT: false,
         KEEP_CONTENT: true,
     });
