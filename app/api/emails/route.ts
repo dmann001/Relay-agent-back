@@ -2,7 +2,7 @@
 // The DB stores metadata only; bodies are fetched via /api/emails/[id].
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
-import { EMAIL_ROW_COLUMNS, inboxHasMorePages, rowToEmail, type EmailRow } from '@/lib/server/email-sync';
+import { EMAIL_ROW_COLUMNS, inboxHasMorePages, rowToEmail, type EmailRow, type GmailCategory } from '@/lib/server/email-sync';
 import { handleApiError } from '@/lib/server/api-utils';
 
 type ListMailbox = 'inbox' | 'sent' | 'archive' | 'trash';
@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const hasMore = mailbox === 'inbox' ? await inboxHasMorePages(userId) : false;
+    const hasMore = mailbox === 'inbox'
+      ? await inboxHasMorePages(userId, category as GmailCategory | undefined)
+      : false;
 
     return NextResponse.json({
       emails: ((data || []) as unknown as EmailRow[]).map(rowToEmail),

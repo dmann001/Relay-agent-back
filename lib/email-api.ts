@@ -120,7 +120,7 @@ export const emailApi = {
 
   async sync(
     mailbox?: Mailbox | 'drafts',
-    options: { force?: boolean; loadMore?: boolean } = {}
+    options: { force?: boolean; loadMore?: boolean; category?: Email['gmailCategory'] } = {}
   ): Promise<{ results: SyncResultSummary[] }> {
     const result = await request<{ results: SyncResultSummary[] }>('/api/emails/sync', {
       method: 'POST',
@@ -128,6 +128,7 @@ export const emailApi = {
         ...(mailbox ? { mailbox } : {}),
         ...(options.force ? { force: true } : {}),
         ...(options.loadMore ? { loadMore: true } : {}),
+        ...(options.category ? { category: options.category } : {}),
       }),
     });
     notifyEmailsUpdated();

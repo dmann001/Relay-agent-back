@@ -29,10 +29,18 @@ const INITIAL_FETCH_COUNT = 50;
 const MIN_BACKGROUND_SYNC_MS = 3 * 60 * 1000;
 
 export type Mailbox = 'inbox' | 'sent' | 'archive' | 'trash' | 'drafts';
+export type GmailCategory = NonNullable<Email['gmailCategory']>;
 
 const INBOX_QUERY = 'in:inbox -in:spam';
 const SENT_QUERY = 'in:sent -in:trash';
 const TRASH_QUERY = 'in:trash';
+const CATEGORY_QUERIES: Record<GmailCategory, string> = {
+  primary: 'in:inbox category:primary -in:spam',
+  social: 'in:inbox category:social -in:spam',
+  promotions: 'in:inbox category:promotions -in:spam',
+  updates: 'in:inbox category:updates -in:spam',
+  forums: 'in:inbox category:forums -in:spam',
+};
 
 // ---------------------------------------------------------------------------
 // Row mapping
@@ -295,8 +303,38 @@ export async function loadMoreMailbox(
   return { synced: result.count, hasMore: !!result.nextPageToken };
 }
 
+async function syncCategoryPage(
+  userId: string,
+  account: GmailAccountRow,
+  client: OAuth2Client,
+  category: GmailCategory,
+  loadMore: boolean
+): Promise<{ synced: number; hasMore: boolean }> {
+  const state = await getSyncState(account.id);
+  const tokens = parseMailboxPageTokens(state?.pagination_token);
+  const pageToken = loadMore ? tokens[category] ?? undefined : undefined;
+  const { ids, nextPageToken } = await listMessageIdsPage(
+    client,
+    CATEGORY_QUERIES[category],
+    INITIAL_FETCH_COUNT,
+    pageToken
+  );
+  const metas = ids.length > 0 ? await fetchMessageMetadataBatch(client, ids) : [];
+  const synced = await upsertMetadata(userId, account.id, metas);
+
+  await updateSyncState(account.id, {
+    pagination_token: mergeMailboxPageTokens(state?.pagination_token, {
+      [category]: nextPageToken ?? null,
+    }),
+    last_successful_sync_at: new Date().toISOString(),
+    last_error: null,
+  });
+
+  return { synced, hasMore: !!nextPageToken };
+}
+
 /** True when at least one connected account has more inbox pages in Gmail. */
-export async function inboxHasMorePages(userId: string): Promise<boolean> {
+export async function inboxHasMorePages(userId: string, category?: GmailCategory): Promise<boolean> {
   const { data: accounts } = await getSupabaseAdmin()
     .from('email_accounts')
     .select('id')
@@ -309,7 +347,7 @@ export async function inboxHasMorePages(userId: string): Promise<boolean> {
   for (const account of accounts) {
     const state = await getSyncState(account.id);
     const tokens = parseMailboxPageTokens(state?.pagination_token);
-    if (tokens.inbox) return true;
+    if (category ? tokens[category] : tokens.inbox) return true;
   }
 
   // No stored token yet (legacy sync): a full cached page likely means more in Gmail.
@@ -318,7 +356,8 @@ export async function inboxHasMorePages(userId: string): Promise<boolean> {
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('is_inbox', true)
-    .eq('is_trashed', false);
+    .eq('is_trashed', false)
+    .eq('gmail_category', category || 'primary');
 
   return (count ?? 0) >= INITIAL_FETCH_COUNT;
 }
@@ -420,12 +459,31 @@ export interface SyncResult {
 export async function syncAccount(
   userId: string,
   account: GmailAccountRow,
-  options: { mailbox?: Mailbox; force?: boolean; loadMore?: boolean } = {}
+  options: { mailbox?: Mailbox; force?: boolean; loadMore?: boolean; category?: GmailCategory } = {}
 ): Promise<SyncResult> {
   const state = await getSyncState(account.id);
   let synced = 0;
   let deleted = 0;
   let mode: SyncResult['mode'] = 'incremental';
+
+  if (options.mailbox === 'inbox' && options.category) {
+    const client = await getAuthorizedClient(account);
+    const result = await syncCategoryPage(
+      userId,
+      account,
+      client,
+      options.category,
+      options.loadMore === true
+    );
+    return {
+      accountId: account.id,
+      email: account.email,
+      synced: result.synced,
+      deleted: 0,
+      mode: options.loadMore ? 'loadMore' : 'list',
+      hasMore: result.hasMore,
+    };
+  }
 
   // Load the next Gmail page into the DB cache (triggered by inbox pagination).
   if (options.loadMore && (options.mailbox === 'inbox' || options.mailbox === 'sent')) {

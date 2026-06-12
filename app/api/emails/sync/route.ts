@@ -3,8 +3,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/supabase-admin';
 import { listGmailAccounts, updateSyncState } from '@/lib/server/gmail-accounts';
-import { syncAccount, type Mailbox, type SyncResult } from '@/lib/server/email-sync';
+import { syncAccount, type GmailCategory, type Mailbox, type SyncResult } from '@/lib/server/email-sync';
 import { handleApiError } from '@/lib/server/api-utils';
+
+const GMAIL_CATEGORIES = new Set(['primary', 'social', 'promotions', 'updates', 'forums']);
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +15,9 @@ export async function POST(request: NextRequest) {
     const mailbox = body?.mailbox as Mailbox | undefined;
     const force = body?.force === true;
     const loadMore = body?.loadMore === true;
+    const category = GMAIL_CATEGORIES.has(body?.category)
+      ? body.category as GmailCategory
+      : undefined;
 
     const accounts = await listGmailAccounts(userId);
     if (accounts.length === 0) {
@@ -22,7 +27,7 @@ export async function POST(request: NextRequest) {
     const results: SyncResult[] = [];
     for (const account of accounts) {
       try {
-        results.push(await syncAccount(userId, account, { mailbox, force, loadMore }));
+        results.push(await syncAccount(userId, account, { mailbox, force, loadMore, category }));
       } catch (error: any) {
         const message =
           error?.message ||
