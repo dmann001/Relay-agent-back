@@ -110,5 +110,6 @@ jobs:
           languages: javascript-typescript
           build-mode: none
 
-      - name: Analyze source
+      - name: Analyze source (non-blocking until code scanning is enabled)
         uses: github/codeql-action/analyze@v3
+        continue-on-error: true

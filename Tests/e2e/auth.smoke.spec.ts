@@ -5,7 +5,7 @@ test("root redirects to the public sign-in page", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  await expect(page.locator("form").getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
 test("sign-in form validates credentials without a network call", async ({ page }) => {
