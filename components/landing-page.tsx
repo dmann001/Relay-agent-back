@@ -323,6 +323,13 @@ export function LandingPage() {
         {isMenuOpen && (
           <div className="md:hidden absolute top-full left-0 w-full px-6 pt-4">
             <div className="bg-[#141416]/95 backdrop-blur-2xl border border-white/[0.04] rounded-2xl p-6 space-y-4">
+              <Link
+                href="/login"
+                className="block text-[#FAFAF9] transition-colors py-2"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Sign in
+              </Link>
               {['How it works', 'Preview', 'Features', 'Pricing'].map((item) => (
                 <Link
                   key={item}
