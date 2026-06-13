@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Check, CloudOff, Loader2, Send, X, Paperclip, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { emailApi, type RemoteDraft } from "@/lib/email-api"
+import { emailApi, type ConnectedAccount, type RemoteDraft } from "@/lib/email-api"
 
 interface ComposeDialogProps {
   open: boolean
@@ -19,15 +19,19 @@ interface ComposeDialogProps {
     threadId?: string
     messageId?: string
     originalBody?: string
+    accountId?: string
   }
   draft?: RemoteDraft
+  defaultAccountId?: string
 }
 
 type DraftStatus = "idle" | "saving" | "saved" | "failed"
 
 const AUTOSAVE_DELAY_MS = 2500
 
-export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDialogProps) {
+export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccountId }: ComposeDialogProps) {
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
+  const [accountId, setAccountId] = useState("")
   const [to, setTo] = useState("")
   const [cc, setCc] = useState("")
   const [subject, setSubject] = useState("")
@@ -48,6 +52,13 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
+    void emailApi.listAccounts().then((loaded) => {
+      if (cancelled) return
+      setAccounts(loaded)
+      const requested = draft?.accountId || replyTo?.accountId || defaultAccountId
+      setAccountId(requested && loaded.some(({ id }) => id === requested) ? requested : loaded[0]?.id || "")
+    }).catch(() => setAccounts([]))
 
     skipNextAutosave.current = true
     setDraftStatus(draft ? "saved" : "idle")
@@ -79,7 +90,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     setBody("")
     setShowCc(false)
     setAttachments([])
-  }, [open, draft, replyTo])
+    return () => { cancelled = true }
+  }, [open, draft, replyTo, defaultAccountId])
 
   const parseRecipients = (value: string) =>
     value.split(",").map((e) => e.trim()).filter(Boolean)
@@ -94,7 +106,9 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
 
     setDraftStatus("saving")
     try {
+      if (!accountId) throw new Error("Choose a sending account")
       const result = await emailApi.saveDraft({
+        accountId,
         draftId: draftId || undefined,
         to: parseRecipients(to),
         cc: cc ? parseRecipients(cc) : undefined,
@@ -143,12 +157,13 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [to, cc, subject, body, open])
+  }, [to, cc, subject, body, accountId, open])
 
   // Reset form when dialog closes
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+      if (!isSending && (to.trim() || subject.trim() || body.trim())) void saveDraft(true)
       setTo("")
       setCc("")
       setSubject("")
@@ -162,6 +177,10 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
   }
 
   const handleSend = async () => {
+    if (!accountId) {
+      toast({ title: "Choose a From account", description: "Select which connected account should send this email.", variant: "destructive" })
+      return
+    }
     if (!to.trim()) {
       toast({ title: "Missing recipient", description: "Please enter a recipient email", variant: "destructive" })
       return
@@ -179,6 +198,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
     setIsSending(true)
     try {
       await emailApi.sendEmail({
+        accountId,
         to: parseRecipients(to),
         cc: cc ? parseRecipients(cc) : undefined,
         subject,
@@ -260,14 +280,21 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft }: ComposeDia
       <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl sm:max-w-[600px]">
         <DialogHeader>
           <div className="flex items-center justify-between pr-6">
-            <DialogTitle className="text-foreground">
-              {replyTo ? "Reply" : isEditingDraft ? "Edit Draft" : "New Email"}
-            </DialogTitle>
+            <div><DialogTitle className="text-foreground">{replyTo ? "Reply" : isEditingDraft ? "Edit Draft" : "New Email"}</DialogTitle><DialogDescription className="sr-only">Choose a sending account, recipients, subject, and message.</DialogDescription></div>
             {draftStatusIndicator()}
           </div>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="from-account" className="text-foreground">From</Label>
+            <select id="from-account" value={accountId} onChange={(event) => setAccountId(event.target.value)} disabled={isSending || Boolean(replyTo?.accountId) || Boolean(draft?.accountId)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-brand focus:ring-2 focus:ring-brand/20">
+              {!accounts.length && <option value="">No connected account</option>}
+              {accounts.map((account) => <option key={account.id} value={account.id}>{account.email}</option>)}
+            </select>
+            {replyTo?.accountId && <p className="text-xs text-muted-foreground">Replies use the account that received this conversation.</p>}
+          </div>
+
           {/* To field */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">

@@ -178,6 +178,17 @@ export async function fetchFullMessage(
   return { email, labelIds: data.labelIds || [] };
 }
 
+export async function fetchFullThread(
+  client: OAuth2Client,
+  threadId: string
+): Promise<Email[]> {
+  const { data } = await getApi(client).users.threads.get({ userId: 'me', id: threadId, format: 'full' });
+  return (data.messages || [])
+    .map((message) => gmailLegacy.parseGmailMessage(message))
+    .filter((email): email is Email => Boolean(email))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}
+
 export async function modifyMessage(
   client: OAuth2Client,
   messageId: string,

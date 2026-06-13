@@ -24,6 +24,8 @@ export interface Email {
   read: boolean
   labels: string[]
   provider: "gmail"
+  accountId?: string
+  accountEmail?: string
   messageId?: string
   gmailCategory?: "primary" | "promotions" | "social" | "updates" | "forums"
   hasAttachments?: boolean

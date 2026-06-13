@@ -13,13 +13,18 @@ export async function POST(request: NextRequest) {
     const userId = await requireUser(request);
     const body = await request.json().catch(() => ({}));
     const mailbox = body?.mailbox as Mailbox | undefined;
+    const accountId = typeof body?.accountId === 'string' ? body.accountId : undefined;
     const force = body?.force === true;
     const loadMore = body?.loadMore === true;
     const category = GMAIL_CATEGORIES.has(body?.category)
       ? body.category as GmailCategory
       : undefined;
 
-    const accounts = await listGmailAccounts(userId);
+    const allAccounts = await listGmailAccounts(userId);
+    const accounts = accountId ? allAccounts.filter(({ id }) => id === accountId) : allAccounts;
+    if (accountId && accounts.length === 0) {
+      return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
     if (accounts.length === 0) {
       return NextResponse.json({ results: [], message: 'No Gmail accounts connected' });
     }
