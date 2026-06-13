@@ -9,6 +9,7 @@ import { Archive, Trash2, Loader2, Paperclip, Download, Send, RefreshCw, ArrowLe
 import { emailApi } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
 import { formatEmailContent, formatFileSize } from "@/lib/email-utils"
+import { AiActionStrip, AiThreadAssistant } from "@/components/ai-thread-assistant"
 import type { Email } from "@/types"
 
 function formatTimestamp(date: string): string {
@@ -22,12 +23,22 @@ function formatTimestamp(date: string): string {
   return emailDate.toLocaleDateString()
 }
 
-export function ThreadView({ threadId }: { threadId: string }) {
+interface ThreadViewProps {
+  threadId: string
+  embedded?: boolean
+  onClose?: () => void
+  onRemoved?: (messageId: string) => void
+  onRead?: (messageId: string) => void
+}
+
+export function ThreadView({ threadId, embedded = false, onClose, onRemoved, onRead }: ThreadViewProps) {
   const [email, setEmail] = useState<Email | null>(null)
   const [isLoadingEmail, setIsLoadingEmail] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [draftContent, setDraftContent] = useState("")
   const [isSendingReply, setIsSendingReply] = useState(false)
+  const [isAiOpen, setIsAiOpen] = useState(false)
+  const [aiAction, setAiAction] = useState<"summary" | "draft" | "tasks" | "ask" | undefined>()
   const replyRef = useRef<HTMLTextAreaElement>(null)
   const router = useRouter()
   const { toast } = useToast()
@@ -48,6 +59,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
         // Mark as read in Gmail + DB cache (fire and forget).
         if (!fullEmail.read) {
+          onRead?.(threadId)
           void emailApi.modifyEmail(threadId, "markRead").catch(() => {})
         }
       } catch (error: any) {
@@ -60,7 +72,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
     void load()
     return () => { cancelled = true }
-  }, [threadId])
+  }, [onRead, threadId])
 
   const handleSaveDraft = async () => {
     if (!email || !draftContent.trim()) return
@@ -149,7 +161,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
     try {
       await emailApi.modifyEmail(email.id, "archive")
       toast({ title: "Email Archived", description: "Removed from Inbox in Gmail too" })
-      router.push("/inbox")
+      onRemoved?.(email.id)
+      if (embedded) onClose?.()
+      else router.push("/inbox")
     } catch (error: any) {
       toast({
         title: "Archive failed",
@@ -165,7 +179,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
     try {
       await emailApi.modifyEmail(email.id, "trash")
       toast({ title: "Moved to Trash", description: "You can restore it from Trash" })
-      router.push("/inbox")
+      onRemoved?.(email.id)
+      if (embedded) onClose?.()
+      else router.push("/inbox")
     } catch (error: any) {
       toast({
         title: "Delete failed",
@@ -178,6 +194,20 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const handleReplyClick = () => {
     replyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
     window.requestAnimationFrame(() => replyRef.current?.focus())
+  }
+
+  const handleAiAction = (action: "summary" | "draft" | "tasks" | "ask") => {
+    setAiAction(action)
+    setIsAiOpen(true)
+  }
+
+  const handleInsertAiDraft = (draft: string) => {
+    setDraftContent(draft)
+    setIsAiOpen(false)
+    window.requestAnimationFrame(() => {
+      replyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+      replyRef.current?.focus()
+    })
   }
 
   if (!email && isLoadingEmail) {
@@ -202,7 +232,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 overflow-hidden bg-background">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Thread Header */}
       <div className="shrink-0 border-b border-border bg-surface-subtle px-4 py-3 sm:px-6">
         <div className="flex items-center justify-between gap-4">
@@ -210,14 +241,14 @@ export function ThreadView({ threadId }: { threadId: string }) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => router.push("/inbox")}
-              title="Back to Inbox"
-              aria-label="Back to Inbox"
+              onClick={() => embedded ? onClose?.() : router.push("/inbox")}
+              title={embedded ? "Close email" : "Back to Inbox"}
+              aria-label={embedded ? "Close email" : "Back to Inbox"}
               className="shrink-0 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <h1 className="truncate text-lg font-medium text-foreground sm:text-xl">{email.subject}</h1>
+            <h1 className={embedded ? "truncate text-base font-medium text-foreground sm:text-lg" : "truncate text-lg font-medium text-foreground sm:text-xl"}>{email.subject}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button
@@ -249,6 +280,10 @@ export function ThreadView({ threadId }: { threadId: string }) {
             </Button>
           </div>
         </div>
+      </div>
+
+      <div className="shrink-0 border-b border-border bg-card px-4 py-2.5 sm:px-6">
+        <AiActionStrip onAction={handleAiAction} />
       </div>
 
       {/* Thread Content */}
@@ -513,6 +548,15 @@ export function ThreadView({ threadId }: { threadId: string }) {
           </div>
         </div>
       </div>
+      </div>
+      <AiThreadAssistant
+        messageId={email.id}
+        subject={email.subject}
+        open={isAiOpen}
+        initialAction={aiAction}
+        onOpenChange={setIsAiOpen}
+        onInsertDraft={handleInsertAiDraft}
+      />
     </div>
   )
 }
