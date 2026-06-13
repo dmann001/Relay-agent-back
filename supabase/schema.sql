@@ -116,6 +116,23 @@ create trigger email_accounts_set_updated_at
   before update on public.email_accounts
   for each row execute function public.set_updated_at();
 
+create table if not exists public.ai_account_preferences (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid primary key references public.email_accounts(id) on delete cascade,
+  writing_style text not null default 'Concise, clear, warm, and professional.',
+  signature text not null default '',
+  draft_instructions text not null default '',
+  ai_enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists ai_account_preferences_set_updated_at on public.ai_account_preferences;
+create trigger ai_account_preferences_set_updated_at
+  before update on public.ai_account_preferences
+  for each row execute function public.set_updated_at();
+
+
 create table if not exists public.email_sync_state (
   account_id uuid primary key references public.email_accounts(id) on delete cascade,
   history_id text,
@@ -595,6 +612,7 @@ create index if not exists archive_rules_user_enabled_idx on public.archive_rule
 alter table public.profiles enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.agent_memory enable row level security;
+alter table public.ai_account_preferences enable row level security;
 alter table public.email_accounts enable row level security;
 alter table public.email_sync_state enable row level security;
 alter table public.contacts enable row level security;
@@ -686,6 +704,22 @@ begin
     );
   end loop;
 end $$;
+
+
+-- AI preferences are account-scoped and must match both the user and owned account.
+drop policy if exists ai_account_preferences_select_own on public.ai_account_preferences;
+create policy ai_account_preferences_select_own on public.ai_account_preferences
+  for select using (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
+drop policy if exists ai_account_preferences_insert_own on public.ai_account_preferences;
+create policy ai_account_preferences_insert_own on public.ai_account_preferences
+  for insert with check (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
+drop policy if exists ai_account_preferences_update_own on public.ai_account_preferences;
+create policy ai_account_preferences_update_own on public.ai_account_preferences
+  for update using (auth.uid() = user_id and public.current_user_owns_email_account(account_id))
+  with check (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
+drop policy if exists ai_account_preferences_delete_own on public.ai_account_preferences;
+create policy ai_account_preferences_delete_own on public.ai_account_preferences
+  for delete using (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
 
 -- email_sync_state ownership is derived through email_accounts.
 drop policy if exists email_sync_state_select_own on public.email_sync_state;
