@@ -33,6 +33,20 @@ Relay already has most of what this needs:
 The current problem is integration: these sources are not assembled into one
 consistent personalization context, and user edits or sends do not update it.
 
+### Current AI baseline (implemented 2026-06-13)
+
+Relay now has account-scoped AI preferences and server-side OpenAI routes for
+thread summaries, drafts, tasks, Q&A, and inbox briefs. AI thread context uses
+the complete Gmail conversation and is explicitly scoped to the owning account.
+The UI exposes these controls in Settings, Inbox, and Thread View.
+
+This is the foundation for the memory design below, not the full learning loop.
+`ai_account_preferences` stores explicit per-account instructions today; the
+proposed `agent_memory` profile, `draft_feedback`, contact learning, and semantic
+retrieval remain future work. The eventual personalization service should merge
+account preferences at the highest priority and preserve account boundaries in
+all retrieval and feedback records.
+
 ## Minimal Architecture
 
 Use Supabase directly. Do not add Supermemory as a runtime dependency for the

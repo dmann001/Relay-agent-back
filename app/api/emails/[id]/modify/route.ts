@@ -3,7 +3,7 @@
 // then the DB metadata cache is updated from the labels Gmail returns.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/supabase-admin';
-import { listGmailAccounts, getAuthorizedClient } from '@/lib/server/gmail-accounts';
+import { listGmailAccounts, getAuthorizedClient, getGmailAccount } from '@/lib/server/gmail-accounts';
 import { findAccountForMessage, refreshCachedMessage } from '@/lib/server/email-sync';
 import { modifyMessage, trashMessage, untrashMessage } from '@/lib/server/gmail-api';
 import { handleApiError } from '@/lib/server/api-utils';
@@ -30,6 +30,7 @@ export async function POST(
     const { id: messageId } = await params;
     const body = await request.json().catch(() => ({}));
     const action = body?.action as Action;
+    const requestedAccountId = typeof body?.accountId === 'string' ? body.accountId : undefined;
 
     if (!ACTIONS.includes(action)) {
       return NextResponse.json(
@@ -39,7 +40,9 @@ export async function POST(
     }
 
     const accounts = await listGmailAccounts(userId);
-    const account = await findAccountForMessage(userId, accounts, messageId);
+    const account = requestedAccountId
+      ? await getGmailAccount(userId, requestedAccountId)
+      : await findAccountForMessage(userId, accounts, messageId);
     if (!account) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }

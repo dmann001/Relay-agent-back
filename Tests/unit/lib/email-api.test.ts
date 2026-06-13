@@ -30,10 +30,11 @@ describe("email API client", () => {
       limit: 25,
       offset: 50,
       category: "promotions",
+      accountId: "account-1",
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/emails?mailbox=inbox&limit=25&offset=50&category=promotions",
+      "/api/emails?mailbox=inbox&limit=25&offset=50&category=promotions&accountId=account-1",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer session-token",
@@ -101,6 +102,18 @@ describe("email API client", () => {
       "/api/drafts?id=draft%2Fwith%20spaces",
       expect.objectContaining({ method: "DELETE" }),
     );
+  });
+
+  it("sends contextual AI requests through authenticated server routes", async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(response({ result: { kind: "summary", summary: "Done", keyPoints: [], openQuestions: [], suggestedAction: "Reply" }, context: { accountId: "a1", accountEmail: "work@example.com", messageId: "m1", subject: "Hi" }, model: "gpt-test" }))
+      .mockResolvedValueOnce(response({ brief: { overview: "Brief", needsReply: [], deadlines: [], notable: [] }, scope: [], model: "gpt-test" }));
+
+    await emailApi.runThreadAi({ messageId: "m1", action: "summary" });
+    await emailApi.getInboxBrief();
+
+    expect(global.fetch).toHaveBeenNthCalledWith(1, "/api/ai/thread", expect.objectContaining({ method: "POST", body: JSON.stringify({ messageId: "m1", action: "summary" }) }));
+    expect(global.fetch).toHaveBeenNthCalledWith(2, "/api/ai/brief", expect.objectContaining({ method: "POST", body: "{}" }));
   });
 
   it("maps the remaining public API operations", async () => {

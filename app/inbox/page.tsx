@@ -1,5 +1,6 @@
-import { AppSidebar } from "@/components/app-sidebar"
-import { InboxList } from "@/components/inbox-list"
+import { AppSidebar } from "@/components/app-sidebar";
+import { InboxList } from "@/components/inbox-list";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 
 export default function InboxPage() {
   return (
@@ -17,27 +18,30 @@ export default function InboxPage() {
         <div
           className="absolute w-[600px] h-[600px] rounded-full blur-[150px] opacity-15"
           style={{
-            background: 'radial-gradient(circle, #E8DCC4 0%, transparent 70%)',
-            top: '-10%',
-            right: '-5%',
+            background: "radial-gradient(circle, #E8DCC4 0%, transparent 70%)",
+            top: "-10%",
+            right: "-5%",
           }}
         />
         <div
           className="absolute w-[400px] h-[400px] rounded-full blur-[120px] opacity-10"
           style={{
-            background: 'radial-gradient(circle, #C4A052 0%, transparent 70%)',
-            bottom: '10%',
-            left: '20%',
+            background: "radial-gradient(circle, #C4A052 0%, transparent 70%)",
+            bottom: "10%",
+            left: "20%",
           }}
         />
       </div>
 
-      <AppSidebar />
+      <div className="hidden lg:flex">
+        <AppSidebar />
+      </div>
       <div className="relative z-10 flex flex-1 min-w-0 flex-col overflow-hidden">
         <div className="flex-1 min-h-0">
           <InboxList />
         </div>
       </div>
+      <MobileBottomNav />
     </div>
-  )
+  );
 }

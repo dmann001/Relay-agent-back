@@ -10,6 +10,7 @@ const mockGmailApi = {
       attachments: { get: jest.fn() },
     },
     history: { list: jest.fn() },
+    threads: { get: jest.fn() },
     getProfile: jest.fn(),
     drafts: {
       create: jest.fn(),
@@ -32,6 +33,7 @@ import {
   buildRawMessage,
   createDraft,
   deleteDraft,
+  fetchFullThread,
   fetchMessageMetadataBatch,
   getAttachment,
   getProfileHistoryId,
@@ -147,6 +149,28 @@ describe('Gmail metadata parsing', () => {
 describe('Gmail API contracts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+
+  it('fetches and sorts every message in a Gmail conversation', async () => {
+    const message = (id: string, timestamp: number) => ({
+      id,
+      threadId: 'thread-1',
+      internalDate: String(timestamp),
+      labelIds: ['INBOX'],
+      snippet: `Snippet ${id}`,
+      payload: { headers: [
+        { name: 'From', value: `Sender ${id} <${id}@example.com>` },
+        { name: 'To', value: 'me@example.com' },
+        { name: 'Subject', value: 'Conversation' },
+      ] },
+    });
+    mockGmailApi.users.threads.get.mockResolvedValue({ data: { messages: [message('newer', 2000), message('older', 1000)] } });
+
+    const result = await fetchFullThread({} as never, 'thread-1');
+
+    expect(mockGmailApi.users.threads.get).toHaveBeenCalledWith({ userId: 'me', id: 'thread-1', format: 'full' });
+    expect(result.map(({ id }) => id)).toEqual(['older', 'newer']);
   });
 
   it('lists message ids with pagination', async () => {
