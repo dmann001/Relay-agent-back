@@ -48,7 +48,21 @@ Server libs (new)
 - `lib/server/gmail-api.ts` — Gmail API wrapper (metadata, full message, history, drafts); attachment detection from metadata payload parts (no extra `has:attachment` query).
 - `lib/server/email-sync.ts` — sync orchestration, row mapping, 42P10 upsert fallback, 3-min background sync throttle.
 - `lib/server/api-utils.ts` — centralized API error handling.
-
+
+
+## Latest implementation context (2026-06-13)
+
+- Relay AI now runs through server-side Next.js routes: `/api/ai/thread`, `/api/ai/brief`, and `/api/ai/preferences`; OpenAI credentials remain server-only.
+- AI preferences are scoped per connected Gmail account. Thread AI uses the complete Gmail conversation and selected account; inbox briefs can also be account-scoped.
+- Inbox, Sent, Drafts, Archives, and Trash support account filtering and preserve account identity. Message actions include `accountId` to avoid cross-account Gmail ID collisions.
+- Compose supports a sending-account selector. Replies and existing drafts remain tied to their receiving/original account.
+- `/api/accounts` exposes sync health, last sync/error, and unread counts for the sidebar and Settings reconnect flows.
+- Current UI includes a collapsible compose-first desktop sidebar, mobile bottom navigation, embedded full-conversation reading, bulk actions, keyboard navigation, and mailbox timestamps.
+- Regression coverage includes inbox, compose, AI assistant, account API, AI route, Gmail-thread, and email client tests.
+
+### Important distinction for future work
+
+The shipped account-scoped AI preferences and full-thread context are the current baseline. The broader learned personalization system in `docs/MEMORY_ARCHITECTURE.md`—profile compaction, draft feedback, contact learning, and semantic retrieval—is still planned and should extend this baseline.
 Frontend (refactored for new data flow)
 - `components/inbox-list.tsx` — DB list + background sync; category filter defaults to **all categories** (not Primary-only); manual sync passes `force: true`.
 - `components/thread-view.tsx` — live body fetch on open; falls back to `snippet` if body empty.
