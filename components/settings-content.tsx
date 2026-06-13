@@ -2,14 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Loader2, Mail, Trash2 } from "lucide-react"
+import { Bot, Loader2, Mail, Save, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { emailApi, type ConnectedAccount } from "@/lib/email-api"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { emailApi, type AiAccountPreference, type ConnectedAccount } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
 
 export function SettingsContent() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
+  const [aiPreferences, setAiPreferences] = useState<AiAccountPreference[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
   const searchParams = useSearchParams()
@@ -17,7 +22,12 @@ export function SettingsContent() {
 
   const loadAccounts = useCallback(async () => {
     try {
-      setAccounts(await emailApi.listAccounts())
+      const [connectedAccounts, preferences] = await Promise.all([
+        emailApi.listAccounts(),
+        emailApi.listAiPreferences().catch(() => [] as AiAccountPreference[]),
+      ])
+      setAccounts(connectedAccounts)
+      setAiPreferences(preferences)
     } catch (error) {
       console.error("[Settings] Failed to load accounts:", error)
       toast({
@@ -30,14 +40,11 @@ export function SettingsContent() {
     }
   }, [toast])
 
-  useEffect(() => {
-    void loadAccounts()
-  }, [loadAccounts])
+  useEffect(() => { void loadAccounts() }, [loadAccounts])
 
   useEffect(() => {
     const error = searchParams.get("error")
     if (!error) return
-
     toast({
       title: "Authentication Error",
       description: `Failed to connect Gmail account: ${error}`,
@@ -82,9 +89,7 @@ export function SettingsContent() {
       <div className="mx-auto max-w-4xl p-6">
         <h1 className="mb-8 text-3xl font-light tracking-tight text-foreground">Settings</h1>
 
-        <Card
-          className="rounded-2xl border border-border bg-card shadow-sm"
-        >
+        <Card className="rounded-2xl border border-border bg-card shadow-sm">
           <CardHeader>
             <CardTitle className="font-medium text-card-foreground">Connected Accounts</CardTitle>
             <CardDescription className="text-muted-foreground">
@@ -140,19 +145,144 @@ export function SettingsContent() {
               disabled={isConnecting}
             >
               {isConnecting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
-                </>
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Connecting...</>
               ) : (
-                <>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Connect Gmail Account
-                </>
+                <><Mail className="mr-2 h-4 w-4" />Connect Gmail Account</>
               )}
             </Button>
           </CardContent>
         </Card>
+
+        {aiPreferences.length > 0 && (
+          <Card className="mt-6 rounded-2xl border border-border bg-card shadow-sm">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-soft">
+                  <Bot className="h-5 w-5 text-brand-strong" />
+                </div>
+                <div>
+                  <CardTitle className="font-medium text-card-foreground">Relay AI by account</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    Control which accounts Relay may analyze and how reply drafts should sound.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {aiPreferences.map((preference) => (
+                <AiPreferenceEditor
+                  key={preference.accountId}
+                  preference={preference}
+                  onSaved={(updated) => setAiPreferences((current) =>
+                    current.map((item) => item.accountId === updated.accountId ? updated : item)
+                  )}
+                />
+              ))}
+              <p className="text-xs leading-5 text-muted-foreground">
+                AI preferences are isolated per connected account. Relay generates drafts for review
+                and never sends them automatically.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AiPreferenceEditor({
+  preference,
+  onSaved,
+}: {
+  preference: AiAccountPreference
+  onSaved: (preference: AiAccountPreference) => void
+}) {
+  const [form, setForm] = useState(preference)
+  const [isSaving, setIsSaving] = useState(false)
+  const { toast } = useToast()
+
+  useEffect(() => setForm(preference), [preference])
+
+  const save = async () => {
+    setIsSaving(true)
+    try {
+      const updated = await emailApi.updateAiPreference({
+        accountId: form.accountId,
+        writingStyle: form.writingStyle,
+        signature: form.signature,
+        draftInstructions: form.draftInstructions,
+        aiEnabled: form.aiEnabled,
+      })
+      onSaved(updated)
+      toast({ title: "AI preferences saved", description: `Updated Relay AI for ${updated.accountEmail}.` })
+    } catch (error: any) {
+      toast({
+        title: "Could not save AI preferences",
+        description: error.message || "Apply the latest database migration and try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-surface-subtle p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">{form.accountEmail}</div>
+          <div className="text-xs text-muted-foreground">Account-specific assistant context</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor={`ai-${form.accountId}`} className="text-xs text-muted-foreground">AI enabled</Label>
+          <Switch
+            id={`ai-${form.accountId}`}
+            checked={form.aiEnabled}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, aiEnabled: checked }))}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor={`style-${form.accountId}`}>Writing style</Label>
+          <Input
+            id={`style-${form.accountId}`}
+            value={form.writingStyle}
+            maxLength={1000}
+            onChange={(event) => setForm((current) => ({ ...current, writingStyle: event.target.value }))}
+            placeholder="Concise, warm, professional…"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`instructions-${form.accountId}`}>Draft instructions</Label>
+          <Textarea
+            id={`instructions-${form.accountId}`}
+            value={form.draftInstructions}
+            maxLength={2000}
+            onChange={(event) => setForm((current) => ({ ...current, draftInstructions: event.target.value }))}
+            placeholder="Mention next steps and avoid jargon…"
+            className="min-h-24"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`signature-${form.accountId}`}>Signature</Label>
+          <Textarea
+            id={`signature-${form.accountId}`}
+            value={form.signature}
+            maxLength={2000}
+            onChange={(event) => setForm((current) => ({ ...current, signature: event.target.value }))}
+            placeholder={"Best,\nAlex"}
+            className="min-h-24"
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <Button size="sm" onClick={() => void save()} disabled={isSaving}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          Save AI settings
+        </Button>
       </div>
     </div>
   )
