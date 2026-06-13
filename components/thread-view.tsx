@@ -22,7 +22,15 @@ function formatTimestamp(date: string): string {
   return emailDate.toLocaleDateString()
 }
 
-export function ThreadView({ threadId }: { threadId: string }) {
+interface ThreadViewProps {
+  threadId: string
+  embedded?: boolean
+  onClose?: () => void
+  onRemoved?: (messageId: string) => void
+  onRead?: (messageId: string) => void
+}
+
+export function ThreadView({ threadId, embedded = false, onClose, onRemoved, onRead }: ThreadViewProps) {
   const [email, setEmail] = useState<Email | null>(null)
   const [isLoadingEmail, setIsLoadingEmail] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -48,6 +56,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
         // Mark as read in Gmail + DB cache (fire and forget).
         if (!fullEmail.read) {
+          onRead?.(threadId)
           void emailApi.modifyEmail(threadId, "markRead").catch(() => {})
         }
       } catch (error: any) {
@@ -60,7 +69,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
     void load()
     return () => { cancelled = true }
-  }, [threadId])
+  }, [onRead, threadId])
 
   const handleSaveDraft = async () => {
     if (!email || !draftContent.trim()) return
@@ -149,7 +158,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
     try {
       await emailApi.modifyEmail(email.id, "archive")
       toast({ title: "Email Archived", description: "Removed from Inbox in Gmail too" })
-      router.push("/inbox")
+      onRemoved?.(email.id)
+      if (embedded) onClose?.()
+      else router.push("/inbox")
     } catch (error: any) {
       toast({
         title: "Archive failed",
@@ -165,7 +176,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
     try {
       await emailApi.modifyEmail(email.id, "trash")
       toast({ title: "Moved to Trash", description: "You can restore it from Trash" })
-      router.push("/inbox")
+      onRemoved?.(email.id)
+      if (embedded) onClose?.()
+      else router.push("/inbox")
     } catch (error: any) {
       toast({
         title: "Delete failed",
@@ -210,14 +223,14 @@ export function ThreadView({ threadId }: { threadId: string }) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => router.push("/inbox")}
-              title="Back to Inbox"
-              aria-label="Back to Inbox"
+              onClick={() => embedded ? onClose?.() : router.push("/inbox")}
+              title={embedded ? "Close email" : "Back to Inbox"}
+              aria-label={embedded ? "Close email" : "Back to Inbox"}
               className="shrink-0 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <h1 className="truncate text-lg font-medium text-foreground sm:text-xl">{email.subject}</h1>
+            <h1 className={embedded ? "truncate text-base font-medium text-foreground sm:text-lg" : "truncate text-lg font-medium text-foreground sm:text-xl"}>{email.subject}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Button
