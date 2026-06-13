@@ -41,6 +41,37 @@ export interface RemoteDraft {
   provider: 'gmail';
 }
 
+
+export type ThreadAiResult =
+  | { kind: 'summary'; summary: string; keyPoints: string[]; openQuestions: string[]; suggestedAction: string }
+  | { kind: 'draft'; draft: string; rationale: string; assumptions: string[] }
+  | { kind: 'tasks'; tasks: Array<{ title: string; owner: string; dueDate: string; evidence: string }>; notes: string }
+  | { kind: 'answer'; answer: string; evidence: string[] };
+
+export interface ThreadAiResponse {
+  result: ThreadAiResult;
+  context: { accountId: string; accountEmail: string; messageId: string; subject: string };
+  model: string;
+  responseId?: string;
+}
+
+export interface InboxBrief {
+  overview: string;
+  needsReply: Array<{ messageId: string; subject: string; reason: string }>;
+  deadlines: Array<{ messageId: string; subject: string; date: string; evidence: string }>;
+  notable: Array<{ messageId: string; subject: string; reason: string }>;
+}
+
+export interface AiAccountPreference {
+  accountId: string;
+  accountEmail: string;
+  displayName: string;
+  writingStyle: string;
+  signature: string;
+  draftInstructions: string;
+  aiEnabled: boolean;
+}
+
 export interface SyncResultSummary {
   accountId: string;
   email: string;
@@ -224,5 +255,38 @@ export const emailApi = {
   async getGmailConnectUrl(): Promise<string> {
     const { url } = await request<{ url: string }>('/api/auth/gmail');
     return url;
+  },
+
+  // ---- Contextual AI (read-only analysis and draft generation) ----
+
+  async runThreadAi(payload: {
+    messageId: string;
+    action: 'summary' | 'draft' | 'tasks' | 'ask';
+    prompt?: string;
+  }): Promise<ThreadAiResponse> {
+    return request<ThreadAiResponse>('/api/ai/thread', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getInboxBrief(accountId?: string): Promise<{ brief: InboxBrief; scope: Array<{ id: string; email: string }>; model: string }> {
+    return request('/api/ai/brief', {
+      method: 'POST',
+      body: JSON.stringify(accountId ? { accountId } : {}),
+    });
+  },
+
+  async listAiPreferences(): Promise<AiAccountPreference[]> {
+    const { preferences } = await request<{ preferences: AiAccountPreference[] }>('/api/ai/preferences');
+    return preferences;
+  },
+
+  async updateAiPreference(preference: Omit<AiAccountPreference, 'accountEmail' | 'displayName'>): Promise<AiAccountPreference> {
+    const { preference: updated } = await request<{ preference: AiAccountPreference }>('/api/ai/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(preference),
+    });
+    return updated;
   },
 };

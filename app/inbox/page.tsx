@@ -32,7 +32,9 @@ export default function InboxPage() {
         />
       </div>
 
-      <AppSidebar />
+      <div className="hidden lg:flex">
+        <AppSidebar />
+      </div>
       <div className="relative z-10 flex flex-1 min-w-0 flex-col overflow-hidden">
         <div className="flex-1 min-h-0">
           <InboxList />
