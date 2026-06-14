@@ -1,7 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("root redirects to the public sign-in page", async ({ page }) => {
+async function openLogin(page: Page) {
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+}
+
+test("landing page links to the public sign-in page", async ({ page }) => {
   await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: /Email without/ })).toBeVisible();
+  await page.getByRole("link", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
@@ -9,7 +18,7 @@ test("root redirects to the public sign-in page", async ({ page }) => {
 });
 
 test("sign-in form validates credentials without a network call", async ({ page }) => {
-  await page.goto("/login");
+  await openLogin(page);
   const email = page.getByPlaceholder("you@company.com");
   await email.fill("not-an-email");
   expect(await email.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(false);
@@ -22,8 +31,9 @@ test("sign-in form validates credentials without a network call", async ({ page 
 });
 
 test("account creation validates password confirmation", async ({ page }) => {
-  await page.goto("/login");
+  await openLogin(page);
   await page.getByRole("button", { name: "Create account" }).first().click();
+  await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   await page.getByPlaceholder("you@company.com").fill("user@example.com");
   await page.getByPlaceholder("••••••").first().fill("password-one");
   await page.getByPlaceholder("••••••").last().fill("password-two");
