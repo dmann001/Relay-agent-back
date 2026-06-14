@@ -74,6 +74,7 @@ const metadataToRow = (userId: string, accountId: string, meta: GmailMessageMeta
 });
 
 export interface EmailRow {
+  account_id: string;
   provider_message_id: string;
   provider_thread_id: string | null;
   rfc_message_id: string | null;
@@ -95,7 +96,7 @@ export interface EmailRow {
 }
 
 export const EMAIL_ROW_COLUMNS =
-  'provider_message_id, provider_thread_id, rfc_message_id, subject, from_name, from_email, snippet, received_at, is_read, is_archived, is_starred, is_trashed, is_inbox, is_sent, labels, to_recipients, has_attachments, gmail_category';
+  'account_id, provider_message_id, provider_thread_id, rfc_message_id, subject, from_name, from_email, snippet, received_at, is_read, is_archived, is_starred, is_trashed, is_inbox, is_sent, labels, to_recipients, has_attachments, gmail_category';
 
 // DB row -> frontend Email shape (metadata only; body fields stay empty).
 export function rowToEmail(row: EmailRow): Email {
@@ -119,6 +120,7 @@ export function rowToEmail(row: EmailRow): Email {
       (l) => !['UNREAD', 'CATEGORY_PERSONAL', 'CATEGORY_PRIMARY', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'].includes(l)
     ),
     provider: 'gmail',
+    accountId: row.account_id,
     messageId: row.rfc_message_id || undefined,
     gmailCategory: row.gmail_category || undefined,
     hasAttachments: row.has_attachments,
@@ -334,7 +336,7 @@ async function syncCategoryPage(
 }
 
 /** True when at least one connected account has more inbox pages in Gmail. */
-export async function inboxHasMorePages(userId: string, category?: GmailCategory): Promise<boolean> {
+export async function inboxHasMorePages(userId: string, category?: GmailCategory, accountId?: string): Promise<boolean> {
   const { data: accounts } = await getSupabaseAdmin()
     .from('email_accounts')
     .select('id')
@@ -342,22 +344,25 @@ export async function inboxHasMorePages(userId: string, category?: GmailCategory
     .eq('provider', 'gmail')
     .is('revoked_at', null);
 
-  if (!accounts?.length) return false;
+  const scopedAccounts = accountId ? (accounts || []).filter(({ id }) => id === accountId) : (accounts || []);
+  if (!scopedAccounts.length) return false;
 
-  for (const account of accounts) {
+  for (const account of scopedAccounts) {
     const state = await getSyncState(account.id);
     const tokens = parseMailboxPageTokens(state?.pagination_token);
     if (category ? tokens[category] : tokens.inbox) return true;
   }
 
   // No stored token yet (legacy sync): a full cached page likely means more in Gmail.
-  const { count } = await getSupabaseAdmin()
+  let countQuery = getSupabaseAdmin()
     .from('emails')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('is_inbox', true)
     .eq('is_trashed', false)
     .eq('gmail_category', category || 'primary');
+  if (accountId) countQuery = countQuery.eq('account_id', accountId);
+  const { count } = await countQuery;
 
   return (count ?? 0) >= INITIAL_FETCH_COUNT;
 }

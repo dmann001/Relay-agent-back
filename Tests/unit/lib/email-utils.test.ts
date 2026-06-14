@@ -59,3 +59,19 @@ describe("email utilities", () => {
     });
   });
 });
+
+describe("formatMailboxTimestamp", () => {
+  const { formatMailboxTimestamp } = jest.requireActual("@/lib/email-utils")
+  const now = new Date("2026-06-13T12:00:00.000Z")
+
+  it("uses time, yesterday, weekday, and dated formats for mailbox scanning", () => {
+    expect(formatMailboxTimestamp("2026-06-13T09:30:00.000Z", now)).toMatch(/9:30/)
+    expect(formatMailboxTimestamp("2026-06-12T09:30:00.000Z", now)).toBe("Yesterday")
+    expect(formatMailboxTimestamp("2026-06-10T09:30:00.000Z", now)).toMatch(/Wed/)
+    expect(formatMailboxTimestamp("2025-05-18T09:30:00.000Z", now)).toMatch(/2025/)
+  })
+
+  it("returns an empty label for invalid dates", () => {
+    expect(formatMailboxTimestamp("invalid", now)).toBe("")
+  })
+})

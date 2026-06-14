@@ -35,6 +35,12 @@ Set:
 
 Apply the SQL in `supabase/schema.sql`, followed by the migrations in `supabase/migrations`.
 
+## Relay AI
+
+Set `OPENAI_API_KEY` to enable contextual summaries, task extraction, reply drafts, questions, and inbox briefs. The key is used only by server-side API routes. `OPENAI_MODEL` is optional and defaults to `gpt-5.4-mini`.
+
+Apply `supabase/migrations/20260613_ai_account_preferences.sql` so each connected account can store isolated AI enablement, writing-style, signature, and drafting instructions.
+
 ## Run
 
 ```bash

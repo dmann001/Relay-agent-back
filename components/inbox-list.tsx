@@ -1,658 +1,1042 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { RefreshCw, Mail, Settings, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PenSquare, Archive, Trash2 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { ProviderIcon } from "@/components/provider-icon"
-import { SearchBar } from "@/components/search-bar"
-import { ComposeDialog } from "@/components/compose-dialog"
-import { emailApi, EmailApiError } from "@/lib/email-api"
-import { useToast } from "@/hooks/use-toast"
-import type { Email } from "@/types"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Archive,
+  CheckCheck,
+  Inbox as InboxIcon,
+  Loader2,
+  Mail,
+  MailOpen,
+  Paperclip,
+  PenSquare,
+  RefreshCw,
+  Settings,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ComposeDialog } from "@/components/compose-dialog";
+import { SearchBar } from "@/components/search-bar";
+import { ThreadView } from "@/components/thread-view";
+import { AiInboxBrief } from "@/components/ai-inbox-brief";
+import { cn } from "@/lib/utils";
+import {
+  emailApi,
+  EmailApiError,
+  type ConnectedAccount,
+  type EmailAction,
+} from "@/lib/email-api";
+import { useToast } from "@/hooks/use-toast";
+import type { Email } from "@/types";
 
-const ITEMS_PER_PAGE = 50
-type GmailCategory = NonNullable<Email["gmailCategory"]>
-
-const GMAIL_CATEGORIES: Array<{ value: GmailCategory; label: string }> = [
+const PAGE_SIZE = 50;
+const GMAIL_CATEGORIES = [
   { value: "primary", label: "Primary" },
-  { value: "social", label: "Social" },
-  { value: "promotions", label: "Promotions" },
   { value: "updates", label: "Updates" },
+  { value: "promotions", label: "Promotions" },
+  { value: "social", label: "Social" },
   { value: "forums", label: "Forums" },
-]
+] as const;
 
-/** Page numbers to render, with ellipsis for long lists. */
-function getVisiblePages(current: number, total: number): Array<number | "ellipsis"> {
-  if (total <= 1) return [1]
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+type GmailCategory = (typeof GMAIL_CATEGORIES)[number]["value"];
+const CATEGORY_VALUES = new Set<string>(
+  GMAIL_CATEGORIES.map(({ value }) => value),
+);
 
-  const pages: Array<number | "ellipsis"> = [1]
-  const windowStart = Math.max(2, current - 1)
-  const windowEnd = Math.min(total - 1, current + 1)
+function formatTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  if (sameDay)
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-  if (windowStart > 2) pages.push("ellipsis")
-  for (let page = windowStart; page <= windowEnd; page++) pages.push(page)
-  if (windowEnd < total - 1) pages.push("ellipsis")
-  if (total > 1) pages.push(total)
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
-  return pages
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  if (diffDays < 7) return date.toLocaleDateString([], { weekday: "short" });
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
 }
 
-function formatTimestamp(date: string): string {
-  const emailDate = new Date(date)
-  const now = new Date()
-  const diffMs = now.getTime() - emailDate.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
+function initials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
 
-  if (diffMins < 1) return "Just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return emailDate.toLocaleDateString()
+function accountColor(accountId: string): string {
+  const palette = [
+    "#C4A052",
+    "#4F8A8B",
+    "#7C6BAE",
+    "#C46B5E",
+    "#5B7FA3",
+    "#6F8F55",
+  ];
+  const hash = [...accountId].reduce(
+    (sum, char) => sum + char.charCodeAt(0),
+    0,
+  );
+  return palette[hash % palette.length];
+}
+
+function cleanSnippet(email: Email): string {
+  return (email.snippet || email.bodyPlain || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function emailKey(email: Pick<Email, "id" | "accountId">): string {
+  return `${email.accountId || "unknown"}:${email.id}`;
 }
 
 export function InboxList() {
-  const [emails, setEmails] = useState<Email[]>([])
-  const [totalEmails, setTotalEmails] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [hasAccounts, setHasAccounts] = useState<boolean | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [isPaging, setIsPaging] = useState(false)
-  const [hasMoreFromGmail, setHasMoreFromGmail] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState<GmailCategory>("primary")
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { toast } = useToast();
+  const categoryParam = searchParams.get("category");
+  const selectedCategory: GmailCategory = CATEGORY_VALUES.has(
+    categoryParam || "",
+  )
+    ? (categoryParam as GmailCategory)
+    : "primary";
+  const selectedEmailId = searchParams.get("message");
+  const selectedMessageAccountId = searchParams.get("messageAccount");
+  const selectedAccountId = searchParams.get("account");
+  const showInboxBrief = searchParams.get("assistant") === "brief";
 
-  const [showCompose, setShowCompose] = useState(false)
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const [emails, setEmails] = useState<Email[]>([]);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [totalEmails, setTotalEmails] = useState(0);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+  const [hasMoreFromGmail, setHasMoreFromGmail] = useState(false);
+  const [hasAccounts, setHasAccounts] = useState<boolean | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<EmailAction | null>(null);
+  const [showCompose, setShowCompose] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const requestVersion = useRef(0);
 
-  // OAuth callback params (tokens are stored server-side by the callback route)
-  const gmailAuthSuccess = searchParams.get("gmail_auth")
-  const gmailEmail = searchParams.get("gmail_email")
+  const updateQuery = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+        else params.delete(key);
+      });
+      const query = params.toString();
+      router.replace(query ? `/inbox?${query}` : "/inbox", { scroll: false });
+    },
+    [router, searchParams],
+  );
 
-  const { toast } = useToast()
-
-  // Step 1 of the sync flow: show cached emails from the Relay DB immediately.
-  const loadPage = useCallback(async (page: number, category: GmailCategory = selectedCategory) => {
-    try {
-      const { emails: loaded, total, hasMore } = await emailApi.listEmails("inbox", {
-        limit: ITEMS_PER_PAGE,
-        offset: (page - 1) * ITEMS_PER_PAGE,
+  const loadEmails = useCallback(
+    async (category: GmailCategory, append = false) => {
+      const version = append
+        ? requestVersion.current
+        : ++requestVersion.current;
+      const offset = append ? emails.length : 0;
+      const result = await emailApi.listEmails("inbox", {
+        limit: PAGE_SIZE,
+        offset,
         category,
-      })
-      setEmails(loaded)
-      setTotalEmails(total)
-      setHasMoreFromGmail(hasMore ?? false)
-    } catch (error: any) {
-      if (error instanceof EmailApiError && error.code === "NO_SESSION") return
-      console.error("[Inbox] Failed to load cached emails:", error)
-    }
-  }, [selectedCategory])
+        accountId: selectedAccountId || undefined,
+      });
+      if (version !== requestVersion.current) return;
 
-  // Step 2: in the background, ask Gmail for changes, then refresh the UI.
-  const handleSync = useCallback(async (silent: boolean = false, force: boolean = false) => {
-    if (!silent) setIsSyncing(true)
-    try {
-      const { results } = await emailApi.sync(undefined, { force })
-      await loadPage(1)
-      setCurrentPage(1)
+      setEmails((current) => {
+        if (!append) return result.emails;
+        const existing = new Set(current.map(({ id }) => id));
+        return [
+          ...current,
+          ...result.emails.filter(({ id }) => !existing.has(id)),
+        ];
+      });
+      setTotalEmails(result.total);
+      setUnreadTotal(result.unreadTotal ?? 0);
+      setHasMoreFromGmail(result.hasMore ?? false);
+    },
+    [emails.length, selectedAccountId],
+  );
 
-      const synced = results.reduce((sum, r) => sum + r.synced, 0)
-      const failed = results.find((r) => r.error)
-      if (failed?.error?.toLowerCase().includes("invalid_grant")) {
-        toast({
-          title: "Session Expired",
-          description: `Please reconnect ${failed.email} in Settings`,
-          variant: "destructive",
-        })
-      } else if (failed?.error) {
-        if (!silent || emails.length === 0) {
+  const syncInbox = useCallback(
+    async (silent = false, force = false, category = selectedCategory) => {
+      if (!silent) setIsSyncing(true);
+      try {
+        const { results } = await emailApi.sync(undefined, {
+          force,
+          accountId: selectedAccountId || undefined,
+        });
+        await loadEmails(category);
+        const failed = results.find(({ error }) => error);
+        const synced = results.reduce((sum, result) => sum + result.synced, 0);
+        if (failed?.error?.toLowerCase().includes("invalid_grant")) {
           toast({
-            title: "Sync Failed",
+            title: "Session expired",
+            description: `Reconnect ${failed.email} in Settings.`,
+            variant: "destructive",
+          });
+        } else if (failed?.error && !silent) {
+          toast({
+            title: "Sync failed",
             description: failed.error,
             variant: "destructive",
-          })
+          });
+        } else if (!silent) {
+          toast({
+            title: "Inbox updated",
+            description: synced
+              ? `Synced ${synced} email${synced === 1 ? "" : "s"}.`
+              : "You're up to date.",
+          });
         }
-      } else if (!silent && synced > 0) {
-        toast({
-          title: "Inbox Updated",
-          description: `Synced ${synced} email${synced > 1 ? "s" : ""}`,
-        })
-      }
-    } catch (error: any) {
-      if (error instanceof EmailApiError && error.code === "AUTH_EXPIRED") {
-        toast({
-          title: "Session Expired",
-          description: "Please reconnect your Gmail account in Settings",
-          variant: "destructive",
-        })
-      } else if (!silent) {
-        console.error("[Inbox] Sync failed:", error)
-        toast({
-          title: "Sync Failed",
-          description: error.message || "Failed to sync emails",
-          variant: "destructive",
-        })
-      }
-    } finally {
-      setIsSyncing(false)
-    }
-  }, [emails.length, loadPage, toast])
-
-  // Handle OAuth callback redirect - tokens are already stored server-side.
-  useEffect(() => {
-    if (gmailAuthSuccess === "success") {
-      router.replace("/inbox")
-      toast({
-        title: "Gmail Connected",
-        description: `Connected ${gmailEmail || "your account"}. Syncing emails...`,
-      })
-      setHasAccounts(true)
-      setIsSyncing(true)
-      void handleSync(true, true)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gmailAuthSuccess, gmailEmail])
-
-  // Mount: cached emails first (fast), then background sync.
-  useEffect(() => {
-    let cancelled = false
-    const init = async () => {
-      try {
-        const accounts = await emailApi.listAccounts()
-        if (cancelled) return
-        setHasAccounts(accounts.length > 0)
-        await loadPage(1)
-        if (cancelled) return
-        setIsLoading(false)
-        if (accounts.length > 0 && gmailAuthSuccess !== "success") {
-          await handleSync(true)
-        }
-      } catch {
-        if (!cancelled) {
-          setIsLoading(false)
-          setHasAccounts(false)
-        }
-      }
-    }
-    void init()
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Periodic background refresh while the inbox tab is visible (every 5 min).
-  useEffect(() => {
-    if (!hasAccounts) return
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void handleSync(true)
-      }
-    }, 5 * 60 * 1000)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void handleSync(true)
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      clearInterval(interval)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [hasAccounts, handleSync])
-
-  const applyFilters = (source: Email[]) => {
-    let filtered = source.filter((e) => !e.isArchived && !e.isTrashed)
-
-    if (searchQuery.trim()) {
-      const lower = searchQuery.toLowerCase()
-      filtered = filtered.filter((e) =>
-        e.subject.toLowerCase().includes(lower) ||
-        e.from.name.toLowerCase().includes(lower) ||
-        e.from.email.toLowerCase().includes(lower) ||
-        (e.snippet || e.bodyPlain || "").toLowerCase().includes(lower)
-      )
-    }
-
-    return filtered
-  }
-
-  const filteredEmails = applyFilters(emails)
-  const selectedCategoryLabel = GMAIL_CATEGORIES.find(({ value }) => value === selectedCategory)?.label || "Primary"
-  const totalPages = Math.max(1, Math.ceil(totalEmails / ITEMS_PER_PAGE))
-  const canGoNext = currentPage < totalPages || hasMoreFromGmail
-  const canGoPrev = currentPage > 1
-  const visiblePages = getVisiblePages(currentPage, Math.max(totalPages, hasMoreFromGmail ? currentPage + 1 : totalPages))
-  const paginationDisabled = isPaging || isSyncing
-
-  const refreshInboxTotals = async () => {
-    const { total, hasMore } = await emailApi.listEmails("inbox", {
-      limit: 1,
-      offset: 0,
-      category: selectedCategory,
-    })
-    setTotalEmails(total)
-    setHasMoreFromGmail(hasMore ?? false)
-    return { total, hasMore: hasMore ?? false }
-  }
-
-  const fetchMoreFromGmail = async (): Promise<{ total: number; hasMore: boolean }> => {
-    await emailApi.sync("inbox", {
-      loadMore: true,
-      force: true,
-      category: selectedCategory,
-    })
-    return refreshInboxTotals()
-  }
-
-  const ensureEmailsForPage = async (page: number) => {
-    const required = page * ITEMS_PER_PAGE
-    let { total, hasMore } = await refreshInboxTotals()
-
-    while (total < required && hasMore) {
-      ;({ total, hasMore } = await fetchMoreFromGmail())
-    }
-
-    return { total, hasMore }
-  }
-
-  const handleGoToPage = async (page: number) => {
-    if (page < 1 || page === currentPage || paginationDisabled) return
-    setIsPaging(true)
-    try {
-      const { total, hasMore } = await ensureEmailsForPage(page)
-      setTotalEmails(total)
-      setHasMoreFromGmail(hasMore)
-      const targetPage = Math.min(page, Math.max(1, Math.ceil(total / ITEMS_PER_PAGE)))
-      await loadPage(targetPage)
-      setCurrentPage(targetPage)
-    } finally {
-      setIsPaging(false)
-    }
-  }
-
-  const handleNextPage = () => handleGoToPage(currentPage + 1)
-  const handlePrevPage = () => handleGoToPage(currentPage - 1)
-  const handleFirstPage = () => handleGoToPage(1)
-  const handleCategoryChange = async (category: GmailCategory) => {
-    if (category === selectedCategory || paginationDisabled) return
-
-    setSelectedCategory(category)
-    setCurrentPage(1)
-    setIsPaging(true)
-    try {
-      try {
-        await emailApi.sync("inbox", { force: true, category })
       } catch (error: any) {
-        toast({
-          title: `${GMAIL_CATEGORIES.find(({ value }) => value === category)?.label || "Category"} sync failed`,
-          description: error.message || "Showing previously synced emails instead",
-          variant: "destructive",
-        })
+        if (!silent)
+          toast({
+            title: "Sync failed",
+            description: error.message || "Could not sync email.",
+            variant: "destructive",
+          });
+      } finally {
+        setIsSyncing(false);
       }
-      await loadPage(1, category)
-    } finally {
-      setIsPaging(false)
-    }
-  }
+    },
+    [loadEmails, selectedAccountId, selectedCategory, toast],
+  );
 
-  const handleLastPage = async () => {
-    if (paginationDisabled) return
-    setIsPaging(true)
-    try {
-      let { total, hasMore } = await refreshInboxTotals()
-      while (hasMore) {
-        ;({ total, hasMore } = await fetchMoreFromGmail())
+  useEffect(() => {
+    let cancelled = false;
+    const initialize = async () => {
+      setIsLoading(true);
+      setSelectedIds(new Set());
+      try {
+        const connectedAccounts = await emailApi.listAccounts();
+        if (cancelled) return;
+        setAccounts(connectedAccounts);
+        setHasAccounts(connectedAccounts.length > 0);
+        if (
+          selectedAccountId &&
+          !connectedAccounts.some(({ id }) => id === selectedAccountId)
+        ) {
+          updateQuery({ account: null, message: null });
+          return;
+        }
+        await loadEmails(selectedCategory);
+        if (cancelled) return;
+        setIsLoading(false);
+        if (connectedAccounts.length > 0)
+          void syncInbox(true, false, selectedCategory);
+      } catch (error) {
+        if (!cancelled) {
+          setIsLoading(false);
+          if (error instanceof EmailApiError && error.code === "NO_SESSION")
+            return;
+          setHasAccounts(false);
+        }
       }
-      const lastPage = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
-      await loadPage(lastPage)
-      setCurrentPage(lastPage)
-    } finally {
-      setIsPaging(false)
-    }
-  }
+    };
+    void initialize();
+    return () => {
+      cancelled = true;
+    };
+    // load when the URL-backed quick view changes; callbacks intentionally use current category.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccountId, selectedCategory]);
 
-  const renderPagination = (compact = false) => (
-    <div className={cn("flex items-center gap-1", compact ? "" : "gap-2")}>
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled={!canGoPrev || paginationDisabled}
-        onClick={handleFirstPage}
-        title="First page"
-        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-      >
-        <ChevronsLeft className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled={!canGoPrev || paginationDisabled}
-        onClick={handlePrevPage}
-        title="Previous page"
-        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
+  useEffect(() => {
+    if (!hasAccounts) return;
+    const interval = window.setInterval(
+      () => {
+        if (document.visibilityState === "visible") void syncInbox(true);
+      },
+      5 * 60 * 1000,
+    );
+    return () => window.clearInterval(interval);
+  }, [hasAccounts, syncInbox]);
 
-      <div className="flex items-center gap-0.5">
-        {visiblePages.map((page, index) =>
-          page === "ellipsis" ? (
-            <span key={`ellipsis-${index}`} className="px-1 text-sm text-muted-foreground">
-              …
-            </span>
-          ) : (
-            <Button
-              key={page}
-              variant="ghost"
-              size="sm"
-              disabled={paginationDisabled}
-              onClick={() => handleGoToPage(page)}
-              className={cn(
-                "min-w-8 h-8 px-2 text-sm rounded-lg",
-                page === currentPage
-                  ? "bg-brand-soft text-brand-strong hover:bg-brand-soft"
-                  : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-              )}
-            >
-              {page}
-            </Button>
-          )
-        )}
-      </div>
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [searchQuery]);
 
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled={!canGoNext || paginationDisabled}
-        onClick={handleNextPage}
-        title="Next page"
-        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled={!canGoNext || paginationDisabled}
-        onClick={handleLastPage}
-        title="Last page"
-        className="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-      >
-        <ChevronsRight className="h-4 w-4" />
-      </Button>
+  useEffect(() => {
+    const openCompose = () => setShowCompose(true);
+    window.addEventListener("relay-compose", openCompose);
+    return () => window.removeEventListener("relay-compose", openCompose);
+  }, []);
 
-      {!compact && (
-        <span className="ml-1 whitespace-nowrap text-xs text-muted-foreground">
-          {totalEmails} total
-        </span>
-      )}
-    </div>
-  )
+  const filteredEmails = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return emails;
+    return emails.filter(
+      (email) =>
+        email.subject.toLowerCase().includes(query) ||
+        email.from.name.toLowerCase().includes(query) ||
+        email.from.email.toLowerCase().includes(query) ||
+        cleanSnippet(email).toLowerCase().includes(query),
+    );
+  }, [emails, searchQuery]);
 
-  // Quick actions from the list (archive / trash) - Gmail first, then cache.
-  const handleQuickAction = async (event: React.MouseEvent, emailId: string, action: "archive" | "trash") => {
-    event.preventDefault()
-    event.stopPropagation()
-    // Optimistic UI: remove from the list immediately.
-    setEmails((prev) => prev.filter((e) => e.id !== emailId))
+  const canLoadMore = emails.length < totalEmails || hasMoreFromGmail;
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || isLoading || !canLoadMore) return;
+    setIsLoadingMore(true);
     try {
-      await emailApi.modifyEmail(emailId, action)
-      toast({
-        title: action === "archive" ? "Email Archived" : "Moved to Trash",
-        description: action === "archive" ? "Removed from Inbox in Gmail too" : "You can restore it from Trash",
-      })
+      if (emails.length >= totalEmails && hasMoreFromGmail) {
+        await emailApi.sync("inbox", {
+          loadMore: true,
+          force: true,
+          category: selectedCategory,
+          accountId: selectedAccountId || undefined,
+        });
+      }
+      await loadEmails(selectedCategory, true);
     } catch (error: any) {
       toast({
-        title: "Action Failed",
-        description: error.message || "Could not update the email",
+        title: "Could not load more mail",
+        description: error.message || "Try again.",
         variant: "destructive",
-      })
-      await loadPage(currentPage)
+      });
+    } finally {
+      setIsLoadingMore(false);
     }
-  }
+  }, [
+    canLoadMore,
+    emails.length,
+    hasMoreFromGmail,
+    isLoading,
+    isLoadingMore,
+    loadEmails,
+    selectedAccountId,
+    selectedCategory,
+    toast,
+    totalEmails,
+  ]);
 
-  // Infinite scroll - pre-fetch next page when user scrolls near bottom
   useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !canLoadMore) return;
     const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && canGoNext && !paginationDisabled) {
-          void handleNextPage()
-        }
+      ([entry]) => {
+        if (entry.isIntersecting) void loadMore();
       },
-      { threshold: 0.1 }
-    )
-    if (loadMoreRef.current) observer.observe(loadMoreRef.current)
-    return () => observer.disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canGoNext, paginationDisabled, currentPage])
+      { rootMargin: "300px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [canLoadMore, loadMore]);
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center bg-background">
-        <div className="text-center">
-          <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand" />
-          <p className="mt-2 text-sm text-muted-foreground">Loading emails...</p>
-        </div>
-      </div>
-    )
-  }
+  const removeEmails = useCallback(
+    (ids: Set<string>) => {
+      setEmails((current) =>
+        current.filter((email) => !ids.has(emailKey(email))),
+      );
+      setTotalEmails((current) => Math.max(0, current - ids.size));
+      setSelectedIds(new Set());
+      if (
+        selectedEmailId &&
+        ids.has(`${selectedMessageAccountId || "unknown"}:${selectedEmailId}`)
+      )
+        updateQuery({ message: null, messageAccount: null });
+    },
+    [selectedEmailId, selectedMessageAccountId, updateQuery],
+  );
 
-  if (filteredEmails.length === 0 && !isSyncing) {
-    const hasAnyEmails = emails.length > 0
-    return (
-      <div className="flex h-full items-center justify-center bg-background">
-        <div className="max-w-md text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-surface-raised">
-            <Mail className="h-8 w-8 text-brand" />
-          </div>
-          <h3 className="text-xl font-light text-foreground">
-            {hasAnyEmails ? `No ${selectedCategoryLabel} emails match your search` : `No ${selectedCategoryLabel} emails yet`}
-          </h3>
-          <p className="mt-3 text-sm text-muted-foreground">
-            {hasAnyEmails
-              ? "Try a different search or sync to fetch more."
-              : hasAccounts
-                ? `There are no ${selectedCategoryLabel} emails in the synced inbox.`
-                : "Connect your Gmail account and sync to see your emails here"}
-          </p>
-          <label className="mx-auto mt-5 block w-fit">
-            <span className="sr-only">Email category</span>
-            <select
-              aria-label="Email category"
-              value={selectedCategory}
-              disabled={paginationDisabled}
-              onChange={(event) => void handleCategoryChange(event.target.value as GmailCategory)}
-              className="h-9 cursor-pointer rounded-lg border border-border bg-surface-raised px-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-surface-hover focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {GMAIL_CATEGORIES.map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-8 flex gap-3 justify-center">
-            <Button asChild variant="outline" className="rounded-xl">
-              <Link href="/settings">
-                <Settings className="mr-2 h-4 w-4" />
-                Go to Settings
-              </Link>
-            </Button>
-            <Button
-              onClick={() => handleSync(false, true)}
-              disabled={isSyncing}
-              className="rounded-xl bg-brand text-brand-foreground hover:bg-brand-strong"
-            >
-              {isSyncing ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sync Now
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const updateReadState = useCallback((ids: Set<string>, read: boolean) => {
+    setEmails((current) =>
+      current.map((email) =>
+        ids.has(emailKey(email)) ? { ...email, read } : email,
+      ),
+    );
+  }, []);
+
+  const runBulkAction = async (
+    action: "archive" | "trash" | "markRead" | "markUnread",
+  ) => {
+    const ids = new Set(selectedIds);
+    if (!ids.size || bulkAction) return;
+    const snapshot = emails;
+    setBulkAction(action);
+    if (action === "archive" || action === "trash") removeEmails(ids);
+    else updateReadState(ids, action === "markRead");
+
+    const results = await Promise.allSettled(
+      [...ids].map((key) => {
+        const email = emails.find((candidate) => emailKey(candidate) === key);
+        if (!email) return Promise.reject(new Error("Email no longer loaded"));
+        return emailApi.modifyEmail(email.id, action, email.accountId);
+      }),
+    );
+    const failedIds = [...ids].filter(
+      (_, index) => results[index].status === "rejected",
+    );
+    if (failedIds.length) {
+      setEmails(snapshot);
+      setTotalEmails((current) =>
+        action === "archive" || action === "trash"
+          ? current + ids.size
+          : current,
+      );
+      toast({
+        title:
+          failedIds.length === ids.size
+            ? "Bulk action failed"
+            : "Some emails could not be updated",
+        description: `${failedIds.length} of ${ids.size} email${ids.size === 1 ? "" : "s"} failed. The list was refreshed.`,
+        variant: "destructive",
+      });
+      await loadEmails(selectedCategory);
+    } else {
+      setSelectedIds(new Set());
+      toast({
+        title:
+          action === "archive"
+            ? "Emails archived"
+            : action === "trash"
+              ? "Moved to Trash"
+              : action === "markRead"
+                ? "Marked as read"
+                : "Marked as unread",
+        description: `${ids.size} email${ids.size === 1 ? "" : "s"} updated.`,
+      });
+    }
+    setBulkAction(null);
+  };
+
+  const runSingleAction = async (
+    event: React.MouseEvent,
+    email: Email,
+    action: "archive" | "trash" | "markRead" | "markUnread",
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const ids = new Set([emailKey(email)]);
+    const snapshot = emails;
+    if (action === "archive" || action === "trash") removeEmails(ids);
+    else updateReadState(ids, action === "markRead");
+    try {
+      await emailApi.modifyEmail(email.id, action, email.accountId);
+    } catch (error: any) {
+      setEmails(snapshot);
+      setTotalEmails((current) =>
+        action === "archive" || action === "trash" ? current + 1 : current,
+      );
+      toast({
+        title: "Action failed",
+        description: error.message || "Could not update this email.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const allVisibleSelected =
+    filteredEmails.length > 0 &&
+    filteredEmails.every((email) => selectedIds.has(emailKey(email)));
+  const toggleAllVisible = () =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected)
+        filteredEmails.forEach((email) => next.delete(emailKey(email)));
+      else filteredEmails.forEach((email) => next.add(emailKey(email)));
+      return next;
+    });
+
+  const toggleSelected = (email: Email) =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      const key = emailKey(email);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const handleThreadRemoved = useCallback(
+    (id: string, accountId?: string) => {
+      const key = `${accountId || "unknown"}:${id}`;
+      const index = emails.findIndex((email) => emailKey(email) === key);
+      const nextMessage = emails[index + 1] || emails[index - 1];
+      setEmails((current) =>
+        current.filter((email) => emailKey(email) !== key),
+      );
+      setTotalEmails((current) => Math.max(0, current - 1));
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      updateQuery({
+        message: nextMessage?.id || null,
+        messageAccount: nextMessage?.accountId || null,
+      });
+    },
+    [emails, updateQuery],
+  );
+  const handleThreadRead = useCallback(
+    (id: string, accountId?: string) =>
+      updateReadState(new Set([`${accountId || "unknown"}:${id}`]), true),
+    [updateReadState],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.matches("input, textarea, select, [contenteditable='true']")
+      )
+        return;
+      if (event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        setShowCompose(true);
+        return;
+      }
+      if (event.key === "Escape") {
+        if (selectedIds.size) setSelectedIds(new Set());
+        else if (selectedEmailId)
+          updateQuery({ message: null, messageAccount: null });
+        return;
+      }
+      if ((event.key !== "j" && event.key !== "k") || !filteredEmails.length)
+        return;
+
+      event.preventDefault();
+      const currentIndex = filteredEmails.findIndex(
+        ({ id }) => id === selectedEmailId,
+      );
+      const nextIndex =
+        event.key === "j"
+          ? Math.min(currentIndex + 1, filteredEmails.length - 1)
+          : Math.max(
+              currentIndex < 0 ? filteredEmails.length - 1 : currentIndex - 1,
+              0,
+            );
+      updateQuery({
+        message: filteredEmails[nextIndex].id,
+        messageAccount: filteredEmails[nextIndex].accountId || null,
+      });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [filteredEmails, selectedEmailId, selectedIds.size, updateQuery]);
+
+  const selectedCategoryLabel =
+    GMAIL_CATEGORIES.find(({ value }) => value === selectedCategory)?.label ||
+    "Primary";
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      <div className="space-y-4 border-b border-border bg-surface-subtle px-6 py-5">
-        <div className="flex items-center justify-between gap-4">
-          <SearchBar onSearch={setSearchQuery} />
-          <Button
-            onClick={() => setShowCompose(true)}
-            className="shrink-0 rounded-xl border-0 bg-brand font-medium text-brand-foreground shadow-sm hover:bg-brand-strong"
-          >
-            <PenSquare className="mr-2 h-4 w-4" />
-            Compose
-          </Button>
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-medium text-foreground">
-              Inbox <span className="text-muted-foreground">({filteredEmails.filter((e) => !e.read).length} unread)</span>
-            </h2>
-            <label className="relative">
-              <span className="sr-only">Email category</span>
-              <select
-                aria-label="Email category"
-                value={selectedCategory}
-                disabled={paginationDisabled}
-                onChange={(event) => void handleCategoryChange(event.target.value as GmailCategory)}
-                className="h-9 cursor-pointer rounded-lg border border-border bg-surface-raised px-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-surface-hover focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {GMAIL_CATEGORIES.map((category) => (
-                  <option key={category.value} value={category.value}>
-                    {category.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+    <div className="flex h-full min-h-0 bg-background">
+      <section
+        className={cn(
+          "min-w-0 flex-1 flex-col border-r border-border bg-background md:flex md:w-[min(43%,30rem)] md:flex-none",
+          selectedEmailId || showInboxBrief ? "hidden" : "flex",
+        )}
+        aria-label="Inbox message list"
+      >
+        <header className="shrink-0 border-b border-border bg-surface-subtle/95 px-3 py-3 backdrop-blur sm:px-4">
           <div className="flex items-center gap-2">
-            {(totalPages > 1 || hasMoreFromGmail) && renderPagination(true)}
+            <div className="min-w-0 flex-1">
+              <SearchBar onSearch={setSearchQuery} />
+            </div>
             <Button
-              size="sm"
-              onClick={() => handleSync(false, true)}
-              disabled={isSyncing}
-              className="rounded-lg border border-border bg-surface-raised text-foreground hover:bg-surface-hover"
+              onClick={() => setShowCompose(true)}
+              className="shrink-0 rounded-xl bg-brand text-brand-foreground hover:bg-brand-strong"
+              aria-label="Compose email"
             >
-              {isSyncing ? (
-                <>
-                  <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-3 w-3" />
-                  Sync
-                </>
-              )}
+              <PenSquare className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Compose</span>
             </Button>
           </div>
-        </div>
-      </div>
 
-      {/* Compose Dialog */}
-      <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <Checkbox
+                checked={
+                  allVisibleSelected
+                    ? true
+                    : selectedIds.size
+                      ? "indeterminate"
+                      : false
+                }
+                onCheckedChange={toggleAllVisible}
+                aria-label={
+                  allVisibleSelected
+                    ? "Clear visible selection"
+                    : "Select visible emails"
+                }
+                disabled={!filteredEmails.length}
+              />
+              <div className="min-w-0">
+                <label className="sr-only" htmlFor="inbox-account-scope">
+                  Inbox account
+                </label>
+                <select
+                  id="inbox-account-scope"
+                  value={selectedAccountId || "all"}
+                  onChange={(event) =>
+                    updateQuery({
+                      account:
+                        event.target.value === "all"
+                          ? null
+                          : event.target.value,
+                      message: null,
+                    })
+                  }
+                  className="max-w-[12rem] cursor-pointer bg-transparent text-sm font-semibold text-foreground outline-none"
+                >
+                  <option value="all">All accounts</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.email}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-[11px] text-muted-foreground">
+                  {unreadTotal} unread · {totalEmails} total
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  updateQuery({ assistant: "brief", message: null })
+                }
+                title="Create inbox brief"
+                className="h-8 px-2 text-xs"
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                Brief
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => void syncInbox(false, true)}
+                disabled={isSyncing}
+                title="Sync inbox"
+                aria-label="Sync inbox"
+                className="h-8 w-8"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", isSyncing && "animate-spin")}
+                />
+              </Button>
+            </div>
+          </div>
 
-      <div className="flex-1 overflow-auto">
-        <div className="divide-y divide-border">
-          {filteredEmails.map((email) => (
-            <Link
-              key={email.id}
-              href={`/thread/${email.id}`}
-              className={cn(
-                "group flex items-start gap-6 px-6 py-5 transition-all hover:bg-surface-hover",
-                !email.read && "bg-brand-soft/35"
+          <nav
+            className="-mx-1 mt-3 flex gap-1 overflow-x-auto px-1 pb-1"
+            aria-label="Inbox categories"
+          >
+            {GMAIL_CATEGORIES.map((category) => (
+              <button
+                key={category.value}
+                type="button"
+                aria-current={
+                  selectedCategory === category.value ? "page" : undefined
+                }
+                onClick={() =>
+                  updateQuery({
+                    category:
+                      category.value === "primary" ? null : category.value,
+                    message: null,
+                  })
+                }
+                className={cn(
+                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                  selectedCategory === category.value
+                    ? "bg-brand-soft text-brand-strong"
+                    : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                )}
+              >
+                {category.label}
+              </button>
+            ))}
+          </nav>
+        </header>
+
+        <div
+          className="flex h-11 shrink-0 items-center border-b border-border bg-card px-3 sm:px-4"
+          aria-live="polite"
+        >
+          {selectedIds.size ? (
+            <div className="flex w-full items-center gap-1">
+              <span className="mr-auto text-xs font-medium text-foreground">
+                {selectedIds.size} selected
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => void runBulkAction("markRead")}
+                disabled={Boolean(bulkAction)}
+                title="Mark selected as read"
+              >
+                <MailOpen className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => void runBulkAction("markUnread")}
+                disabled={Boolean(bulkAction)}
+                title="Mark selected as unread"
+              >
+                <Mail className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => void runBulkAction("archive")}
+                disabled={Boolean(bulkAction)}
+                title="Archive selected"
+              >
+                <Archive className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive"
+                onClick={() => void runBulkAction("trash")}
+                disabled={Boolean(bulkAction)}
+                title="Move selected to Trash"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setSelectedIds(new Set())}
+                title="Clear selection"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex w-full items-center justify-between text-xs text-muted-foreground">
+              <span>
+                {searchQuery
+                  ? `${filteredEmails.length} loaded match${filteredEmails.length === 1 ? "" : "es"}`
+                  : `${emails.length} of ${totalEmails} loaded`}
+              </span>
+              {isSyncing && (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Syncing
+                </span>
               )}
-            >
-              <Avatar className="h-10 w-10 shrink-0">
-                <AvatarImage src={email.from.avatar} alt={email.from.name} />
-                <AvatarFallback>
-                  {email.from.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <div className="mb-2 flex items-center gap-2.5">
-                  <span className={cn("text-sm text-foreground", !email.read && "font-semibold")}>
-                    {email.from.name}
-                  </span>
-                  <Badge className="h-5 border border-border bg-surface-raised px-1.5 text-foreground">
-                    <ProviderIcon className="h-3 w-3" />
-                  </Badge>
-                  {email.gmailCategory && (
-                    <Badge className="h-5 border-0 bg-brand-soft px-2 text-[10px] capitalize text-brand-strong">
-                      {email.gmailCategory}
-                    </Badge>
-                  )}
-                </div>
-                <div className={cn("mb-2 truncate text-sm text-foreground", !email.read ? "font-semibold" : "font-normal")}>
-                  {email.subject}
-                </div>
-                <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-                  {(email.snippet || email.bodyPlain || '')
-                    .replace(/<[^>]*>/g, '')
-                    .replace(/&nbsp;/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                    .slice(0, 200)}
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <span className="text-xs text-muted-foreground">{formatTimestamp(email.date)}</span>
-                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:bg-surface-hover hover:text-brand"
-                    title="Archive"
-                    onClick={(e) => handleQuickAction(e, email.id, "archive")}
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-[#8A8A8A] hover:text-red-400 hover:bg-red-500/10"
-                    title="Move to Trash"
-                    onClick={(e) => handleQuickAction(e, email.id, "trash")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </Link>
-          ))}
+            </div>
+          )}
         </div>
-        <div ref={loadMoreRef} />
-        {filteredEmails.length > 0 && (totalPages > 1 || hasMoreFromGmail) && (
-          <div className="flex flex-col items-center gap-2 border-t border-border p-4">
-            {renderPagination()}
-            <span className="text-xs text-muted-foreground">
-              Page {currentPage} of {hasMoreFromGmail ? `${totalPages}+` : totalPages}
-            </span>
+
+        <ComposeDialog
+          open={showCompose}
+          onOpenChange={setShowCompose}
+          defaultAccountId={selectedAccountId || undefined}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {isLoading ? (
+            <div className="flex h-full items-center justify-center">
+              <RefreshCw className="h-6 w-6 animate-spin text-brand" />
+              <span className="ml-2 text-sm text-muted-foreground">
+                Loading mail…
+              </span>
+            </div>
+          ) : filteredEmails.length === 0 ? (
+            <div className="flex h-full items-center justify-center p-6 text-center">
+              <div className="max-w-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-brand-soft">
+                  <InboxIcon className="h-6 w-6 text-brand-strong" />
+                </div>
+                <h2 className="mt-4 text-base font-semibold">
+                  {searchQuery
+                    ? "No loaded emails match"
+                    : `No ${selectedCategoryLabel} emails`}
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {searchQuery
+                    ? "Try another search or clear the query."
+                    : hasAccounts
+                      ? "This quick view is empty."
+                      : "Connect Gmail to start receiving email."}
+                </p>
+                {!hasAccounts && (
+                  <Button asChild className="mt-4">
+                    <Link href="/settings">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Connect Gmail
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div role="list" aria-label={`${selectedCategoryLabel} emails`}>
+              {filteredEmails.map((email) => {
+                const selected =
+                  selectedEmailId === email.id &&
+                  (!selectedMessageAccountId ||
+                    selectedMessageAccountId === email.accountId);
+                const checked = selectedIds.has(emailKey(email));
+                return (
+                  <div
+                    key={email.id}
+                    role="listitem"
+                    className={cn(
+                      "group relative flex min-h-[76px] cursor-pointer items-start gap-2 border-b border-border px-3 py-2.5 transition-colors sm:px-4",
+                      selected
+                        ? "bg-brand-soft/70"
+                        : !email.read
+                          ? "bg-brand-soft/25"
+                          : "bg-background",
+                      "hover:bg-surface-hover",
+                    )}
+                    onClick={() =>
+                      updateQuery({
+                        message: email.id,
+                        messageAccount: email.accountId || null,
+                      })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        updateQuery({
+                          message: email.id,
+                          messageAccount: email.accountId || null,
+                        });
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-current={selected ? "true" : undefined}
+                  >
+                    <div
+                      className="flex w-5 shrink-0 justify-center pt-2"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleSelected(email)}
+                        aria-label={`Select email from ${email.from.name}`}
+                      />
+                    </div>
+                    <span
+                      className="mt-3 h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: accountColor(email.accountId || ""),
+                      }}
+                      title={
+                        email.accountEmail ||
+                        accounts.find(({ id }) => id === email.accountId)
+                          ?.email ||
+                        "Connected account"
+                      }
+                    />
+                    <Avatar className="mt-0.5 h-8 w-8 shrink-0 border border-border">
+                      <AvatarImage src={email.from.avatar} alt="" />
+                      <AvatarFallback className="text-[10px]">
+                        {initials(email.from.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span
+                          className={cn(
+                            "min-w-0 flex-1 truncate text-sm",
+                            !email.read
+                              ? "font-semibold text-foreground"
+                              : "font-medium text-foreground",
+                          )}
+                        >
+                          {email.from.name}
+                        </span>
+                        <time
+                          className={cn(
+                            "shrink-0 text-[11px]",
+                            !email.read
+                              ? "font-medium text-brand-strong"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {formatTimestamp(email.date)}
+                        </time>
+                      </div>
+                      <div
+                        className={cn(
+                          "mt-0.5 truncate text-sm",
+                          !email.read
+                            ? "font-semibold text-foreground"
+                            : "text-foreground",
+                        )}
+                      >
+                        {email.subject}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        {email.hasAttachments && (
+                          <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        )}
+                        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                          {cleanSnippet(email) || "No preview available"}
+                        </p>
+                        <span
+                          className="max-w-24 truncate text-[10px] text-muted-foreground"
+                          title={
+                            email.accountEmail ||
+                            accounts.find(({ id }) => id === email.accountId)
+                              ?.email
+                          }
+                        >
+                          {email.accountEmail ||
+                            accounts.find(({ id }) => id === email.accountId)
+                              ?.email}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="absolute bottom-2 right-3 hidden items-center rounded-lg border border-border bg-card p-0.5 shadow-sm group-hover:flex group-focus-within:flex">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(event) =>
+                          void runSingleAction(
+                            event,
+                            email,
+                            email.read ? "markUnread" : "markRead",
+                          )
+                        }
+                        title={email.read ? "Mark unread" : "Mark read"}
+                      >
+                        {email.read ? (
+                          <Mail className="h-3.5 w-3.5" />
+                        ) : (
+                          <CheckCheck className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(event) =>
+                          void runSingleAction(event, email, "archive")
+                        }
+                        title="Archive"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive"
+                        onClick={(event) =>
+                          void runSingleAction(event, email, "trash")
+                        }
+                        title="Move to Trash"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+              <div
+                ref={loadMoreRef}
+                className="flex min-h-16 items-center justify-center p-3"
+              >
+                {isLoadingMore ? (
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading more mail…
+                  </span>
+                ) : canLoadMore ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void loadMore()}
+                  >
+                    Load more
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    You’re all caught up
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section
+        className={cn(
+          "min-w-0 flex-1 bg-surface-subtle/40",
+          selectedEmailId || showInboxBrief ? "flex" : "hidden md:flex",
+        )}
+        aria-label="Email reading pane"
+      >
+        {showInboxBrief ? (
+          <AiInboxBrief
+            accountId={selectedAccountId || undefined}
+            onClose={() => updateQuery({ assistant: null })}
+            onOpenMessage={(messageId) =>
+              updateQuery({ assistant: null, message: messageId })
+            }
+          />
+        ) : selectedEmailId ? (
+          <div className="h-full min-h-0 w-full">
+            <ThreadView
+              threadId={selectedEmailId}
+              accountId={
+                selectedMessageAccountId ||
+                emails.find(({ id }) => id === selectedEmailId)?.accountId
+              }
+              embedded
+              onClose={() =>
+                updateQuery({ message: null, messageAccount: null })
+              }
+              onRemoved={handleThreadRemoved}
+              onRead={handleThreadRead}
+            />
+          </div>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center p-8 text-center">
+            <div className="max-w-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+                <MailOpen className="h-7 w-7 text-brand" />
+              </div>
+              <h2 className="mt-4 text-lg font-medium text-foreground">
+                Select an email to read
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Your inbox stays in place while you move through messages.
+              </p>
+            </div>
           </div>
         )}
-      </div>
+      </section>
     </div>
-  )
+  );
 }

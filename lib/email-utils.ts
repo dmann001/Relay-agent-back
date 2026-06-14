@@ -224,3 +224,21 @@ export function formatFileSize(bytes: number): string {
 
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
+
+export function formatMailboxTimestamp(value: string, now = new Date()): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+  }
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86_400_000)
+  if (diffDays >= 0 && diffDays < 7) return date.toLocaleDateString([], { weekday: "short" })
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  })
+}

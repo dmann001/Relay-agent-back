@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const mailbox = (params.get('mailbox') || 'inbox') as ListMailbox;
     const requestedCategory = params.get('category');
+    const accountId = params.get('accountId');
     const category = requestedCategory && GMAIL_CATEGORIES.has(requestedCategory)
       ? requestedCategory
       : null;
@@ -26,6 +27,19 @@ export async function GET(request: NextRequest) {
       .eq('user_id', userId)
       .order('received_at', { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (accountId) {
+      const { data: ownedAccount, error: accountError } = await getSupabaseAdmin()
+        .from('email_accounts')
+        .select('id')
+        .eq('id', accountId)
+        .eq('user_id', userId)
+        .is('revoked_at', null)
+        .maybeSingle();
+      if (accountError) throw accountError;
+      if (!ownedAccount) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      query = query.eq('account_id', accountId);
+    }
 
     switch (mailbox) {
       case 'sent':
@@ -51,12 +65,30 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const hasMore = mailbox === 'inbox'
-      ? await inboxHasMorePages(userId, category as GmailCategory | undefined)
+      ? await inboxHasMorePages(userId, category as GmailCategory | undefined, accountId || undefined)
       : false;
+    let unreadTotal: number | undefined;
+    if (mailbox === 'inbox') {
+      let unreadQuery = getSupabaseAdmin().from('emails').select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).eq('is_inbox', true).eq('is_trashed', false).eq('is_read', false);
+      if (category) unreadQuery = unreadQuery.eq('gmail_category', category);
+      if (accountId) unreadQuery = unreadQuery.eq('account_id', accountId);
+      const { count: unreadCount, error: unreadError } = await unreadQuery;
+      if (unreadError) throw unreadError;
+      unreadTotal = unreadCount || 0;
+    }
+
+    const accountIds = [...new Set(((data || []) as unknown as EmailRow[]).map((row) => row.account_id))];
+    const { data: accountRows, error: accountsError } = accountIds.length
+      ? await getSupabaseAdmin().from('email_accounts').select('id, email').eq('user_id', userId).in('id', accountIds)
+      : { data: [], error: null };
+    if (accountsError) throw accountsError;
+    const accountEmails = new Map((accountRows || []).map((account) => [account.id, account.email]));
 
     return NextResponse.json({
-      emails: ((data || []) as unknown as EmailRow[]).map(rowToEmail),
+      emails: ((data || []) as unknown as EmailRow[]).map((row) => ({ ...rowToEmail(row), accountEmail: accountEmails.get(row.account_id) })),
       total: count ?? 0,
+      unreadTotal,
       mailbox,
       hasMore,
     });
