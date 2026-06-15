@@ -49,6 +49,18 @@ secret is created. Do not use the **Secret ID**. Entra only displays the Value
 once; if it is no longer available or has expired, create a new client secret.
 Restart Relay after changing any environment variable.
 
+### Outlook maintenance context
+
+- Use `MICROSOFT_TENANT_ID=common` when supporting both Microsoft 365 and
+  personal Outlook.com accounts. A tenant-specific ID may authenticate a
+  personal account as a `#EXT#` guest with no mailbox access.
+- Outlook email rows have `provider='outlook'` and `gmail_category=null`.
+  Inbox queries and UI filters must not apply Gmail category filtering to an
+  Outlook-only account. The unified Primary view should include Outlook inbox
+  mail alongside Gmail Primary mail.
+- After changing the tenant authority, restart Relay and disconnect/reconnect
+  any Outlook account whose stored email contains `#EXT#`.
+
 ## Supabase
 
 Set:
