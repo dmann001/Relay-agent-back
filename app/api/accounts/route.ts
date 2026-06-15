@@ -3,11 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
 import { listGmailAccounts, deleteGmailAccount } from '@/lib/server/gmail-accounts';
 import { handleApiError } from '@/lib/server/api-utils';
+import { listOutlookAccounts } from "@/lib/server/outlook-accounts";
 
 export async function GET(request: NextRequest) {
   try {
     const userId = await requireUser(request);
-    const accounts = await listGmailAccounts(userId);
+    const gmailAccounts = await listGmailAccounts(userId);
+    const outlookAccounts = await listOutlookAccounts(userId);
+    const accounts = [
+        ...gmailAccounts.map((account) => ({ ...account, provider: "gmail" as const })),
+        ...outlookAccounts.map((account) => ({ ...account, provider: "outlook" as const })),
+    ];
     const accountIds = accounts.map(({ id }) => id);
     const { data: syncStates, error: syncError } = accountIds.length
       ? await getSupabaseAdmin()
@@ -32,7 +38,7 @@ export async function GET(request: NextRequest) {
         return ({
         id: account.id,
         email: account.email,
-        provider: 'gmail',
+        provider: account.provider,
         connectedAt: account.connected_at,
         lastSyncedAt: sync?.last_successful_sync_at || account.last_sync_at,
         syncStatus: sync?.last_error ? 'error' : (sync?.last_successful_sync_at || account.last_sync_at) ? 'healthy' : 'never',

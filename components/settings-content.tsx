@@ -67,6 +67,20 @@ export function SettingsContent() {
     }
   }
 
+  const handleConnectOutlook = async () => {
+  setIsConnecting(true)
+  try {
+    window.location.href = await emailApi.getOutlookConnectUrl()
+  } catch (error: any) {
+    toast({
+      title: "Connection failed",
+      description: error.message || "Failed to start Outlook authentication",
+      variant: "destructive",
+    })
+    setIsConnecting(false)
+  }
+  }
+
   const handleDisconnect = async (accountId: string) => {
     try {
       await emailApi.disconnectAccount(accountId)
@@ -123,7 +137,9 @@ export function SettingsContent() {
                       <Mail className="h-5 w-5 text-brand-foreground" />
                     </div>
                     <div className="min-w-0">
-                      <div className="font-medium text-foreground">Gmail</div>
+                      <div className="font-medium text-foreground">
+                        {account.provider === "outlook" ? "Outlook" : "Gmail"}
+                      </div>
                       <div className="truncate text-sm text-muted-foreground">{account.email}</div>
                       <div className={account.syncStatus === "error" ? "mt-1 text-xs text-destructive" : "mt-1 text-xs text-muted-foreground"}>{account.syncStatus === "error" ? account.lastError || "Sync needs attention" : account.lastSyncedAt ? `Last synced ${new Date(account.lastSyncedAt).toLocaleString()}` : "Not synced yet"}</div>
                     </div>
@@ -154,6 +170,20 @@ export function SettingsContent() {
                 <><Mail className="mr-2 h-4 w-4" />Connect Gmail Account</>
               )}
             </Button>
+
+            <Button
+              className="w-full rounded-xl"
+              variant="outline"
+              onClick={handleConnectOutlook}
+              disabled={isConnecting}
+            >
+            {isConnecting ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Connecting...</>
+              ) : (
+               <><Mail className="mr-2 h-4 w-4" />Connect Outlook Account</>
+               )}
+            </Button>
+
           </CardContent>
         </Card>
 

@@ -21,7 +21,7 @@ export type EmailAction =
 export interface ConnectedAccount {
   id: string;
   email: string;
-  provider: "gmail";
+  provider: "gmail" | "outlook";
   connectedAt: string;
   lastSyncedAt: string | null;
   syncStatus?: "healthy" | "syncing" | "error" | "never";
@@ -41,7 +41,7 @@ export interface RemoteDraft {
   inReplyTo?: string;
   status: "saved" | "saving" | "failed";
   lastEdited: string;
-  provider: "gmail";
+  provider: "gmail" | "outlook";
 }
 
 export type ThreadAiResult =
@@ -354,6 +354,11 @@ export const emailApi = {
   async getGmailConnectUrl(): Promise<string> {
     const { url } = await request<{ url: string }>("/api/auth/gmail");
     return url;
+  },
+
+  async getOutlookConnectUrl(): Promise<string> {
+  const { url } = await request<{ url: string }>("/api/auth/outlook");
+  return url;
   },
 
   // ---- Contextual AI (read-only analysis and draft generation) ----
