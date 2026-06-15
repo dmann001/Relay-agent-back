@@ -3,7 +3,9 @@
 // the DB so it appears in the Sent list immediately.
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
-import { listGmailAccounts, getAuthorizedClient } from '@/lib/server/gmail-accounts';
+import { getAuthorizedClient } from '@/lib/server/gmail-accounts';
+import { listEmailAccounts } from '@/lib/server/email-accounts';
+import { sendOutlookDraft, sendOutlookMessage, updateOutlookDraft } from '@/lib/server/outlook-api';
 import { fetchMessageMetadataBatch, sendDraft, sendMessage, updateDraft } from '@/lib/server/gmail-api';
 import { handleApiError } from '@/lib/server/api-utils';
 import { GmailMessageMetadata } from '@/lib/server/gmail-api';
@@ -35,36 +37,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email body is required' }, { status: 400 });
     }
 
-    const accounts = await listGmailAccounts(userId);
+    const accounts = await listEmailAccounts(userId);
     const account = accountId
       ? accounts.find((a) => a.id === accountId)
       : accounts[0];
     if (!account) {
       return NextResponse.json(
-        { error: 'No Gmail account connected', code: 'NO_ACCOUNT' },
+        { error: 'No email account connected', code: 'NO_ACCOUNT' },
         { status: 400 }
       );
     }
 
-    const client = await getAuthorizedClient(account);
     const supabase = getSupabaseAdmin();
 
     // If this came from a saved draft, sync the latest content into the Gmail
     // draft and send the draft itself (so Gmail cleans it up server-side).
-    let gmailDraftId: string | null = null;
+    let providerDraftId: string | null = null;
     if (draftId) {
       const { data: draftRow } = await supabase
         .from('drafts')
-        .select('id, gmail_draft_id')
+        .select('id, provider_draft_id, gmail_draft_id')
         .eq('user_id', userId)
         .eq('id', draftId)
         .maybeSingle();
-      gmailDraftId = draftRow?.gmail_draft_id ?? null;
+      providerDraftId = draftRow?.provider_draft_id ?? draftRow?.gmail_draft_id ?? null;
     }
 
     let sent: { id?: string | null; threadId?: string | null };
-    if (gmailDraftId) {
-      await updateDraft(client, gmailDraftId, {
+    if (account.provider === 'outlook') {
+      if (providerDraftId) {
+        await updateOutlookDraft(account, providerDraftId, { to, cc, subject, body: emailBody, threadId, inReplyToMessageId, attachments });
+        sent = await sendOutlookDraft(account, providerDraftId);
+      } else {
+        sent = await sendOutlookMessage(account, { to, cc, subject, body: emailBody, threadId, inReplyToMessageId, attachments });
+      }
+    } else {
+      const client = await getAuthorizedClient(account as any);
+      if (providerDraftId) {
+      await updateDraft(client, providerDraftId, {
         to,
         cc,
         subject,
@@ -73,8 +83,8 @@ export async function POST(request: NextRequest) {
         inReplyToMessageId,
         attachments,
       });
-      sent = await sendDraft(client, gmailDraftId);
-    } else {
+      sent = await sendDraft(client, providerDraftId);
+      } else {
       sent = await sendMessage(client, {
         to,
         cc,
@@ -84,6 +94,7 @@ export async function POST(request: NextRequest) {
         inReplyToMessageId,
         attachments,
       });
+      }
     }
 
     // Remove the draft from the Relay DB now that it's sent.
@@ -92,8 +103,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Cache the sent message metadata so the Sent list updates immediately.
-    if (sent.id) {
+    if (sent.id && account.provider === 'gmail') {
       try {
+        const client = await getAuthorizedClient(account as any);
         const [meta] = await fetchMessageMetadataBatch(client, [sent.id]);
         if (meta) {
           await upsertSentMetadata(userId, account.id, meta);

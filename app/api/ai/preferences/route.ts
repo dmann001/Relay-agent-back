@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireUser, getSupabaseAdmin } from '@/lib/server/supabase-admin';
-import { listGmailAccounts } from '@/lib/server/gmail-accounts';
+import { listEmailAccounts } from '@/lib/server/email-accounts';
 import { DEFAULT_WRITING_STYLE, getAccountPreference } from '@/lib/server/ai-context';
 import { handleApiError } from '@/lib/server/api-utils';
 
@@ -16,7 +16,7 @@ const updateSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const userId = await requireUser(request);
-    const accounts = await listGmailAccounts(userId);
+    const accounts = await listEmailAccounts(userId);
     const preferences = await Promise.all(accounts.map((account) =>
       getAccountPreference(userId, account.id, account.email, '')
     ));
@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid AI preference values' }, { status: 400 });
     }
 
-    const accounts = await listGmailAccounts(userId);
+    const accounts = await listEmailAccounts(userId);
     const account = accounts.find(({ id }) => id === parsed.data.accountId);
     if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 

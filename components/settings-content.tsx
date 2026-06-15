@@ -11,12 +11,26 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { emailApi, type AiAccountPreference, type ConnectedAccount } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
+import { ProviderIcon } from "@/components/provider-icon"
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  invalid_client_secret: "The Microsoft client secret is invalid. In Entra, create a client secret and copy its Value (not the Secret ID) into MICROSOFT_CLIENT_SECRET, then restart Relay.",
+  invalid_client_id: "Microsoft could not find this app registration. Check MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID, then restart Relay.",
+  invalid_redirect_uri: "The Outlook callback URL does not match Entra. Register the exact MICROSOFT_REDIRECT_URI as a Web redirect URI.",
+  outlook_not_configured: "Outlook OAuth is not fully configured. Set MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, and MICROSOFT_REDIRECT_URI, then restart Relay.",
+  guest_mailbox_unavailable: "Microsoft signed in an Entra guest identity instead of the Outlook mailbox owner. Set MICROSOFT_TENANT_ID=common (or consumers for personal-only accounts), restart Relay, and connect the original Outlook account again.",
+  mailbox_unavailable: "The selected Microsoft identity has no accessible Outlook mailbox. For personal Outlook accounts, use MICROSOFT_TENANT_ID=common and reconnect.",
+  missing_mail_permissions: "Microsoft did not grant mailbox access. Confirm delegated Mail.ReadWrite and Mail.Send permissions in Entra, then reconnect the account.",
+  access_denied: "Microsoft account access was cancelled or denied.",
+  no_code: "Microsoft did not return an authorization code. Try connecting the account again.",
+  auth_failed: "Microsoft authentication failed. Check the server log for the Microsoft AADSTS error code.",
+}
 
 export function SettingsContent() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [aiPreferences, setAiPreferences] = useState<AiAccountPreference[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isConnecting, setIsConnecting] = useState(false)
+  const [connectingProvider, setConnectingProvider] = useState<"gmail" | "outlook" | null>(null)
   const searchParams = useSearchParams()
   const { toast } = useToast()
 
@@ -47,14 +61,16 @@ export function SettingsContent() {
     if (!error) return
     toast({
       title: "Authentication Error",
-      description: `Failed to connect Gmail account: ${error}`,
+      description: searchParams.get("provider") === "outlook"
+        ? OAUTH_ERROR_MESSAGES[error] || `Failed to connect Outlook account: ${error}`
+        : `Failed to connect Gmail account: ${error}`,
       variant: "destructive",
     })
     window.history.replaceState({}, document.title, "/settings")
   }, [searchParams, toast])
 
   const handleConnectGmail = async () => {
-    setIsConnecting(true)
+    setConnectingProvider("gmail")
     try {
       window.location.href = await emailApi.getGmailConnectUrl()
     } catch (error: any) {
@@ -63,7 +79,17 @@ export function SettingsContent() {
         description: error.message || "Failed to start Gmail authentication",
         variant: "destructive",
       })
-      setIsConnecting(false)
+      setConnectingProvider(null)
+    }
+  }
+
+  const handleConnectOutlook = async () => {
+    setConnectingProvider("outlook")
+    try {
+      window.location.href = await emailApi.getOutlookConnectUrl()
+    } catch (error: any) {
+      toast({ title: "Connection failed", description: error.message || "Failed to start Outlook authentication", variant: "destructive" })
+      setConnectingProvider(null)
     }
   }
 
@@ -93,7 +119,7 @@ export function SettingsContent() {
           <CardHeader>
             <CardTitle className="font-medium text-card-foreground">Connected Accounts</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Manage Gmail accounts connected through OAuth.
+              Manage Gmail and Outlook accounts connected through OAuth.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -109,7 +135,7 @@ export function SettingsContent() {
                 </div>
                 <h3 className="text-lg font-light text-foreground">No accounts connected</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Connect Gmail to sync, read, and send email.
+                  Connect Gmail or Outlook to sync, read, and send email.
                 </p>
               </div>
             ) : (
@@ -120,16 +146,16 @@ export function SettingsContent() {
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand">
-                      <Mail className="h-5 w-5 text-brand-foreground" />
+                      <ProviderIcon provider={account.provider} className="h-5 w-5 text-brand-foreground" />
                     </div>
                     <div className="min-w-0">
-                      <div className="font-medium text-foreground">Gmail</div>
+                      <div className="font-medium text-foreground">{account.provider === "outlook" ? "Outlook" : "Gmail"}</div>
                       <div className="truncate text-sm text-muted-foreground">{account.email}</div>
                       <div className={account.syncStatus === "error" ? "mt-1 text-xs text-destructive" : "mt-1 text-xs text-muted-foreground"}>{account.syncStatus === "error" ? account.lastError || "Sync needs attention" : account.lastSyncedAt ? `Last synced ${new Date(account.lastSyncedAt).toLocaleString()}` : "Not synced yet"}</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                  {account.syncStatus === "error" && <Button size="sm" variant="outline" onClick={handleConnectGmail}>Reconnect</Button>}
+                  {account.syncStatus === "error" && <Button size="sm" variant="outline" onClick={account.provider === "outlook" ? handleConnectOutlook : handleConnectGmail}>Reconnect</Button>}
                   <Button
                     size="sm"
                     onClick={() => void handleDisconnect(account.id)}
@@ -143,17 +169,18 @@ export function SettingsContent() {
               ))
             )}
 
-            <Button
-              className="w-full rounded-xl bg-brand font-medium text-brand-foreground hover:bg-brand-strong"
-              onClick={handleConnectGmail}
-              disabled={isConnecting}
-            >
-              {isConnecting ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+            <Button className="w-full rounded-xl bg-brand font-medium text-brand-foreground hover:bg-brand-strong" onClick={handleConnectGmail} disabled={connectingProvider !== null}>
+              {connectingProvider === "gmail" ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Connecting...</>
               ) : (
                 <><Mail className="mr-2 h-4 w-4" />Connect Gmail Account</>
               )}
             </Button>
+            <Button className="w-full rounded-xl bg-[#0078d4] font-medium text-white hover:bg-[#106ebe]" onClick={handleConnectOutlook} disabled={connectingProvider !== null}>
+              {connectingProvider === "outlook" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Connecting...</> : <><ProviderIcon provider="outlook" className="mr-2 h-4 w-4" />Connect Outlook Account</>}
+            </Button>
+            </div>
           </CardContent>
         </Card>
 

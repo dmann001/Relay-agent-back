@@ -797,6 +797,7 @@ create index if not exists emails_user_trash_idx
 
 alter table public.drafts
   add column if not exists gmail_draft_id text,
+  add column if not exists provider_draft_id text,
   add column if not exists snippet text not null default '',
   add column if not exists status text not null default 'saved';
 

@@ -2,7 +2,9 @@
 // Called on login, when the user opens/refreshes a mailbox, and periodically.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/supabase-admin';
-import { listGmailAccounts, updateSyncState } from '@/lib/server/gmail-accounts';
+import { updateSyncState } from '@/lib/server/gmail-accounts';
+import { listEmailAccounts } from '@/lib/server/email-accounts';
+import { syncOutlookAccount } from '@/lib/server/outlook-sync';
 import { syncAccount, type GmailCategory, type Mailbox, type SyncResult } from '@/lib/server/email-sync';
 import { handleApiError } from '@/lib/server/api-utils';
 
@@ -20,19 +22,21 @@ export async function POST(request: NextRequest) {
       ? body.category as GmailCategory
       : undefined;
 
-    const allAccounts = await listGmailAccounts(userId);
+    const allAccounts = await listEmailAccounts(userId);
     const accounts = accountId ? allAccounts.filter(({ id }) => id === accountId) : allAccounts;
     if (accountId && accounts.length === 0) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
     if (accounts.length === 0) {
-      return NextResponse.json({ results: [], message: 'No Gmail accounts connected' });
+      return NextResponse.json({ results: [], message: 'No email accounts connected' });
     }
 
     const results: SyncResult[] = [];
     for (const account of accounts) {
       try {
-        results.push(await syncAccount(userId, account, { mailbox, force, loadMore, category }));
+        results.push(account.provider === 'outlook'
+          ? await syncOutlookAccount(userId, account, { mailbox, force, loadMore })
+          : await syncAccount(userId, account, { mailbox, force, loadMore, category }));
       } catch (error: any) {
         const message =
           error?.message ||

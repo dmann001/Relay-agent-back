@@ -20,6 +20,9 @@ export interface GmailAccountRow {
 export type MailboxPageTokens = {
   inbox?: string | null;
   sent?: string | null;
+  archive?: string | null;
+  trash?: string | null;
+  drafts?: string | null;
   primary?: string | null;
   social?: string | null;
   promotions?: string | null;
@@ -44,6 +47,9 @@ export function parseMailboxPageTokens(raw: string | null | undefined): MailboxP
     return {
       inbox: parsed.inbox ?? null,
       sent: parsed.sent ?? null,
+      archive: parsed.archive ?? null,
+      trash: parsed.trash ?? null,
+      drafts: parsed.drafts ?? null,
       primary: parsed.primary ?? null,
       social: parsed.social ?? null,
       promotions: parsed.promotions ?? null,

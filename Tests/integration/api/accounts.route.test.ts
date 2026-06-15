@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { DELETE, GET } from "@/app/api/accounts/route";
 
 const requireUser = jest.fn();
-const listGmailAccounts = jest.fn();
-const deleteGmailAccount = jest.fn();
+const listEmailAccounts = jest.fn();
+const deleteEmailAccount = jest.fn();
 const getSupabaseAdmin = jest.fn();
 
 jest.mock("@/lib/server/supabase-admin", () => {
@@ -15,9 +15,9 @@ jest.mock("@/lib/server/supabase-admin", () => {
   };
 });
 
-jest.mock("@/lib/server/gmail-accounts", () => ({
-  listGmailAccounts: (...args: unknown[]) => listGmailAccounts(...args),
-  deleteGmailAccount: (...args: unknown[]) => deleteGmailAccount(...args),
+jest.mock("@/lib/server/email-accounts", () => ({
+  listEmailAccounts: (...args: unknown[]) => listEmailAccounts(...args),
+  deleteEmailAccount: (...args: unknown[]) => deleteEmailAccount(...args),
 }));
 
 describe("/api/accounts", () => {
@@ -36,9 +36,10 @@ describe("/api/accounts", () => {
   });
 
   it("returns a token-free account view", async () => {
-    listGmailAccounts.mockResolvedValue([{
+    listEmailAccounts.mockResolvedValue([{
       id: "account-1",
       email: "user@example.com",
+      provider: "outlook",
       access_token: "must-not-leak",
       refresh_token: "must-not-leak",
       connected_at: "2026-06-01T00:00:00.000Z",
@@ -52,7 +53,7 @@ describe("/api/accounts", () => {
     expect(payload.accounts).toEqual([{
       id: "account-1",
       email: "user@example.com",
-      provider: "gmail",
+      provider: "outlook",
       connectedAt: "2026-06-01T00:00:00.000Z",
       lastSyncedAt: null,
       syncStatus: "never",
@@ -69,7 +70,7 @@ describe("/api/accounts", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "Account id is required" });
-    expect(deleteGmailAccount).not.toHaveBeenCalled();
+    expect(deleteEmailAccount).not.toHaveBeenCalled();
   });
 
   it("scopes deletion to the authenticated user", async () => {
@@ -79,6 +80,6 @@ describe("/api/accounts", () => {
     ));
 
     expect(response.status).toBe(200);
-    expect(deleteGmailAccount).toHaveBeenCalledWith("user-123", "account-1");
+    expect(deleteEmailAccount).toHaveBeenCalledWith("user-123", "account-1");
   });
 });

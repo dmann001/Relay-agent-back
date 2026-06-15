@@ -4,7 +4,7 @@
 
 - Node.js 20 or newer
 - pnpm
-- A Google Cloud project with the Gmail API enabled
+- A Google Cloud project with the Gmail API enabled and/or a Microsoft Entra app registration
 - A Supabase project
 
 ## Install
@@ -23,6 +23,31 @@ Create a Web application OAuth client in Google Cloud and configure:
 - Redirect URI: `http://localhost:3000/api/auth/gmail/callback`
 
 Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in `.env.local`.
+
+## Microsoft Outlook OAuth
+
+Register a Web application in Microsoft Entra ID that supports organizational
+and personal Microsoft accounts. Add this redirect URI:
+
+- `http://localhost:3000/api/auth/outlook/callback`
+
+Grant delegated `User.Read`, `Mail.ReadWrite`, and `Mail.Send` permissions, then set:
+
+- `MICROSOFT_CLIENT_ID`
+- `MICROSOFT_CLIENT_SECRET`
+- `MICROSOFT_REDIRECT_URI`
+- `MICROSOFT_TENANT_ID` (optional; defaults to `common`)
+
+Use `MICROSOFT_TENANT_ID=common` when Relay must support both Microsoft 365
+and personal Outlook.com accounts. Use `consumers` only for personal Microsoft
+accounts. A tenant GUID can sign an external Outlook.com address in as a guest
+(`...#EXT#@...onmicrosoft.com`), but that guest identity does not provide the
+user's Outlook mailbox.
+
+For `MICROSOFT_CLIENT_SECRET`, copy the secret **Value** shown when the client
+secret is created. Do not use the **Secret ID**. Entra only displays the Value
+once; if it is no longer available or has expired, create a new client secret.
+Restart Relay after changing any environment variable.
 
 ## Supabase
 
@@ -47,7 +72,7 @@ Apply `supabase/migrations/20260613_ai_account_preferences.sql` so each connecte
 pnpm dev
 ```
 
-Open `http://localhost:3000`, create or sign in to an account, then connect Gmail from Settings.
+Open `http://localhost:3000`, create or sign in to an account, then connect Gmail or Outlook from Settings.
 
 ## Verification
 

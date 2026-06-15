@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireUser, getSupabaseAdmin } from '@/lib/server/supabase-admin';
-import { listGmailAccounts } from '@/lib/server/gmail-accounts';
+import { listEmailAccounts } from '@/lib/server/email-accounts';
 import { AiConfigurationError, AiProviderError, generateStructuredResponse } from '@/lib/server/openai';
 import { handleApiError } from '@/lib/server/api-utils';
 import { getAccountPreference } from '@/lib/server/ai-context';
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const parsed = requestSchema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: 'Invalid account scope' }, { status: 400 });
 
-    const accounts = await listGmailAccounts(userId);
+    const accounts = await listEmailAccounts(userId);
     const requestedAccounts = parsed.data.accountId
       ? accounts.filter(({ id }) => id === parsed.data.accountId)
       : accounts;
