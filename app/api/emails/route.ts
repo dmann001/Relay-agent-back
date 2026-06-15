@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
       : null;
     const limit = Math.min(parseInt(params.get('limit') || '50', 10) || 50, 200);
     const offset = Math.max(parseInt(params.get('offset') || '0', 10) || 0, 0);
+    let selectedProvider: 'gmail' | 'outlook' | null = null;
 
     let query = getSupabaseAdmin()
       .from('emails')
@@ -31,13 +32,14 @@ export async function GET(request: NextRequest) {
     if (accountId) {
       const { data: ownedAccount, error: accountError } = await getSupabaseAdmin()
         .from('email_accounts')
-        .select('id')
+        .select('id, provider')
         .eq('id', accountId)
         .eq('user_id', userId)
         .is('revoked_at', null)
         .maybeSingle();
       if (accountError) throw accountError;
       if (!ownedAccount) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      selectedProvider = ownedAccount.provider;
       query = query.eq('account_id', accountId);
     }
 
@@ -57,8 +59,16 @@ export async function GET(request: NextRequest) {
         break;
     }
 
-    if (mailbox === 'inbox' && category) {
-      query = query.eq('gmail_category', category);
+    const applyInboxCategory = (categoryQuery: any) => {
+      if (selectedProvider === 'outlook') return categoryQuery;
+      if (category === 'primary') {
+        return categoryQuery.or('provider.eq.outlook,gmail_category.eq.primary');
+      }
+      return category ? categoryQuery.eq('gmail_category', category) : categoryQuery;
+    };
+
+    if (mailbox === 'inbox') {
+      query = applyInboxCategory(query);
     }
 
     const { data, error, count } = await query;
@@ -71,7 +81,7 @@ export async function GET(request: NextRequest) {
     if (mailbox === 'inbox') {
       let unreadQuery = getSupabaseAdmin().from('emails').select('id', { count: 'exact', head: true })
         .eq('user_id', userId).eq('is_inbox', true).eq('is_trashed', false).eq('is_read', false);
-      if (category) unreadQuery = unreadQuery.eq('gmail_category', category);
+      unreadQuery = applyInboxCategory(unreadQuery);
       if (accountId) unreadQuery = unreadQuery.eq('account_id', accountId);
       const { count: unreadCount, error: unreadError } = await unreadQuery;
       if (unreadError) throw unreadError;

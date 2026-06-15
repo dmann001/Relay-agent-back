@@ -2,8 +2,10 @@
 // Gmail is the source of truth - the action runs against the Gmail API first,
 // then the DB metadata cache is updated from the labels Gmail returns.
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/server/supabase-admin';
-import { listGmailAccounts, getAuthorizedClient, getGmailAccount } from '@/lib/server/gmail-accounts';
+import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
+import { getAuthorizedClient } from '@/lib/server/gmail-accounts';
+import { listEmailAccounts, getEmailAccount } from '@/lib/server/email-accounts';
+import { modifyOutlookMessage } from '@/lib/server/outlook-api';
 import { findAccountForMessage, refreshCachedMessage } from '@/lib/server/email-sync';
 import { modifyMessage, trashMessage, untrashMessage } from '@/lib/server/gmail-api';
 import { handleApiError } from '@/lib/server/api-utils';
@@ -39,15 +41,29 @@ export async function POST(
       );
     }
 
-    const accounts = await listGmailAccounts(userId);
+    const accounts = await listEmailAccounts(userId);
     const account = requestedAccountId
-      ? await getGmailAccount(userId, requestedAccountId)
-      : await findAccountForMessage(userId, accounts, messageId);
+      ? await getEmailAccount(userId, requestedAccountId)
+      : await findAccountForMessage(userId, accounts as any, messageId) as any;
     if (!account) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
-    const client = await getAuthorizedClient(account);
+    if (account.provider === 'outlook') {
+      const changed = await modifyOutlookMessage(account, messageId, action);
+      const moved = changed.id && changed.id !== messageId;
+      await getSupabaseAdmin().from('emails').update({
+        provider_message_id: changed.id || messageId,
+        is_read: changed.isRead !== false,
+        is_starred: changed.flag?.flagStatus === 'flagged',
+        is_inbox: action === 'unarchive' || action === 'untrash' ? true : action === 'archive' || action === 'trash' ? false : undefined,
+        is_archived: action === 'archive' ? true : action === 'unarchive' ? false : undefined,
+        is_trashed: action === 'trash' ? true : action === 'untrash' ? false : undefined,
+        trashed_at: action === 'trash' ? new Date().toISOString() : action === 'untrash' ? null : undefined,
+      }).eq('account_id', account.id).eq('provider_message_id', messageId);
+      return NextResponse.json({ success: true, messageId: changed.id || messageId, moved });
+    }
+    const client = await getAuthorizedClient(account as any);
     let labelIds: string[];
 
     switch (action) {

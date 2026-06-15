@@ -146,7 +146,7 @@ export function TrashList() {
                     variant="outline"
                     className="h-5 border-border bg-surface-raised px-1.5"
                   >
-                    <ProviderIcon className="h-3 w-3" />
+                    <ProviderIcon provider={email.provider} className="h-3 w-3" />
                   </Badge>
                   <Badge className="h-5 px-2 text-[10px] bg-red-500/10 text-red-400 border-0">
                     <Trash2 className="mr-1 h-3 w-3" />

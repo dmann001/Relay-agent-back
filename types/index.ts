@@ -11,6 +11,8 @@ export interface EmailAttachment {
   data?: string
 }
 
+export type EmailProvider = "gmail" | "outlook"
+
 export interface Email {
   id: string
   threadId: string
@@ -23,7 +25,7 @@ export interface Email {
   date: string
   read: boolean
   labels: string[]
-  provider: "gmail"
+  provider: EmailProvider
   accountId?: string
   accountEmail?: string
   messageId?: string

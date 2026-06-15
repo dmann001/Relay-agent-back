@@ -140,6 +140,8 @@ export function InboxList() {
   const [showCompose, setShowCompose] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const requestVersion = useRef(0);
+  const selectedAccount = accounts.find(({ id }) => id === selectedAccountId);
+  const isOutlookOnly = selectedAccount?.provider === "outlook";
 
   const updateQuery = useCallback(
     (updates: Record<string, string | null>) => {
@@ -155,7 +157,11 @@ export function InboxList() {
   );
 
   const loadEmails = useCallback(
-    async (category: GmailCategory, append = false) => {
+    async (
+      category: GmailCategory,
+      append = false,
+      outlookOnly = isOutlookOnly,
+    ) => {
       const version = append
         ? requestVersion.current
         : ++requestVersion.current;
@@ -163,7 +169,7 @@ export function InboxList() {
       const result = await emailApi.listEmails("inbox", {
         limit: PAGE_SIZE,
         offset,
-        category,
+        category: outlookOnly ? undefined : category,
         accountId: selectedAccountId || undefined,
       });
       if (version !== requestVersion.current) return;
@@ -180,7 +186,7 @@ export function InboxList() {
       setUnreadTotal(result.unreadTotal ?? 0);
       setHasMoreFromGmail(result.hasMore ?? false);
     },
-    [emails.length, selectedAccountId],
+    [emails.length, isOutlookOnly, selectedAccountId],
   );
 
   const syncInbox = useCallback(
@@ -245,7 +251,12 @@ export function InboxList() {
           updateQuery({ account: null, message: null });
           return;
         }
-        await loadEmails(selectedCategory);
+        const selected = connectedAccounts.find(({ id }) => id === selectedAccountId);
+        if (selected?.provider === "outlook" && categoryParam) {
+          updateQuery({ category: null, message: null });
+          return;
+        }
+        await loadEmails(selectedCategory, false, selected?.provider === "outlook");
         if (cancelled) return;
         setIsLoading(false);
         if (connectedAccounts.length > 0)
@@ -647,35 +658,37 @@ export function InboxList() {
             </div>
           </div>
 
-          <nav
-            className="-mx-1 mt-3 flex gap-1 overflow-x-auto px-1 pb-1"
-            aria-label="Inbox categories"
-          >
-            {GMAIL_CATEGORIES.map((category) => (
-              <button
-                key={category.value}
-                type="button"
-                aria-current={
-                  selectedCategory === category.value ? "page" : undefined
-                }
-                onClick={() =>
-                  updateQuery({
-                    category:
-                      category.value === "primary" ? null : category.value,
-                    message: null,
-                  })
-                }
-                className={cn(
-                  "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-                  selectedCategory === category.value
-                    ? "bg-brand-soft text-brand-strong"
-                    : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
-                )}
-              >
-                {category.label}
-              </button>
-            ))}
-          </nav>
+          {!isOutlookOnly && (
+            <nav
+              className="-mx-1 mt-3 flex gap-1 overflow-x-auto px-1 pb-1"
+              aria-label="Inbox categories"
+            >
+              {GMAIL_CATEGORIES.map((category) => (
+                <button
+                  key={category.value}
+                  type="button"
+                  aria-current={
+                    selectedCategory === category.value ? "page" : undefined
+                  }
+                  onClick={() =>
+                    updateQuery({
+                      category:
+                        category.value === "primary" ? null : category.value,
+                      message: null,
+                    })
+                  }
+                  className={cn(
+                    "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                    selectedCategory === category.value
+                      ? "bg-brand-soft text-brand-strong"
+                      : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                  )}
+                >
+                  {category.label}
+                </button>
+              ))}
+            </nav>
+          )}
         </header>
 
         <div

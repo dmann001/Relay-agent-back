@@ -74,6 +74,7 @@ const metadataToRow = (userId: string, accountId: string, meta: GmailMessageMeta
 });
 
 export interface EmailRow {
+  provider: Email['provider'];
   account_id: string;
   provider_message_id: string;
   provider_thread_id: string | null;
@@ -96,7 +97,7 @@ export interface EmailRow {
 }
 
 export const EMAIL_ROW_COLUMNS =
-  'account_id, provider_message_id, provider_thread_id, rfc_message_id, subject, from_name, from_email, snippet, received_at, is_read, is_archived, is_starred, is_trashed, is_inbox, is_sent, labels, to_recipients, has_attachments, gmail_category';
+  'provider, account_id, provider_message_id, provider_thread_id, rfc_message_id, subject, from_name, from_email, snippet, received_at, is_read, is_archived, is_starred, is_trashed, is_inbox, is_sent, labels, to_recipients, has_attachments, gmail_category';
 
 // DB row -> frontend Email shape (metadata only; body fields stay empty).
 export function rowToEmail(row: EmailRow): Email {
@@ -119,7 +120,7 @@ export function rowToEmail(row: EmailRow): Email {
     labels: (row.labels || []).filter(
       (l) => !['UNREAD', 'CATEGORY_PERSONAL', 'CATEGORY_PRIMARY', 'CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'].includes(l)
     ),
-    provider: 'gmail',
+    provider: row.provider || 'gmail',
     accountId: row.account_id,
     messageId: row.rfc_message_id || undefined,
     gmailCategory: row.gmail_category || undefined,
@@ -138,7 +139,7 @@ type EmailUpsertRow = ReturnType<typeof metadataToRow>;
 
 // Postgres 42P10 means the DB is missing unique(account_id, provider_message_id).
 // Fall back to per-row insert/update so sync still works before the migration runs.
-async function upsertEmailRows(rows: EmailUpsertRow[]): Promise<void> {
+export async function upsertEmailRows(rows: EmailUpsertRow[]): Promise<void> {
   if (rows.length === 0) return;
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
@@ -689,4 +690,4 @@ export async function findAccountForMessage(
   return accounts[0] ?? null;
 }
 
-export { parseMessageMetadata, upsertEmailRows };
+export { parseMessageMetadata };

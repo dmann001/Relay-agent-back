@@ -5,7 +5,7 @@
 // Gmail only when the user opens an email. Gmail OAuth tokens stay on the
 // server - requests are authenticated with the Supabase session token.
 import { supabase } from "@/lib/supabase/client";
-import type { Email } from "@/types";
+import type { Email, EmailProvider } from "@/types";
 
 export type Mailbox = "inbox" | "sent" | "archive" | "trash";
 export type EmailAction =
@@ -21,7 +21,7 @@ export type EmailAction =
 export interface ConnectedAccount {
   id: string;
   email: string;
-  provider: "gmail";
+  provider: EmailProvider;
   connectedAt: string;
   lastSyncedAt: string | null;
   syncStatus?: "healthy" | "syncing" | "error" | "never";
@@ -31,6 +31,7 @@ export interface ConnectedAccount {
 
 export interface RemoteDraft {
   id: string;
+  providerDraftId?: string | null;
   gmailDraftId: string | null;
   accountId: string | null;
   to: string[];
@@ -41,7 +42,7 @@ export interface RemoteDraft {
   inReplyTo?: string;
   status: "saved" | "saving" | "failed";
   lastEdited: string;
-  provider: "gmail";
+  provider: EmailProvider;
 }
 
 export type ThreadAiResult =
@@ -193,7 +194,7 @@ export const emailApi = {
     return request("/api/emails/counts");
   },
 
-  // ---- Gmail sync ----
+  // ---- Provider sync ----
 
   async sync(
     mailbox?: Mailbox | "drafts",
@@ -221,7 +222,7 @@ export const emailApi = {
     return result;
   },
 
-  // ---- Single email (full body fetched live from Gmail) ----
+  // ---- Single email (full body fetched live from the provider) ----
 
   async getEmail(messageId: string, accountId?: string): Promise<Email> {
     const suffix = accountId
@@ -353,6 +354,11 @@ export const emailApi = {
 
   async getGmailConnectUrl(): Promise<string> {
     const { url } = await request<{ url: string }>("/api/auth/gmail");
+    return url;
+  },
+
+  async getOutlookConnectUrl(): Promise<string> {
+    const { url } = await request<{ url: string }>("/api/auth/outlook");
     return url;
   },
 

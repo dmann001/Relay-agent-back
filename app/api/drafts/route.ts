@@ -2,19 +2,19 @@
 // plus a small preview (to / subject / snippet / status).
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin, requireUser } from "@/lib/server/supabase-admin";
-import {
-  listGmailAccounts,
-  getAuthorizedClient,
-} from "@/lib/server/gmail-accounts";
+import { getAuthorizedClient } from "@/lib/server/gmail-accounts";
+import { listEmailAccounts } from "@/lib/server/email-accounts";
 import { createDraft, deleteDraft, updateDraft } from "@/lib/server/gmail-api";
+import { createOutlookDraft, deleteOutlookDraft, updateOutlookDraft } from "@/lib/server/outlook-api";
 import { handleApiError } from "@/lib/server/api-utils";
 
 const DRAFT_COLUMNS =
-  "id, account_id, gmail_draft_id, to_emails, cc_emails, subject, snippet, body, status, in_reply_to, last_edited_at";
+  "id, account_id, provider, provider_draft_id, gmail_draft_id, to_emails, cc_emails, subject, snippet, body, status, in_reply_to, last_edited_at";
 
 const rowToDraft = (row: any) => ({
   id: row.id,
-  gmailDraftId: row.gmail_draft_id,
+  providerDraftId: row.provider_draft_id || row.gmail_draft_id,
+  gmailDraftId: row.provider === "gmail" ? row.provider_draft_id || row.gmail_draft_id : null,
   accountId: row.account_id,
   to: row.to_emails || [],
   cc: row.cc_emails || [],
@@ -24,7 +24,7 @@ const rowToDraft = (row: any) => ({
   inReplyTo: row.in_reply_to || undefined,
   status: row.status || "saved",
   lastEdited: row.last_edited_at,
-  provider: "gmail" as const,
+  provider: row.provider || "gmail",
 });
 
 export async function GET(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const userId = await requireUser(request);
     const accountId = request.nextUrl.searchParams.get("accountId");
     if (accountId) {
-      const accounts = await listGmailAccounts(userId);
+      const accounts = await listEmailAccounts(userId);
       if (!accounts.some((account) => account.id === accountId)) {
         return NextResponse.json(
           { error: "Account not found" },
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       inReplyToMessageId,
     } = body;
 
-    const accounts = await listGmailAccounts(userId);
+    const accounts = await listEmailAccounts(userId);
     const account = accountId
       ? accounts.find((a) => a.id === accountId)
       : accounts[0];
@@ -86,17 +86,15 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
-    const client = await getAuthorizedClient(account);
-
-    let gmailDraftId: string | null = null;
+    let providerDraftId: string | null = null;
     if (draftId) {
       const { data: existing } = await supabase
         .from("drafts")
-        .select("gmail_draft_id")
+        .select("provider_draft_id, gmail_draft_id")
         .eq("user_id", userId)
         .eq("id", draftId)
         .maybeSingle();
-      gmailDraftId = existing?.gmail_draft_id ?? null;
+      providerDraftId = existing?.provider_draft_id ?? existing?.gmail_draft_id ?? null;
     }
 
     const draftParams = {
@@ -108,9 +106,18 @@ export async function POST(request: NextRequest) {
       inReplyToMessageId,
     };
 
-    const gmailResult = gmailDraftId
-      ? await updateDraft(client, gmailDraftId, draftParams)
-      : await createDraft(client, draftParams);
+    let result: { draftId: string; messageId?: string | null };
+    if (account.provider === "outlook") {
+      const outlookDraft = providerDraftId
+        ? await updateOutlookDraft(account, providerDraftId, draftParams)
+        : await createOutlookDraft(account, draftParams);
+      result = { draftId: outlookDraft.id, messageId: outlookDraft.id };
+    } else {
+      const client = await getAuthorizedClient(account as any);
+      result = providerDraftId
+        ? await updateDraft(client, providerDraftId, draftParams)
+        : await createDraft(client, draftParams);
+    }
 
     const snippet = draftBody
       .replace(/<[^>]*>/g, " ")
@@ -120,8 +127,9 @@ export async function POST(request: NextRequest) {
     const row = {
       user_id: userId,
       account_id: account.id,
-      provider: "gmail" as const,
-      gmail_draft_id: gmailResult.draftId,
+      provider: account.provider,
+      provider_draft_id: result.draftId,
+      gmail_draft_id: account.provider === "gmail" ? result.draftId : null,
       to_emails: to,
       cc_emails: cc,
       subject,
@@ -153,7 +161,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       draftId: savedId,
-      gmailDraftId: gmailResult.draftId,
+      providerDraftId: result.draftId,
+      gmailDraftId: account.provider === "gmail" ? result.draftId : null,
       status: "saved",
     });
   } catch (error) {
@@ -175,7 +184,7 @@ export async function DELETE(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data: row } = await supabase
       .from("drafts")
-      .select("id, account_id, gmail_draft_id")
+      .select("id, account_id, provider, provider_draft_id, gmail_draft_id")
       .eq("user_id", userId)
       .eq("id", draftId)
       .maybeSingle();
@@ -184,13 +193,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Draft not found" }, { status: 404 });
     }
 
-    if (row.gmail_draft_id && row.account_id) {
-      const accounts = await listGmailAccounts(userId);
+    const remoteDraftId = row.provider_draft_id || row.gmail_draft_id;
+    if (remoteDraftId && row.account_id) {
+      const accounts = await listEmailAccounts(userId);
       const account = accounts.find((a) => a.id === row.account_id);
       if (account) {
         try {
-          const client = await getAuthorizedClient(account);
-          await deleteDraft(client, row.gmail_draft_id);
+          if (account.provider === "outlook") await deleteOutlookDraft(account, remoteDraftId);
+          else await deleteDraft(await getAuthorizedClient(account as any), remoteDraftId);
         } catch (error: any) {
           // Draft may already be gone in Gmail; still remove the cache row.
           if (error?.code !== 404 && error?.response?.status !== 404) {

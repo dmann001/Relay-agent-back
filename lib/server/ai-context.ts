@@ -1,5 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
-import { listGmailAccounts, getAuthorizedClient, getGmailAccount } from '@/lib/server/gmail-accounts';
+import { getAuthorizedClient } from '@/lib/server/gmail-accounts';
+import { listEmailAccounts, getEmailAccount } from '@/lib/server/email-accounts';
+import { getOutlookMessage, getOutlookThread, outlookMessageToEmail } from '@/lib/server/outlook-api';
 import { findAccountForMessage } from '@/lib/server/email-sync';
 import { fetchFullMessage, fetchFullThread } from '@/lib/server/gmail-api';
 
@@ -43,11 +45,18 @@ export async function getAccountPreference(
 }
 
 export async function getThreadAiContext(userId: string, messageId: string, accountId?: string) {
-  const accounts = await listGmailAccounts(userId);
-  const account = accountId ? await getGmailAccount(userId, accountId) : await findAccountForMessage(userId, accounts, messageId);
+  const accounts = await listEmailAccounts(userId);
+  const account = accountId ? await getEmailAccount(userId, accountId) : await findAccountForMessage(userId, accounts as any, messageId) as any;
   if (!account) return null;
 
-  const client = await getAuthorizedClient(account);
+  if (account.provider === 'outlook') {
+    const message = await getOutlookMessage(account, messageId);
+    const email = outlookMessageToEmail(message, account.id);
+    const messages = await getOutlookThread(account, message);
+    const preference = await getAccountPreference(userId, account.id, account.email, '');
+    return { email, messages, account, preference };
+  }
+  const client = await getAuthorizedClient(account as any);
   const result = await fetchFullMessage(client, messageId);
   if (!result) return null;
 

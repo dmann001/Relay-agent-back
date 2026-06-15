@@ -1,8 +1,16 @@
 interface ProviderIconProps {
   className?: string
+  provider?: "gmail" | "outlook"
 }
 
-export function ProviderIcon({ className }: ProviderIconProps) {
+export function ProviderIcon({ className, provider = "gmail" }: ProviderIconProps) {
+  if (provider === "outlook") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M2 4.5 14 2v20L2 19.5V4.5Zm13 2h7v11h-7v-2h5V8.5h-5v-2Zm1 3h3v5h-3v-5ZM5.2 9.1c-1.5 0-2.4 1.2-2.4 3s.9 3 2.4 3 2.4-1.2 2.4-3-.9-3-2.4-3Zm0 1.4c.5 0 .8.6.8 1.6s-.3 1.6-.8 1.6-.8-.6-.8-1.6.3-1.6.8-1.6Z" />
+      </svg>
+    )
+  }
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path

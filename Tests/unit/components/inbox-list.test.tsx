@@ -128,6 +128,21 @@ describe("InboxList", () => {
     expect(replace).toHaveBeenCalledWith("/inbox?category=updates", { scroll: false })
   })
 
+  it("does not apply Gmail categories to a selected Outlook account", async () => {
+    params = new URLSearchParams("account=outlook-1")
+    mockedApi.listAccounts.mockResolvedValue([
+      { id: "outlook-1", email: "me@outlook.com", provider: "outlook", connectedAt: "", lastSyncedAt: null },
+    ])
+
+    render(<InboxList />)
+
+    await waitFor(() => expect(mockedApi.listEmails).toHaveBeenCalledWith("inbox", expect.objectContaining({
+      accountId: "outlook-1",
+      category: undefined,
+    })))
+    expect(screen.queryByRole("navigation", { name: "Inbox categories" })).not.toBeInTheDocument()
+  })
+
   it("supports selecting visible mail and applying a bulk read action", async () => {
     render(<InboxList />)
     await screen.findByText("Project update")

@@ -157,7 +157,7 @@ export function DraftsList() {
                     variant="outline"
                     className="h-5 border-border bg-surface-raised px-1.5"
                   >
-                    <ProviderIcon className="h-3 w-3" />
+                    <ProviderIcon provider={draft.provider} className="h-3 w-3" />
                   </Badge>
                   <Badge className="h-5 px-2 text-[10px] bg-[#FEBC2E]/10 text-[#FEBC2E] border-0">
                     <Clock className="mr-1 h-3 w-3" />
