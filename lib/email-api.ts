@@ -110,6 +110,150 @@ export interface SyncResultSummary {
   error?: string;
 }
 
+export type AgentActivityStatus =
+  | "draft"
+  | "awaiting_approval"
+  | "scheduled"
+  | "queued"
+  | "running"
+  | "needs_input"
+  | "completed"
+  | "partially_completed"
+  | "failed"
+  | "cancelled";
+
+export interface AgentActivity {
+  id: string;
+  accountId: string | null;
+  accountEmail: string | null;
+  provider: EmailProvider | null;
+  agentType:
+    | "commitment_monitor"
+    | "calendar_event_create"
+    | "calendar_event_update"
+    | "calendar_event_delete"
+    | "meeting_brief_prepare"
+    | "meeting_brief_refresh";
+  sourceType: "email" | "thread" | "commitment" | "calendar_event" | "meeting" | null;
+  sourceId: string | null;
+  title: string;
+  summary: string;
+  status: AgentActivityStatus;
+  currentStage: string | null;
+  progressCurrent: number;
+  progressTotal: number | null;
+  scheduledFor: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  output: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentActivityEvent {
+  id: string;
+  eventType: string;
+  stage: string | null;
+  message: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type CommitmentType =
+  | "my_task"
+  | "waiting_for_reply"
+  | "waiting_for_artifact"
+  | "follow_up";
+
+export type CommitmentStatus =
+  | "active"
+  | "needs_review"
+  | "satisfied"
+  | "dismissed"
+  | "expired";
+
+export interface Commitment {
+  id: string;
+  accountId: string | null;
+  accountEmail: string | null;
+  provider: EmailProvider | null;
+  sourceEmailId: string | null;
+  sourceThreadId: string | null;
+  providerMessageId: string | null;
+  providerThreadId: string | null;
+  type: CommitmentType;
+  title: string;
+  description: string;
+  expectedOutcome: string;
+  ownerName: string;
+  ownerEmail: string | null;
+  dueAt: string | null;
+  timezone: string;
+  evidence: string;
+  status: CommitmentStatus;
+  snoozedUntil: string | null;
+  confirmedAt: string;
+  satisfiedAt: string | null;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CalendarConnection {
+  id: string;
+  accountId: string;
+  accountEmail: string | null;
+  provider: EmailProvider;
+  status: "connected" | "error" | "revoked";
+  scopes: string[];
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+}
+
+export interface CommitmentCalendarEvent {
+  id: string;
+  accountId: string;
+  commitmentId: string;
+  provider: EmailProvider;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  status: "active" | "deleted" | "error";
+  createdAt: string;
+}
+
+export interface CommitmentMonitor {
+  id: string;
+  commitmentId: string;
+  status: "active" | "paused";
+  cadenceHours: number;
+  nextCheckAt: string;
+  lastCheckedAt: string | null;
+  lastResult: string | null;
+}
+
+export interface MeetingBrief {
+  id: string;
+  accountId: string;
+  commitmentId: string;
+  title: string;
+  meetingAt: string;
+  status: "ready" | "failed";
+  overview: string;
+  objectives: string[];
+  contextPoints: string[];
+  openQuestions: string[];
+  suggestedTalkingPoints: string[];
+  sourceMessageIds: string[];
+  errorMessage: string | null;
+  createdAt: string;
+}
+
 export class EmailApiError extends Error {
   code?: string;
   status: number;
@@ -362,6 +506,73 @@ export const emailApi = {
     return url;
   },
 
+  // ---- Calendar permissions and commitment reminders ----
+
+  async listCalendarConnections(): Promise<CalendarConnection[]> {
+    const { connections } = await request<{ connections: CalendarConnection[] }>("/api/calendar/connections");
+    return connections;
+  },
+
+  async getCalendarConnectUrl(provider: EmailProvider, accountId: string): Promise<string> {
+    const { url } = await request<{ url: string }>(
+      `/api/calendar/connect/${provider}?accountId=${encodeURIComponent(accountId)}`,
+    );
+    return url;
+  },
+
+  async listCommitmentCalendarEvents(): Promise<CommitmentCalendarEvent[]> {
+    const { events } = await request<{ events: CommitmentCalendarEvent[] }>("/api/calendar/events");
+    return events;
+  },
+
+  async createCommitmentCalendarEvent(
+    commitmentId: string,
+    reminderMinutes = 30,
+  ): Promise<CommitmentCalendarEvent> {
+    const { event } = await request<{ event: CommitmentCalendarEvent }>("/api/calendar/events", {
+      method: "POST",
+      body: JSON.stringify({ commitmentId, reminderMinutes }),
+    });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-agent-activity-updated"));
+    return event;
+  },
+
+  async deleteCommitmentCalendarEvent(id: string): Promise<void> {
+    await request(`/api/calendar/events/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-agent-activity-updated"));
+  },
+
+  async listCommitmentMonitors(): Promise<CommitmentMonitor[]> {
+    const { monitors } = await request<{ monitors: CommitmentMonitor[] }>("/api/commitment-monitors");
+    return monitors;
+  },
+
+  async enableCommitmentMonitor(commitmentId: string, cadenceHours = 24): Promise<CommitmentMonitor> {
+    const { monitor } = await request<{ monitor: CommitmentMonitor }>(
+      `/api/commitments/${encodeURIComponent(commitmentId)}/monitor`,
+      { method: "PUT", body: JSON.stringify({ cadenceHours }) },
+    );
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-agent-activity-updated"));
+    return monitor;
+  },
+
+  async disableCommitmentMonitor(commitmentId: string): Promise<void> {
+    await request(`/api/commitments/${encodeURIComponent(commitmentId)}/monitor`, { method: "DELETE" });
+  },
+
+  async listMeetingBriefs(): Promise<MeetingBrief[]> {
+    const { briefs } = await request<{ briefs: MeetingBrief[] }>("/api/meeting-briefs");
+    return briefs;
+  },
+
+  async prepareMeetingBrief(commitmentId: string): Promise<MeetingBrief> {
+    const { brief } = await request<{ brief: MeetingBrief }>("/api/meeting-briefs", {
+      method: "POST", body: JSON.stringify({ commitmentId }),
+    });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-agent-activity-updated"));
+    return brief;
+  },
+
   // ---- Contextual AI (read-only analysis and draft generation) ----
 
   async runThreadAi(payload: {
@@ -404,5 +615,100 @@ export const emailApi = {
       body: JSON.stringify(preference),
     });
     return updated;
+  },
+
+  // ---- Visible agent activity ----
+
+  async listAgentActivity(options: {
+    status?: AgentActivityStatus;
+    limit?: number;
+  } = {}): Promise<{ activities: AgentActivity[]; needsAttention: number }> {
+    const params = new URLSearchParams();
+    if (options.status) params.set("status", options.status);
+    if (options.limit) params.set("limit", String(options.limit));
+    const query = params.size ? `?${params.toString()}` : "";
+    return request(`/api/agent-activity${query}`);
+  },
+
+  async getAgentActivity(id: string): Promise<{
+    activity: AgentActivity;
+    events: AgentActivityEvent[];
+  }> {
+    return request(`/api/agent-activity/${encodeURIComponent(id)}`);
+  },
+
+  async controlAgentActivity(
+    id: string,
+    action: "cancel" | "retry",
+  ): Promise<AgentActivity> {
+    const { activity } = await request<{ activity: AgentActivity }>(
+      `/api/agent-activity/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify({ action }) },
+    );
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("relay-agent-activity-updated"));
+    }
+    return activity;
+  },
+
+  // ---- Email commitments ----
+
+  async listCommitments(options: {
+    status?: CommitmentStatus;
+    accountId?: string;
+    limit?: number;
+  } = {}): Promise<{ commitments: Commitment[]; needsAttention: number }> {
+    const params = new URLSearchParams();
+    if (options.status) params.set("status", options.status);
+    if (options.accountId) params.set("accountId", options.accountId);
+    if (options.limit) params.set("limit", String(options.limit));
+    const query = params.size ? `?${params.toString()}` : "";
+    return request(`/api/commitments${query}`);
+  },
+
+  async createCommitment(payload: {
+    accountId: string;
+    providerMessageId: string;
+    type: CommitmentType;
+    title: string;
+    description?: string;
+    expectedOutcome?: string;
+    ownerName?: string;
+    ownerEmail?: string;
+    dueAt?: string | null;
+    timezone?: string;
+    evidence?: string;
+  }): Promise<Commitment> {
+    const { commitment } = await request<{ commitment: Commitment }>("/api/commitments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-commitments-updated"));
+    return commitment;
+  },
+
+  async updateCommitment(
+    id: string,
+    payload:
+      | { action: "complete" | "reopen" | "dismiss" }
+      | { action: "snooze"; until: string }
+      | {
+          action: "update";
+          type?: CommitmentType;
+          title?: string;
+          description?: string;
+          expectedOutcome?: string;
+          ownerName?: string;
+          ownerEmail?: string;
+          dueAt?: string | null;
+          timezone?: string;
+        },
+  ): Promise<Commitment> {
+    const { commitment } = await request<{ commitment: Commitment }>(
+      `/api/commitments/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    );
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-commitments-updated"));
+    return commitment;
   },
 };

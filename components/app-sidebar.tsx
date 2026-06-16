@@ -5,9 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Archive,
+  Bot,
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
   FileText,
+  NotebookTabs,
   Inbox,
   LogOut,
   Mail,
@@ -36,13 +39,26 @@ export function AppSidebar() {
     archives: 0,
     sent: 0,
     trash: 0,
+    agentActivity: 0,
+    commitments: 0,
   });
 
   const refresh = async () => {
     try {
-      const [{ counts: serverCounts }, connectedAccounts] = await Promise.all([
+      const [
+        { counts: serverCounts },
+        connectedAccounts,
+        activity,
+        commitments,
+      ] = await Promise.all([
         emailApi.getCounts(),
         emailApi.listAccounts(),
+        emailApi
+          .listAgentActivity({ limit: 100 })
+          .catch(() => ({ activities: [], needsAttention: 0 })),
+        emailApi
+          .listCommitments({ limit: 200 })
+          .catch(() => ({ commitments: [], needsAttention: 0 })),
       ]);
       setCounts({
         inbox: serverCounts.inboxUnread,
@@ -50,6 +66,8 @@ export function AppSidebar() {
         archives: serverCounts.archives,
         sent: serverCounts.sent,
         trash: serverCounts.trash,
+        agentActivity: activity.needsAttention,
+        commitments: commitments.needsAttention,
       });
       setAccounts(connectedAccounts);
     } catch {
@@ -65,9 +83,13 @@ export function AppSidebar() {
     const onUpdate = () => void refresh();
     window.addEventListener("focus", onUpdate);
     window.addEventListener("relay-emails-updated", onUpdate);
+    window.addEventListener("relay-agent-activity-updated", onUpdate);
+    window.addEventListener("relay-commitments-updated", onUpdate);
     return () => {
       window.removeEventListener("focus", onUpdate);
       window.removeEventListener("relay-emails-updated", onUpdate);
+      window.removeEventListener("relay-agent-activity-updated", onUpdate);
+      window.removeEventListener("relay-commitments-updated", onUpdate);
     };
   }, []);
 
@@ -82,6 +104,19 @@ export function AppSidebar() {
     { name: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
     { name: "Sent", href: "/sent", icon: SendHorizontal, count: counts.sent },
     { name: "Drafts", href: "/drafts", icon: FileText, count: counts.drafts },
+    {
+      name: "Commitments",
+      href: "/commitments",
+      icon: CheckSquare,
+      count: counts.commitments,
+    },
+    { name: "Meeting Briefs", href: "/briefs", icon: NotebookTabs, count: 0 },
+    {
+      name: "Agent Activity",
+      href: "/activity",
+      icon: Bot,
+      count: counts.agentActivity,
+    },
     {
       name: "Archives",
       href: "/archives",

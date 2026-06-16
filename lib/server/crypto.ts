@@ -41,17 +41,28 @@ export function decryptSecretOrPassthrough(value: string): string {
 
 // OAuth `state` helpers: binds the Google OAuth callback to the Relay user
 // who initiated the connect flow (the callback request has no Supabase session).
-export function createOAuthState(userId: string): string {
+export type OAuthStateContext = {
+  purpose?: 'mail' | 'calendar';
+  accountId?: string;
+  provider?: 'gmail' | 'outlook';
+};
+
+export function createOAuthState(userId: string, context: OAuthStateContext = {}): string {
   return encodeURIComponent(
-    encryptSecret(JSON.stringify({ userId, issuedAt: Date.now() }))
+    encryptSecret(JSON.stringify({ userId, issuedAt: Date.now(), ...context }))
   );
 }
 
-export function parseOAuthState(state: string): { userId: string } {
+export function parseOAuthState(state: string): { userId: string } & OAuthStateContext {
   const decoded = JSON.parse(decryptSecret(decodeURIComponent(state)));
   const MAX_AGE_MS = 15 * 60 * 1000;
   if (!decoded.userId || Date.now() - decoded.issuedAt > MAX_AGE_MS) {
     throw new Error('OAuth state expired or invalid');
   }
-  return { userId: decoded.userId };
+  return {
+    userId: decoded.userId,
+    ...(decoded.purpose ? { purpose: decoded.purpose } : {}),
+    ...(decoded.accountId ? { accountId: decoded.accountId } : {}),
+    ...(decoded.provider ? { provider: decoded.provider } : {}),
+  };
 }

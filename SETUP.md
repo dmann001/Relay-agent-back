@@ -93,3 +93,9 @@ pnpm lint
 pnpm test:ci
 pnpm build
 ```
+# Background agent jobs
+
+Set `CRON_SECRET` to a long random value in every deployed environment. The
+included `vercel.json` invokes `/api/agent-jobs/commitments` hourly; the route
+accepts only `Authorization: Bearer $CRON_SECRET`. On another hosting platform,
+schedule the same authenticated GET or POST request once per hour.

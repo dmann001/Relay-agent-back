@@ -39,4 +39,38 @@ describe("Supabase schema security contract", () => {
       "gmail_category in ('primary', 'promotions', 'social', 'updates', 'forums')",
     );
   });
+
+  it("defines durable user-scoped agent activity", () => {
+    expect(schema).toContain("create table if not exists public.agent_runs");
+    expect(schema).toContain("create table if not exists public.agent_activity_events");
+    expect(schema).toContain("agent_runs_user_status_updated_idx");
+    expect(schema).toContain("'awaiting_approval'");
+    expect(schema).toContain("'partially_completed'");
+    expect(schema).toContain("and (account_id is null or public.current_user_owns_email_account(account_id))");
+    expect(schema).toContain("where agent_runs.id = agent_run_id and agent_runs.user_id = auth.uid()");
+  });
+
+  it("defines provider-neutral email commitments", () => {
+    expect(schema).toContain("create table if not exists public.commitments");
+    expect(schema).toContain("type in ('my_task', 'waiting_for_reply', 'waiting_for_artifact', 'follow_up')");
+    expect(schema).toContain("status in ('active', 'needs_review', 'satisfied', 'dismissed', 'expired')");
+    expect(schema).toContain("commitments_user_status_due_idx");
+  });
+
+  it("isolates calendar grants and links approved events to commitments", () => {
+    expect(schema).toContain("create table if not exists public.calendar_connections");
+    expect(schema).toContain("create table if not exists public.calendar_event_links");
+    expect(schema).toContain("unique (user_id, account_id)");
+    expect(schema).toContain("calendar_event_links_active_commitment_uidx");
+    expect(schema).toContain("calendar_connections_all_own");
+    expect(schema).toContain("calendar_event_links_all_own");
+  });
+
+  it("defines commitment monitors and durable meeting briefs", () => {
+    expect(schema).toContain("create table if not exists public.commitment_monitors");
+    expect(schema).toContain("create table if not exists public.meeting_briefs");
+    expect(schema).toContain("commitment_monitors_due_idx");
+    expect(schema).toContain("commitment_monitors_all_own");
+    expect(schema).toContain("meeting_briefs_all_own");
+  });
 });
