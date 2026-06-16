@@ -27,6 +27,7 @@ import {
   AiActionStrip,
   AiThreadAssistant,
 } from "@/components/ai-thread-assistant";
+import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/track-commitment-dialog";
 import type { Email } from "@/types";
 
 interface ThreadViewProps {
@@ -53,6 +54,7 @@ export function ThreadView({
   const [draftContent, setDraftContent] = useState("");
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [manualCommitment, setManualCommitment] = useState<CommitmentCandidate | null>(null);
   const [aiAction, setAiAction] = useState<
     "summary" | "draft" | "tasks" | "ask" | undefined
   >();
@@ -343,7 +345,12 @@ export function ThreadView({
         </div>
 
         <div className="shrink-0 border-b border-border bg-card px-4 py-2.5 sm:px-6">
-          <AiActionStrip onAction={handleAiAction} />
+          <AiActionStrip onAction={handleAiAction} onTrack={() => setManualCommitment({
+            title: `Follow up: ${email.subject}`,
+            owner: email.from.name || email.from.email,
+            dueDate: "",
+            evidence: `Follow up on “${email.subject}”.`,
+          })} />
         </div>
 
         {/* Thread Content */}
@@ -671,6 +678,16 @@ export function ThreadView({
         initialAction={aiAction}
         onOpenChange={setIsAiOpen}
         onInsertDraft={handleInsertAiDraft}
+      />
+      <TrackCommitmentDialog
+        candidate={manualCommitment}
+        accountId={email.accountId}
+        providerMessageId={email.id}
+        open={Boolean(manualCommitment)}
+        onOpenChange={(open) => { if (!open) setManualCommitment(null) }}
+        onTracked={() => {
+          toast({ title: "Commitment tracked", description: "You can manage it from Commitments." })
+        }}
       />
     </div>
   );

@@ -116,6 +116,68 @@ create trigger email_accounts_set_updated_at
   before update on public.email_accounts
   for each row execute function public.set_updated_at();
 
+create table if not exists public.agent_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid references public.email_accounts(id) on delete set null,
+  agent_type text not null check (
+    agent_type in (
+      'commitment_monitor',
+      'calendar_event_create',
+      'calendar_event_update',
+      'calendar_event_delete',
+      'meeting_brief_prepare',
+      'meeting_brief_refresh'
+    )
+  ),
+  source_type text check (
+    source_type is null or source_type in ('email', 'thread', 'commitment', 'calendar_event', 'meeting')
+  ),
+  source_id text,
+  title text not null,
+  summary text not null default '',
+  status text not null default 'queued' check (
+    status in (
+      'draft', 'awaiting_approval', 'scheduled', 'queued', 'running',
+      'needs_input', 'completed', 'partially_completed', 'failed', 'cancelled'
+    )
+  ),
+  current_stage text,
+  progress_current int not null default 0 check (progress_current >= 0),
+  progress_total int check (progress_total is null or progress_total > 0),
+  scheduled_for timestamptz,
+  started_at timestamptz,
+  completed_at timestamptz,
+  attempt_count int not null default 0 check (attempt_count >= 0),
+  max_attempts int not null default 3 check (max_attempts > 0),
+  idempotency_key text,
+  input_manifest jsonb not null default '{}'::jsonb,
+  output jsonb not null default '{}'::jsonb,
+  error_code text,
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, idempotency_key)
+);
+
+drop trigger if exists agent_runs_set_updated_at on public.agent_runs;
+create trigger agent_runs_set_updated_at
+  before update on public.agent_runs
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.agent_activity_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  agent_run_id uuid not null references public.agent_runs(id) on delete cascade,
+  event_type text not null check (
+    event_type in ('created', 'scheduled', 'started', 'stage', 'input_required', 'completed', 'failed', 'cancelled', 'retried')
+  ),
+  stage text,
+  message text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.ai_account_preferences (
   user_id uuid not null references auth.users(id) on delete cascade,
   account_id uuid primary key references public.email_accounts(id) on delete cascade,
@@ -477,6 +539,40 @@ create trigger tasks_set_updated_at
   before update on public.tasks
   for each row execute function public.set_updated_at();
 
+create table if not exists public.commitments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid references public.email_accounts(id) on delete set null,
+  source_email_id uuid references public.emails(id) on delete set null,
+  source_thread_id uuid references public.email_threads(id) on delete set null,
+  provider text check (provider is null or provider in ('gmail', 'outlook')),
+  provider_message_id text,
+  provider_thread_id text,
+  type text not null check (type in ('my_task', 'waiting_for_reply', 'waiting_for_artifact', 'follow_up')),
+  title text not null,
+  description text not null default '',
+  expected_outcome text not null default '',
+  owner_name text not null default '',
+  owner_email citext,
+  due_at timestamptz,
+  timezone text not null default 'UTC',
+  evidence text not null default '',
+  status text not null default 'active' check (
+    status in ('active', 'needs_review', 'satisfied', 'dismissed', 'expired')
+  ),
+  snoozed_until timestamptz,
+  confirmed_at timestamptz not null default now(),
+  satisfied_at timestamptz,
+  dismissed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists commitments_set_updated_at on public.commitments;
+create trigger commitments_set_updated_at
+  before update on public.commitments
+  for each row execute function public.set_updated_at();
+
 create table if not exists public.reminders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -601,7 +697,15 @@ create index if not exists email_labels_user_idx on public.email_labels(user_id)
 create index if not exists email_label_assignments_label_idx on public.email_label_assignments(label_id);
 create index if not exists email_embedding_chunks_user_email_idx on public.email_embedding_chunks(user_id, email_id);
 create index if not exists tasks_user_completed_deadline_idx on public.tasks(user_id, completed, deadline);
+create index if not exists commitments_user_status_due_idx on public.commitments(user_id, status, due_at);
+create index if not exists commitments_user_account_idx on public.commitments(user_id, account_id, updated_at desc);
+create index if not exists commitments_source_message_idx on public.commitments(account_id, provider_message_id);
 create index if not exists reminders_user_active_due_idx on public.reminders(user_id, active, reminder_at);
+create index if not exists agent_runs_user_status_updated_idx on public.agent_runs(user_id, status, updated_at desc);
+create index if not exists agent_runs_user_scheduled_idx on public.agent_runs(user_id, scheduled_for)
+  where status = 'scheduled';
+create index if not exists agent_activity_events_run_created_idx
+  on public.agent_activity_events(agent_run_id, created_at asc);
 create index if not exists smart_filters_user_enabled_idx on public.smart_filters(user_id, enabled);
 create index if not exists archive_rules_user_enabled_idx on public.archive_rules(user_id, enabled);
 
@@ -612,6 +716,8 @@ create index if not exists archive_rules_user_enabled_idx on public.archive_rule
 alter table public.profiles enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.agent_memory enable row level security;
+alter table public.agent_runs enable row level security;
+alter table public.agent_activity_events enable row level security;
 alter table public.ai_account_preferences enable row level security;
 alter table public.email_accounts enable row level security;
 alter table public.email_sync_state enable row level security;
@@ -626,6 +732,7 @@ alter table public.email_ai_enrichments enable row level security;
 alter table public.email_embedding_chunks enable row level security;
 alter table public.drafts enable row level security;
 alter table public.tasks enable row level security;
+alter table public.commitments enable row level security;
 alter table public.reminders enable row level security;
 alter table public.smart_filters enable row level security;
 alter table public.archive_rules enable row level security;
@@ -655,6 +762,8 @@ begin
     'profiles',
     'app_settings',
     'agent_memory',
+    'agent_runs',
+    'agent_activity_events',
     'email_accounts',
     'contacts',
     'email_threads',
@@ -704,6 +813,61 @@ begin
     );
   end loop;
 end $$;
+
+-- Agent execution records can only reference accounts owned by the user.
+drop policy if exists agent_runs_select_own on public.agent_runs;
+create policy agent_runs_select_own on public.agent_runs
+  for select using (auth.uid() = user_id);
+drop policy if exists agent_runs_insert_own on public.agent_runs;
+create policy agent_runs_insert_own on public.agent_runs
+  for insert with check (
+    auth.uid() = user_id
+    and (account_id is null or public.current_user_owns_email_account(account_id))
+  );
+drop policy if exists agent_runs_update_own on public.agent_runs;
+create policy agent_runs_update_own on public.agent_runs
+  for update using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and (account_id is null or public.current_user_owns_email_account(account_id))
+  );
+drop policy if exists agent_runs_delete_own on public.agent_runs;
+create policy agent_runs_delete_own on public.agent_runs
+  for delete using (auth.uid() = user_id);
+
+drop policy if exists agent_activity_events_select_own on public.agent_activity_events;
+create policy agent_activity_events_select_own on public.agent_activity_events
+  for select using (auth.uid() = user_id);
+drop policy if exists agent_activity_events_insert_own on public.agent_activity_events;
+create policy agent_activity_events_insert_own on public.agent_activity_events
+  for insert with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.agent_runs
+      where agent_runs.id = agent_run_id and agent_runs.user_id = auth.uid()
+    )
+  );
+
+-- Commitments retain provider references but may only be attached to an owned account.
+drop policy if exists commitments_select_own on public.commitments;
+create policy commitments_select_own on public.commitments
+  for select using (auth.uid() = user_id);
+drop policy if exists commitments_insert_own on public.commitments;
+create policy commitments_insert_own on public.commitments
+  for insert with check (
+    auth.uid() = user_id
+    and (account_id is null or public.current_user_owns_email_account(account_id))
+  );
+drop policy if exists commitments_update_own on public.commitments;
+create policy commitments_update_own on public.commitments
+  for update using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id
+    and (account_id is null or public.current_user_owns_email_account(account_id))
+  );
+drop policy if exists commitments_delete_own on public.commitments;
+create policy commitments_delete_own on public.commitments
+  for delete using (auth.uid() = user_id);
 
 
 -- AI preferences are account-scoped and must match both the user and owned account.
@@ -815,3 +979,123 @@ create unique index if not exists drafts_account_gmail_draft_uidx
 alter table public.email_sync_state
   add column if not exists initial_sync_done boolean not null default false,
   add column if not exists trash_synced_at timestamptz;
+
+-- Calendar grants are deliberately separate from mailbox grants. A calendar
+-- action is always tied to a visible commitment and an auditable agent run.
+create table if not exists public.calendar_connections (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid not null references public.email_accounts(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'outlook')),
+  access_token text not null,
+  refresh_token text,
+  token_expires_at timestamptz,
+  scopes text[] not null default '{}',
+  default_calendar_id text not null default 'primary',
+  status text not null default 'connected' check (status in ('connected', 'error', 'revoked')),
+  last_verified_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, account_id)
+);
+
+create table if not exists public.calendar_event_links (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid not null references public.email_accounts(id) on delete cascade,
+  connection_id uuid not null references public.calendar_connections(id) on delete cascade,
+  commitment_id uuid not null references public.commitments(id) on delete cascade,
+  provider text not null check (provider in ('gmail', 'outlook')),
+  provider_calendar_id text not null,
+  provider_event_id text not null,
+  title text not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  timezone text not null default 'UTC',
+  status text not null default 'active' check (status in ('active', 'deleted', 'error')),
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists calendar_event_links_active_commitment_uidx
+  on public.calendar_event_links(commitment_id) where status = 'active';
+create unique index if not exists calendar_event_links_provider_event_uidx
+  on public.calendar_event_links(connection_id, provider_calendar_id, provider_event_id);
+create index if not exists calendar_event_links_user_status_idx
+  on public.calendar_event_links(user_id, status, starts_at);
+
+drop trigger if exists calendar_connections_set_updated_at on public.calendar_connections;
+create trigger calendar_connections_set_updated_at before update on public.calendar_connections
+  for each row execute function public.set_updated_at();
+drop trigger if exists calendar_event_links_set_updated_at on public.calendar_event_links;
+create trigger calendar_event_links_set_updated_at before update on public.calendar_event_links
+  for each row execute function public.set_updated_at();
+
+alter table public.calendar_connections enable row level security;
+alter table public.calendar_event_links enable row level security;
+drop policy if exists calendar_connections_all_own on public.calendar_connections;
+create policy calendar_connections_all_own on public.calendar_connections
+  for all using (auth.uid() = user_id and public.current_user_owns_email_account(account_id))
+  with check (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
+drop policy if exists calendar_event_links_all_own on public.calendar_event_links;
+create policy calendar_event_links_all_own on public.calendar_event_links
+  for all using (auth.uid() = user_id and public.current_user_owns_email_account(account_id))
+  with check (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
+
+create table if not exists public.commitment_monitors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  commitment_id uuid not null references public.commitments(id) on delete cascade,
+  account_id uuid not null references public.email_accounts(id) on delete cascade,
+  status text not null default 'active' check (status in ('active', 'paused')),
+  cadence_hours int not null default 24 check (cadence_hours between 1 and 168),
+  next_check_at timestamptz not null,
+  last_checked_at timestamptz,
+  last_result text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, commitment_id)
+);
+
+create table if not exists public.meeting_briefs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid not null references public.email_accounts(id) on delete cascade,
+  commitment_id uuid not null references public.commitments(id) on delete cascade,
+  agent_run_id uuid references public.agent_runs(id) on delete set null,
+  title text not null,
+  meeting_at timestamptz not null,
+  status text not null default 'ready' check (status in ('ready', 'failed')),
+  overview text not null default '',
+  objectives jsonb not null default '[]'::jsonb,
+  context_points jsonb not null default '[]'::jsonb,
+  open_questions jsonb not null default '[]'::jsonb,
+  suggested_talking_points jsonb not null default '[]'::jsonb,
+  source_message_ids jsonb not null default '[]'::jsonb,
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists commitment_monitors_due_idx
+  on public.commitment_monitors(status, next_check_at) where status = 'active';
+create index if not exists meeting_briefs_user_meeting_idx
+  on public.meeting_briefs(user_id, meeting_at desc);
+drop trigger if exists commitment_monitors_set_updated_at on public.commitment_monitors;
+create trigger commitment_monitors_set_updated_at before update on public.commitment_monitors
+  for each row execute function public.set_updated_at();
+drop trigger if exists meeting_briefs_set_updated_at on public.meeting_briefs;
+create trigger meeting_briefs_set_updated_at before update on public.meeting_briefs
+  for each row execute function public.set_updated_at();
+alter table public.commitment_monitors enable row level security;
+alter table public.meeting_briefs enable row level security;
+drop policy if exists commitment_monitors_all_own on public.commitment_monitors;
+create policy commitment_monitors_all_own on public.commitment_monitors for all
+  using (auth.uid() = user_id and public.current_user_owns_email_account(account_id))
+  with check (auth.uid() = user_id and public.current_user_owns_email_account(account_id));
+drop policy if exists meeting_briefs_all_own on public.meeting_briefs;
+create policy meeting_briefs_all_own on public.meeting_briefs for all
+  using (auth.uid() = user_id and public.current_user_owns_email_account(account_id))
+  with check (auth.uid() = user_id and public.current_user_owns_email_account(account_id));

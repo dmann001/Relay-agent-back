@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Bot, Loader2, Mail, Save, Trash2 } from "lucide-react"
+import { Bot, CalendarDays, CheckCircle2, Loader2, Mail, Save, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { emailApi, type AiAccountPreference, type ConnectedAccount } from "@/lib/email-api"
+import { emailApi, type AiAccountPreference, type CalendarConnection, type ConnectedAccount } from "@/lib/email-api"
 import { useToast } from "@/hooks/use-toast"
 import { ProviderIcon } from "@/components/provider-icon"
 
@@ -29,6 +29,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 export function SettingsContent() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [aiPreferences, setAiPreferences] = useState<AiAccountPreference[]>([])
+  const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [connectingProvider, setConnectingProvider] = useState<"gmail" | "outlook" | null>(null)
   const searchParams = useSearchParams()
@@ -36,12 +37,14 @@ export function SettingsContent() {
 
   const loadAccounts = useCallback(async () => {
     try {
-      const [connectedAccounts, preferences] = await Promise.all([
+      const [connectedAccounts, preferences, calendars] = await Promise.all([
         emailApi.listAccounts(),
         emailApi.listAiPreferences().catch(() => [] as AiAccountPreference[]),
+        emailApi.listCalendarConnections().catch(() => [] as CalendarConnection[]),
       ])
       setAccounts(connectedAccounts)
       setAiPreferences(preferences)
+      setCalendarConnections(calendars)
     } catch (error) {
       console.error("[Settings] Failed to load accounts:", error)
       toast({
@@ -57,6 +60,17 @@ export function SettingsContent() {
   useEffect(() => { void loadAccounts() }, [loadAccounts])
 
   useEffect(() => {
+    if (searchParams.get("calendarConnected")) {
+      toast({ title: "Calendar connected", description: "Relay can now create reminders only after you approve them." })
+      window.history.replaceState({}, document.title, "/settings")
+      return
+    }
+    const calendarError = searchParams.get("calendarError")
+    if (calendarError) {
+      toast({ title: "Calendar connection failed", description: calendarError, variant: "destructive" })
+      window.history.replaceState({}, document.title, "/settings")
+      return
+    }
     const error = searchParams.get("error")
     if (!error) return
     toast({
@@ -68,6 +82,16 @@ export function SettingsContent() {
     })
     window.history.replaceState({}, document.title, "/settings")
   }, [searchParams, toast])
+
+  const handleConnectCalendar = async (account: ConnectedAccount) => {
+    setConnectingProvider(account.provider)
+    try {
+      window.location.href = await emailApi.getCalendarConnectUrl(account.provider, account.id)
+    } catch (error: any) {
+      toast({ title: "Calendar connection failed", description: error.message, variant: "destructive" })
+      setConnectingProvider(null)
+    }
+  }
 
   const handleConnectGmail = async () => {
     setConnectingProvider("gmail")
@@ -183,6 +207,37 @@ export function SettingsContent() {
             </div>
           </CardContent>
         </Card>
+
+        {accounts.length > 0 && <Card className="mt-6 rounded-2xl border border-border bg-card shadow-sm">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-soft">
+                <CalendarDays className="h-5 w-5 text-brand-strong" />
+              </div>
+              <div>
+                <CardTitle className="font-medium text-card-foreground">Calendar reminders</CardTitle>
+                <CardDescription>Grant calendar access separately. Relay never adds attendees or creates an event without a preview and your approval.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {accounts.map((account) => {
+              const connection = calendarConnections.find((item) => item.accountId === account.id && item.status === "connected")
+              return <div key={account.id} className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 font-medium"><ProviderIcon provider={account.provider} className="h-4 w-4" />{account.email}</div>
+                  <p className="mt-1 text-xs text-muted-foreground">{connection ? "Calendar permission is active." : "Calendar access has not been granted."}</p>
+                </div>
+                {connection
+                  ? <div className="flex items-center text-sm text-brand-strong"><CheckCircle2 className="mr-2 h-4 w-4" />Connected</div>
+                  : <Button size="sm" variant="outline" onClick={() => void handleConnectCalendar(account)} disabled={connectingProvider !== null}>
+                    {connectingProvider === account.provider ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
+                    Connect calendar
+                  </Button>}
+              </div>
+            })}
+          </CardContent>
+        </Card>}
 
         {aiPreferences.length > 0 && (
           <Card className="mt-6 rounded-2xl border border-border bg-card shadow-sm">

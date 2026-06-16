@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Bot, CheckSquare, ChevronRight, FilePenLine, Loader2, MessageCircleQuestion, Sparkles, X } from "lucide-react"
+import { Bot, Check, CheckSquare, ChevronRight, FilePenLine, Loader2, MessageCircleQuestion, Sparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { emailApi, EmailApiError, type ThreadAiResult, type ThreadAiResponse } from "@/lib/email-api"
 import { cn } from "@/lib/utils"
+import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/track-commitment-dialog"
 
 type AiAction = "summary" | "draft" | "tasks" | "ask"
 
@@ -26,7 +27,9 @@ const actionLabels: Record<AiAction, string> = {
   ask: "Ask Relay",
 }
 
-function ResultContent({ result, onInsertDraft }: { result: ThreadAiResult; onInsertDraft: (draft: string) => void }) {
+function ResultContent({ result, response, onInsertDraft }: { result: ThreadAiResult; response: ThreadAiResponse; onInsertDraft: (draft: string) => void }) {
+  const [candidate, setCandidate] = useState<CommitmentCandidate | null>(null)
+  const [trackedTitles, setTrackedTitles] = useState<string[]>([])
   if (result.kind === "summary") return (
     <div className="space-y-5">
       <section><h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Summary</h3><p className="mt-2 text-sm leading-6 text-foreground">{result.summary}</p></section>
@@ -52,9 +55,13 @@ function ResultContent({ result, onInsertDraft }: { result: ThreadAiResult; onIn
         <div key={index} className="rounded-xl border border-border bg-card p-3">
           <div className="flex items-start gap-2"><CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-brand" /><div><div className="text-sm font-medium text-foreground">{task.title}</div><div className="mt-1 text-xs text-muted-foreground">{task.owner || "Owner not stated"}{task.dueDate ? ` · ${task.dueDate}` : " · No date stated"}</div></div></div>
           <p className="mt-2 border-l-2 border-border pl-2 text-xs leading-5 text-muted-foreground">{task.evidence}</p>
+          <Button variant="outline" size="sm" className="mt-3 w-full" disabled={trackedTitles.includes(task.title)} onClick={() => setCandidate(task)}>
+            {trackedTitles.includes(task.title) ? <><Check className="mr-2 h-3.5 w-3.5" />Tracked</> : "Track commitment"}
+          </Button>
         </div>
       )) : <p className="text-sm text-muted-foreground">No concrete tasks were found in this email.</p>}
       {result.notes && <p className="text-xs leading-5 text-muted-foreground">{result.notes}</p>}
+      <TrackCommitmentDialog candidate={candidate} accountId={response.context.accountId} providerMessageId={response.context.messageId} open={Boolean(candidate)} onOpenChange={(open) => { if (!open) setCandidate(null) }} onTracked={() => { if (candidate) setTrackedTitles((current) => [...current, candidate.title]) }} />
     </div>
   )
 
@@ -119,7 +126,7 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {isLoading ? <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing this email…</div> : error ? <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4"><p className="text-sm text-destructive">{error}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void run(activeAction, activeAction === "ask" ? question : undefined)}>Try again</Button></div> : response ? <ResultContent result={response.result} onInsertDraft={onInsertDraft} /> : <div className="py-8 text-center"><Bot className="mx-auto h-8 w-8 text-brand" /><p className="mt-3 text-sm text-foreground">Choose an action to work with this email.</p><p className="mt-1 text-xs text-muted-foreground">Relay only uses the current email and account preferences.</p></div>}
+          {isLoading ? <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing this email…</div> : error ? <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4"><p className="text-sm text-destructive">{error}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void run(activeAction, activeAction === "ask" ? question : undefined)}>Try again</Button></div> : response ? <ResultContent result={response.result} response={response} onInsertDraft={onInsertDraft} /> : <div className="py-8 text-center"><Bot className="mx-auto h-8 w-8 text-brand" /><p className="mt-3 text-sm text-foreground">Choose an action to work with this email.</p><p className="mt-1 text-xs text-muted-foreground">Relay only uses the current email and account preferences.</p></div>}
         </div>
 
         {activeAction === "ask" && <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); if (question.trim()) void run("ask", question.trim()) }}><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} placeholder="Ask about this email…" className="min-h-20 resize-none" /><Button type="submit" aria-label="Submit question" className="mt-2 w-full" disabled={!question.trim() || isLoading}>Ask Relay <ChevronRight className="ml-1 h-4 w-4" /></Button></form>}
@@ -128,6 +135,6 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
   )
 }
 
-export function AiActionStrip({ onAction }: { onAction: (action: Exclude<AiAction, "ask"> | "ask") => void }) {
-  return <div className="flex flex-wrap gap-2" aria-label="AI email actions"><Button variant="outline" size="sm" onClick={() => onAction("summary")}><Sparkles className="mr-2 h-3.5 w-3.5" />Summarize</Button><Button variant="outline" size="sm" onClick={() => onAction("draft")}><FilePenLine className="mr-2 h-3.5 w-3.5" />Draft reply</Button><Button variant="outline" size="sm" onClick={() => onAction("tasks")}><CheckSquare className="mr-2 h-3.5 w-3.5" />Extract tasks</Button><Button variant="outline" size="sm" onClick={() => onAction("ask")}><MessageCircleQuestion className="mr-2 h-3.5 w-3.5" />Ask Relay</Button></div>
+export function AiActionStrip({ onAction, onTrack }: { onAction: (action: Exclude<AiAction, "ask"> | "ask") => void; onTrack?: () => void }) {
+  return <div className="flex flex-wrap gap-2" aria-label="AI email actions"><Button variant="outline" size="sm" onClick={() => onAction("summary")}><Sparkles className="mr-2 h-3.5 w-3.5" />Summarize</Button><Button variant="outline" size="sm" onClick={() => onAction("draft")}><FilePenLine className="mr-2 h-3.5 w-3.5" />Draft reply</Button><Button variant="outline" size="sm" onClick={() => onAction("tasks")}><CheckSquare className="mr-2 h-3.5 w-3.5" />Extract tasks</Button>{onTrack && <Button variant="outline" size="sm" onClick={onTrack}><CheckSquare className="mr-2 h-3.5 w-3.5" />Track follow-up</Button>}<Button variant="outline" size="sm" onClick={() => onAction("ask")}><MessageCircleQuestion className="mr-2 h-3.5 w-3.5" />Ask Relay</Button></div>
 }

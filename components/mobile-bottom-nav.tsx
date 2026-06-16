@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { FileText, Inbox, PenSquare, SendHorizontal, Settings } from "lucide-react"
+import { CheckSquare, FileText, Inbox, PenSquare, SendHorizontal, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ComposeDialog } from "@/components/compose-dialog"
 
@@ -14,6 +14,7 @@ export function MobileBottomNav() {
     { href: "/inbox", label: "Inbox", icon: Inbox },
     { href: "/sent", label: "Sent", icon: SendHorizontal },
     { href: "/drafts", label: "Drafts", icon: FileText },
+    { href: "/commitments", label: "Tasks", icon: CheckSquare },
     { href: "/settings", label: "Settings", icon: Settings },
   ]
   return <>
