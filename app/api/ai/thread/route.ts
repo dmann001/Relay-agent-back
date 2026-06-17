@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireUser } from '@/lib/server/supabase-admin';
-import { getThreadAiContext, emailContextText, type AiAccountPreference } from '@/lib/server/ai-context';
+import { getThreadAiContext, emailContextInputParts, emailContextText, type AiAccountPreference } from '@/lib/server/ai-context';
 import { AiConfigurationError, AiProviderError, generateStructuredResponse } from '@/lib/server/openai';
 import { handleApiError } from '@/lib/server/api-utils';
 import { AiRateLimitError, enforceAiRateLimit } from '@/lib/server/ai-rate-limit';
+import { aiToolKeySchema, getAiModelSettings, toolsForOpenAi } from '@/lib/server/ai-model-settings';
 
 const requestSchema = z.object({
   messageId: z.string().trim().min(1).max(256),
   accountId: z.string().uuid().optional(),
   action: z.enum(['summary', 'draft', 'tasks', 'ask']),
   prompt: z.string().trim().max(2000).optional(),
+  model: z.string().trim().min(1).max(80).optional(),
+  tools: z.array(aiToolKeySchema).max(8).optional(),
 });
 
 const summarySchema = z.object({
@@ -89,12 +92,16 @@ export async function POST(request: NextRequest) {
     }
 
     const definition = schemas[parsed.data.action];
+    const modelSettings = await getAiModelSettings(userId);
     const result = await generateStructuredResponse({
       instructions: `${baseInstructions}\n${actionInstructions(parsed.data.action, context.preference, parsed.data.prompt)}`,
       input: emailContextText(context),
+      inputParts: emailContextInputParts(context),
       schemaName: `relay_${parsed.data.action}`,
       jsonSchema: definition.json,
       validator: definition.validator as any,
+      model: parsed.data.model || modelSettings.defaultModel,
+      tools: toolsForOpenAi(modelSettings, parsed.data.tools),
     });
 
     return NextResponse.json({

@@ -22,6 +22,10 @@ jest.mock("@/components/thread-view", () => ({
   ThreadView: ({ threadId }: { threadId: string }) => <div>Reading {threadId}</div>,
 }))
 
+jest.mock("@/components/ai-inbox-chat", () => ({
+  AiInboxChat: ({ messageId }: { messageId?: string }) => <div>AI chat {messageId || "inbox"}</div>,
+}))
+
 jest.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: jest.fn() }),
 }))
@@ -126,6 +130,23 @@ describe("InboxList", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Updates" }))
     expect(replace).toHaveBeenCalledWith("/inbox?category=updates", { scroll: false })
+  })
+
+  it("opens AI chat in the reading pane without requiring a selected email", async () => {
+    render(<InboxList />)
+    await screen.findByText("Project update")
+
+    fireEvent.click(screen.getByRole("button", { name: "AI" }))
+    expect(replace).toHaveBeenCalledWith("/inbox?assistant=chat", { scroll: false })
+  })
+
+  it("preserves the selected email when opening AI chat", async () => {
+    params = new URLSearchParams("message=message-1&messageAccount=account-1")
+    render(<InboxList />)
+    await screen.findByText("Reading message-1")
+
+    fireEvent.click(screen.getByRole("button", { name: "AI" }))
+    expect(replace).toHaveBeenCalledWith("/inbox?message=message-1&messageAccount=account-1&assistant=chat", { scroll: false })
   })
 
   it("does not apply Gmail categories to a selected Outlook account", async () => {

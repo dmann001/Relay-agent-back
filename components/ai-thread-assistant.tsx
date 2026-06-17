@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { Bot, Check, CheckSquare, ChevronRight, FilePenLine, Loader2, MessageCircleQuestion, Sparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -92,6 +92,12 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
     }
   }
 
+  const handleQuestionKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    if (question.trim()) void run("ask", question.trim())
+  }
+
   useEffect(() => {
     setResponse(null)
     setError(null)
@@ -143,7 +149,7 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
           {isLoading ? <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing this email…</div> : error ? <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4"><p className="text-sm text-destructive">{error}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void run(activeAction, activeAction === "ask" ? question : undefined)}>Try again</Button></div> : response ? <ResultContent result={response.result} response={response} onInsertDraft={onInsertDraft} /> : <div className="py-8 text-center"><Bot className="mx-auto h-8 w-8 text-brand" /><p className="mt-3 text-sm text-foreground">Choose an action to work with this email.</p><p className="mt-1 text-xs text-muted-foreground">Relay only uses the current email and account preferences.</p></div>}
         </div>
 
-        {activeAction === "ask" && <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); if (question.trim()) void run("ask", question.trim()) }}><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} placeholder="Ask about this email…" className="min-h-20 resize-none" /><Button type="submit" aria-label="Submit question" className="mt-2 w-full" disabled={!question.trim() || isLoading}>Ask Relay <ChevronRight className="ml-1 h-4 w-4" /></Button></form>}
+        {activeAction === "ask" && <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); if (question.trim()) void run("ask", question.trim()) }}><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={handleQuestionKeyDown} maxLength={2000} placeholder="Ask about this email…" className="min-h-20 resize-none" /><Button type="submit" aria-label="Submit question" className="mt-2 w-full" disabled={!question.trim() || isLoading}>Ask Relay <ChevronRight className="ml-1 h-4 w-4" /></Button></form>}
     </div>
   )
 

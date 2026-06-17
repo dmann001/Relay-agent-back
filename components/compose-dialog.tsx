@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Check, CloudOff, Loader2, Send, X, Paperclip, Trash2 } from "lucide-react"
+import { Check, CloudOff, Loader2, Send, X, Paperclip, Trash2, Sparkles } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { emailApi, type ConnectedAccount, type RemoteDraft } from "@/lib/email-api"
 
@@ -37,6 +37,12 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const [isAiOpen, setIsAiOpen] = useState(false)
+  const [isAiLoading, setIsAiLoading] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [aiAnswer, setAiAnswer] = useState("")
+  const [aiSubject, setAiSubject] = useState("")
+  const [aiBody, setAiBody] = useState("")
   const [showCc, setShowCc] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; mimeType: string; data: string; size: number }>>([])
 
@@ -71,6 +77,11 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
       setBody(draft.body || draft.snippet || "")
       setShowCc(Boolean(draft.cc?.length))
       setAttachments([])
+      setIsAiOpen(false)
+      setAiPrompt("")
+      setAiAnswer("")
+      setAiSubject("")
+      setAiBody("")
       return
     }
 
@@ -81,6 +92,11 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
       setBody("")
       setShowCc(false)
       setAttachments([])
+      setIsAiOpen(false)
+      setAiPrompt("")
+      setAiAnswer("")
+      setAiSubject("")
+      setAiBody("")
       return
     }
 
@@ -90,6 +106,11 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
     setBody("")
     setShowCc(false)
     setAttachments([])
+    setIsAiOpen(false)
+    setAiPrompt("")
+    setAiAnswer("")
+    setAiSubject("")
+    setAiBody("")
     return () => { cancelled = true }
   }, [open, draft, replyTo, defaultAccountId])
 
@@ -172,8 +193,49 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
       setAttachments([])
       setDraftId(null)
       setDraftStatus("idle")
+      setIsAiOpen(false)
+      setAiPrompt("")
+      setAiAnswer("")
+      setAiSubject("")
+      setAiBody("")
     }
     onOpenChange(isOpen)
+  }
+
+  const handleRunAi = async () => {
+    if (isAiLoading || !accountId) return
+    const prompt = aiPrompt.trim() || (body.trim() ? "Improve this draft." : "Draft this email.")
+    setIsAiLoading(true)
+    setAiAnswer("")
+    setAiSubject("")
+    setAiBody("")
+    try {
+      const response = await emailApi.runComposeAi({
+        accountId: accountId || undefined,
+        prompt,
+        to,
+        cc,
+        subject,
+        body,
+      })
+      setAiAnswer(response.result.answer)
+      setAiSubject(response.result.subject)
+      setAiBody(response.result.body)
+    } catch (error: any) {
+      toast({
+        title: "Relay AI failed",
+        description: error.message || "Could not generate writing help.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
+  const handleAiPromptKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    void handleRunAi()
   }
 
   const handleSend = async () => {
@@ -362,6 +424,16 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
               disabled={isSending}
             />
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAiOpen((current) => !current)}
+                className="h-9 rounded-lg border-brand/30 bg-brand-soft/40 text-xs text-brand-strong hover:bg-brand-soft"
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                AI
+              </Button>
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-brand/50 hover:text-brand">
                 <Paperclip className="h-3.5 w-3.5" />
                 Add attachment
@@ -390,6 +462,90 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {isAiOpen && (
+              <div className="space-y-3 rounded-xl border border-brand/20 bg-brand-soft/25 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground">Relay AI</div>
+                    <p className="text-xs text-muted-foreground">Ask for a draft, rewrite, shorter version, or tone adjustment.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setIsAiOpen(false)}
+                    aria-label="Close compose AI"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Textarea
+                  value={aiPrompt}
+                  onChange={(event) => setAiPrompt(event.target.value)}
+                  onKeyDown={handleAiPromptKeyDown}
+                  placeholder="Ask Relay to draft, polish, shorten, or make this warmer..."
+                  className="min-h-20 resize-none rounded-lg bg-background"
+                  disabled={isAiLoading}
+                />
+                <div className="flex justify-end">
+                  <Button type="button" onClick={() => void handleRunAi()} disabled={isAiLoading || !accountId} size="sm">
+                    {isAiLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Thinking...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Ask AI
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {(aiAnswer || aiSubject || aiBody) && (
+                  <div className="space-y-3 rounded-lg border border-border bg-card p-3">
+                    {aiAnswer && <p className="text-sm leading-6 text-foreground">{aiAnswer}</p>}
+                    {aiSubject && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground">Suggested subject</div>
+                        <p className="mt-1 text-sm text-foreground">{aiSubject}</p>
+                      </div>
+                    )}
+                    {aiBody && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground">Suggested body</div>
+                        <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">{aiBody}</div>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {aiSubject && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => setSubject(aiSubject)}>
+                          Use subject
+                        </Button>
+                      )}
+                      {aiBody && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => setBody(aiBody)}>
+                          Use body
+                        </Button>
+                      )}
+                      {(aiSubject || aiBody) && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            if (aiSubject) setSubject(aiSubject)
+                            if (aiBody) setBody(aiBody)
+                          }}
+                        >
+                          Insert draft
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

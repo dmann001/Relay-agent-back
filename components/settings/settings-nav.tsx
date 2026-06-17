@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bot, Plug, UserRound } from "lucide-react"
+import { Bot, BrainCircuit, Plug, UserRound } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const items = [
@@ -23,6 +23,12 @@ const items = [
     label: "AI personalization",
     description: "Writing style and drafts",
     icon: Bot,
+  },
+  {
+    href: "/settings/ai-models",
+    label: "AI models",
+    description: "Default model and tools",
+    icon: BrainCircuit,
   },
 ] as const
 

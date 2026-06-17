@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { DEFAULT_AI_MODEL } from '@/lib/server/ai-model-settings';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
-const DEFAULT_MODEL = 'gpt-5.4-mini';
 
 export class AiConfigurationError extends Error {
   constructor(message = 'Relay AI is not configured') {
@@ -21,6 +21,10 @@ export class AiProviderError extends Error {
 }
 
 type JsonSchema = Record<string, unknown>;
+export type OpenAiInputPart =
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string }
+  | { type: 'input_file'; filename: string; file_data: string };
 
 function extractOutputText(payload: any): string {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
@@ -40,15 +44,27 @@ function extractOutputText(payload: any): string {
 export async function generateStructuredResponse<T>(params: {
   instructions: string;
   input: string;
+  inputParts?: OpenAiInputPart[];
   schemaName: string;
   jsonSchema: JsonSchema;
   validator: z.ZodType<T>;
+  model?: string;
+  tools?: Array<Record<string, unknown>>;
   maxOutputTokens?: number;
 }): Promise<{ data: T; model: string; responseId?: string }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AiConfigurationError();
 
-  const model = process.env.OPENAI_MODEL || DEFAULT_MODEL;
+  const model = params.model || process.env.OPENAI_MODEL || DEFAULT_AI_MODEL;
+  const input = params.inputParts?.length
+    ? [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text: params.input },
+          ...params.inputParts,
+        ],
+      }]
+    : params.input;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
@@ -64,7 +80,8 @@ export async function generateStructuredResponse<T>(params: {
         model,
         store: false,
         instructions: params.instructions,
-        input: params.input,
+        input,
+        ...(params.tools?.length ? { tools: params.tools } : {}),
         max_output_tokens: params.maxOutputTokens ?? 1800,
         reasoning: { effort: 'low' },
         text: {

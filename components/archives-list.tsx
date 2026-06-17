@@ -1,21 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Archive, RefreshCw, Undo2 } from "lucide-react";
+import { Archive, MailOpen, RefreshCw, Undo2 } from "lucide-react";
 import { ProviderIcon } from "@/components/provider-icon";
 import { emailApi } from "@/lib/email-api";
 import { useToast } from "@/hooks/use-toast";
 import type { Email } from "@/types";
 import { formatMailboxTimestamp } from "@/lib/email-utils";
 import { AccountScopeSelect } from "@/components/account-scope-select";
+import { ThreadView } from "@/components/thread-view";
+import { cn } from "@/lib/utils";
+import { ResizeHandle } from "@/components/resize-handle";
+import { useResizablePanel } from "@/hooks/use-resizable-panel";
 
 export function ArchivesList() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -50,10 +54,22 @@ export function ArchivesList() {
       ),
     [emails],
   );
+  const selectedEmail = sortedEmails.find(({ id }) => id === selectedEmailId);
+  const {
+    width: listWidth,
+    isResizing: isListResizing,
+    startResize: startListResize,
+  } = useResizablePanel({
+    storageKey: "relay-archives-list-width",
+    defaultWidth: 380,
+    minWidth: 280,
+    maxWidth: 560,
+  });
 
   // Unarchive = add the INBOX label back in Gmail, then refresh the cache.
   const handleUnarchive = async (emailId: string, accountId?: string) => {
     setEmails((prev) => prev.filter((e) => e.id !== emailId));
+    if (selectedEmailId === emailId) setSelectedEmailId(null);
     try {
       await emailApi.modifyEmail(emailId, "unarchive", accountId);
       toast({ title: "Email Restored", description: "Moved back to Inbox" });
@@ -68,10 +84,19 @@ export function ArchivesList() {
   };
 
   return (
-    <div className="h-full min-h-0 overflow-auto bg-background">
-      <div className="flex items-center justify-between border-b border-border bg-surface-subtle px-6 py-5">
+    <div className="flex h-full min-h-0 bg-background">
+      <section
+        style={{ width: listWidth }}
+        className={cn(
+          "min-w-0 w-full flex-col bg-background md:flex md:flex-none",
+          !isListResizing && "transition-[width] duration-200",
+          selectedEmailId ? "hidden md:flex" : "flex",
+        )}
+        aria-label="Archived email list"
+      >
+      <div className="flex items-center justify-between border-b border-border bg-surface-subtle px-4 py-4">
         <div>
-          <h1 className="text-2xl font-light tracking-tight text-foreground">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
             Archives
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -80,15 +105,18 @@ export function ArchivesList() {
         </div>
         <AccountScopeSelect
           value={selectedAccountId}
-          onChange={setSelectedAccountId}
+          onChange={(accountId) => {
+            setSelectedAccountId(accountId);
+            setSelectedEmailId(null);
+          }}
         />
       </div>
       {isLoading ? (
-        <div className="flex h-[50vh] items-center justify-center">
+        <div className="flex h-full items-center justify-center">
           <RefreshCw className="h-6 w-6 animate-spin text-brand" />
         </div>
       ) : sortedEmails.length === 0 ? (
-        <div className="flex h-[50vh] flex-col items-center justify-center">
+        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-surface-raised">
             <Archive className="h-8 w-8 text-brand" />
           </div>
@@ -100,12 +128,23 @@ export function ArchivesList() {
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-border">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {sortedEmails.map((email) => (
-            <Link
+            <div
               key={email.id}
-              href={`/thread/${email.id}${email.accountId ? `?account=${encodeURIComponent(email.accountId)}` : ""}`}
-              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-surface-hover"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedEmailId(email.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedEmailId(email.id);
+                }
+              }}
+              className={cn(
+                "flex w-full cursor-pointer items-start gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-surface-hover",
+                selectedEmailId === email.id && "bg-brand-soft/70",
+              )}
             >
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage src={email.from.avatar} alt={email.from.name} />
@@ -170,10 +209,53 @@ export function ArchivesList() {
                   <Undo2 className="h-4 w-4" />
                 </Button>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
+      </section>
+
+      <ResizeHandle
+        onMouseDown={startListResize}
+        isResizing={isListResizing}
+        label="Resize archives list"
+        className="hidden h-full md:block"
+      />
+
+      <section
+        className={cn(
+          "min-h-0 min-w-0 flex-1 bg-surface-subtle/40",
+          selectedEmailId ? "flex" : "hidden md:flex",
+        )}
+        aria-label="Archive reading pane"
+      >
+        {selectedEmailId ? (
+          <ThreadView
+            threadId={selectedEmailId}
+            accountId={selectedEmail?.accountId}
+            embedded
+            onClose={() => setSelectedEmailId(null)}
+            onRemoved={(messageId) => {
+              setEmails((current) => current.filter(({ id }) => id !== messageId));
+              setSelectedEmailId(null);
+            }}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center p-8 text-center">
+            <div className="max-w-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+                <MailOpen className="h-7 w-7 text-brand" />
+              </div>
+              <h2 className="mt-4 text-lg font-medium text-foreground">
+                Select an archived email to read
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Archived mail opens here without leaving the list.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
