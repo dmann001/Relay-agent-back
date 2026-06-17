@@ -11,6 +11,7 @@ import {
   Loader2,
   Paperclip,
   Download,
+  Eye,
   Send,
   RefreshCw,
   ArrowLeft,
@@ -28,6 +29,13 @@ import {
   AiThreadAssistant,
 } from "@/components/ai-thread-assistant";
 import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/track-commitment-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { Email } from "@/types";
 
 interface ThreadViewProps {
@@ -38,6 +46,37 @@ interface ThreadViewProps {
   onRemoved?: (messageId: string, accountId?: string) => void;
   onRead?: (messageId: string, accountId?: string) => void;
 }
+
+type EmailAttachment = NonNullable<Email["attachments"]>[number];
+
+interface AttachmentPreview {
+  attachment: EmailAttachment;
+  dataUrl?: string;
+  error?: string;
+  isLoading: boolean;
+}
+
+const normalizeBase64 = (data: string) => {
+  const cleaned = data.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padding = cleaned.length % 4;
+  return padding ? `${cleaned}${"=".repeat(4 - padding)}` : cleaned;
+};
+
+const attachmentDataUrl = (attachment: EmailAttachment, data: string) =>
+  `data:${attachment.mimeType || "application/octet-stream"};base64,${normalizeBase64(data)}`;
+
+const attachmentName = (attachment: EmailAttachment) =>
+  attachment.filename || "attachment";
+
+const isPdfAttachment = (attachment: EmailAttachment) =>
+  attachment.mimeType.toLowerCase() === "application/pdf" ||
+  attachmentName(attachment).toLowerCase().endsWith(".pdf");
+
+const isImageAttachment = (attachment: EmailAttachment) =>
+  attachment.mimeType.toLowerCase().startsWith("image/");
+
+const canPreviewAttachment = (attachment: EmailAttachment) =>
+  isImageAttachment(attachment) || isPdfAttachment(attachment);
 
 export function ThreadView({
   threadId,
@@ -55,6 +94,8 @@ export function ThreadView({
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [manualCommitment, setManualCommitment] = useState<CommitmentCandidate | null>(null);
+  const [attachmentPreview, setAttachmentPreview] =
+    useState<AttachmentPreview | null>(null);
   const [aiAction, setAiAction] = useState<
     "summary" | "draft" | "tasks" | "ask" | undefined
   >();
@@ -70,6 +111,7 @@ export function ThreadView({
     const load = async () => {
       setIsLoadingEmail(true);
       setLoadError(null);
+      setAttachmentPreview(null);
 
       try {
         const thread = await emailApi.getThread(threadId, accountId);
@@ -168,13 +210,13 @@ export function ThreadView({
   };
 
   const handleDownloadAttachment = async (
-    attachment: NonNullable<Email["attachments"]>[number],
+    attachment: EmailAttachment,
   ) => {
     if (!email) return;
     if (attachment.data) {
       const link = document.createElement("a");
-      link.href = `data:${attachment.mimeType};base64,${attachment.data}`;
-      link.download = attachment.filename || "attachment";
+      link.href = attachmentDataUrl(attachment, attachment.data);
+      link.download = attachmentName(attachment);
       link.click();
       return;
     }
@@ -187,13 +229,53 @@ export function ThreadView({
         attachment.attachmentId,
       );
       const link = document.createElement("a");
-      link.href = `data:${attachment.mimeType};base64,${data}`;
-      link.download = attachment.filename || "attachment";
+      link.href = attachmentDataUrl(attachment, data);
+      link.download = attachmentName(attachment);
       link.click();
     } catch (error: any) {
       toast({
         title: "Attachment failed",
         description: error.message || "Could not download attachment",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePreviewAttachment = async (attachment: EmailAttachment) => {
+    if (!email || !canPreviewAttachment(attachment)) return;
+
+    setAttachmentPreview({ attachment, isLoading: true });
+
+    try {
+      if (attachment.data) {
+        setAttachmentPreview({
+          attachment,
+          dataUrl: attachmentDataUrl(attachment, attachment.data),
+          isLoading: false,
+        });
+        return;
+      }
+
+      if (!attachment.attachmentId) {
+        throw new Error("This attachment cannot be previewed.");
+      }
+
+      const data = await emailApi.getAttachment(email.id, attachment.attachmentId);
+      setAttachmentPreview({
+        attachment,
+        dataUrl: attachmentDataUrl(attachment, data),
+        isLoading: false,
+      });
+    } catch (error: any) {
+      const message = error.message || "Could not preview attachment";
+      setAttachmentPreview({
+        attachment,
+        error: message,
+        isLoading: false,
+      });
+      toast({
+        title: "Preview failed",
+        description: message,
         variant: "destructive",
       });
     }
@@ -597,13 +679,13 @@ export function ThreadView({
                       {email.attachments.map((attachment, index) => (
                         <div
                           key={index}
-                          className="group relative flex items-start gap-3 rounded-xl border border-border bg-surface-subtle p-3 transition-colors hover:bg-surface-hover"
+                          className="flex items-start gap-3 rounded-xl border border-border bg-surface-subtle p-3 transition-colors hover:bg-surface-hover"
                         >
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-raised">
                             <Paperclip className="h-5 w-5 text-brand" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate pr-6 text-sm font-medium text-foreground">
+                            <div className="truncate text-sm font-medium text-foreground">
                               {attachment.filename || "Untitled"}
                             </div>
                             {attachment.size && (
@@ -611,15 +693,31 @@ export function ThreadView({
                                 {formatFileSize(attachment.size)}
                               </div>
                             )}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {canPreviewAttachment(attachment) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 border-border bg-card text-xs"
+                                  onClick={() => handlePreviewAttachment(attachment)}
+                                  aria-label={`Preview ${attachmentName(attachment)}`}
+                                >
+                                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                  Preview
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 border-border bg-card text-xs"
+                                onClick={() => handleDownloadAttachment(attachment)}
+                                aria-label={`Download ${attachmentName(attachment)}`}
+                              >
+                                <Download className="mr-1.5 h-3.5 w-3.5" />
+                                Download
+                              </Button>
+                            </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-1 top-1 h-8 w-8 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-hover hover:text-brand"
-                            onClick={() => handleDownloadAttachment(attachment)}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
                         </div>
                       ))}
                     </div>
@@ -689,6 +787,68 @@ export function ThreadView({
           toast({ title: "Commitment tracked", description: "You can manage it from Commitments." })
         }}
       />
+      <Dialog
+        open={Boolean(attachmentPreview)}
+        onOpenChange={(open) => {
+          if (!open) setAttachmentPreview(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden p-0">
+          {attachmentPreview && (
+            <div className="flex max-h-[90vh] flex-col">
+              <DialogHeader className="border-b border-border px-5 py-4">
+                <DialogTitle className="truncate pr-8 text-base">
+                  {attachmentName(attachmentPreview.attachment)}
+                </DialogTitle>
+                <DialogDescription>
+                  {isPdfAttachment(attachmentPreview.attachment)
+                    ? "PDF attachment preview"
+                    : "Image attachment preview"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-auto bg-surface-subtle p-4">
+                {attachmentPreview.isLoading ? (
+                  <div className="flex min-h-[24rem] items-center justify-center text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-brand" />
+                    Loading attachment preview...
+                  </div>
+                ) : attachmentPreview.error ? (
+                  <div className="flex min-h-[24rem] items-center justify-center text-sm text-destructive">
+                    {attachmentPreview.error}
+                  </div>
+                ) : attachmentPreview.dataUrl &&
+                  isImageAttachment(attachmentPreview.attachment) ? (
+                  <div className="flex min-h-[24rem] items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Attachment previews use data URLs that next/image cannot optimize. */}
+                    <img
+                      src={attachmentPreview.dataUrl}
+                      alt={attachmentName(attachmentPreview.attachment)}
+                      className="max-h-[70vh] max-w-full rounded-lg border border-border bg-background object-contain"
+                    />
+                  </div>
+                ) : attachmentPreview.dataUrl ? (
+                  <iframe
+                    src={attachmentPreview.dataUrl}
+                    title={`Preview ${attachmentName(attachmentPreview.attachment)}`}
+                    className="h-[70vh] w-full rounded-lg border border-border bg-background"
+                  />
+                ) : null}
+              </div>
+              <div className="flex justify-end border-t border-border bg-background px-5 py-3">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    handleDownloadAttachment(attachmentPreview.attachment)
+                  }
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
