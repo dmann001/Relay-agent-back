@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { ChevronDown, Globe2, Loader2, Mail, Plus, Send, Square, Wrench, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -43,7 +43,8 @@ interface UseAiChatOptions {
 
 export function useAiChat({ accountId, messageId, initialSessionId, onSessionId }: UseAiChatOptions) {
   const attachmentsContext = useAiChatAttachmentsOptional()
-  const chatAttachments = attachmentsContext?.attachments ?? []
+  const attachments = attachmentsContext?.attachments
+  const chatAttachments = useMemo(() => attachments ?? [], [attachments])
   const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [prompt, setPrompt] = useState("")
   const [isLoading, setIsLoading] = useState(false)

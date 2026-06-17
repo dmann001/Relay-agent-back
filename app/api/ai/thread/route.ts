@@ -145,7 +145,8 @@ export async function POST(request: NextRequest) {
 
     let sessionId = parsed.data.sessionId;
     if (parsed.data.action === 'ask' && parsed.data.prompt) {
-      const answerText = result.data.kind === 'answer' ? result.data.answer : '';
+      const answerData = answerSchema.parse(result.data);
+      const answerText = answerData.answer;
       if (parsed.data.createSession && !sessionId) {
         const session = await createAiChatSession(userId, {
           accountId: context.account.id,
