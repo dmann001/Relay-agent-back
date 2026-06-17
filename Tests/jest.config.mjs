@@ -8,6 +8,10 @@ const config = {
   clearMocks: true,
   rootDir: "../",
   collectCoverageFrom: [
+    "components/account-scope-select.tsx",
+    "components/app-sidebar.tsx",
+    "components/mobile-bottom-nav.tsx",
+    "components/search-bar.tsx",
     "lib/email-api.ts",
     "lib/email-utils.ts",
     "lib/server/api-utils.ts",

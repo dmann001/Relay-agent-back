@@ -62,13 +62,20 @@ describe("email utilities", () => {
 
 describe("formatMailboxTimestamp", () => {
   const { formatMailboxTimestamp } = jest.requireActual("@/lib/email-utils")
-  const now = new Date("2026-06-13T12:00:00.000Z")
+  const now = new Date(2026, 5, 13, 12, 0, 0)
+
+  const atLocalTime = (year: number, monthIndex: number, day: number) =>
+    new Date(year, monthIndex, day, 9, 30, 0).toISOString()
 
   it("uses time, yesterday, weekday, and dated formats for mailbox scanning", () => {
-    expect(formatMailboxTimestamp("2026-06-13T09:30:00.000Z", now)).toMatch(/9:30/)
-    expect(formatMailboxTimestamp("2026-06-12T09:30:00.000Z", now)).toBe("Yesterday")
-    expect(formatMailboxTimestamp("2026-06-10T09:30:00.000Z", now)).toMatch(/Wed/)
-    expect(formatMailboxTimestamp("2025-05-18T09:30:00.000Z", now)).toMatch(/2025/)
+    const today = new Date(2026, 5, 13, 9, 30, 0)
+
+    expect(formatMailboxTimestamp(atLocalTime(2026, 5, 13), now)).toBe(
+      today.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    )
+    expect(formatMailboxTimestamp(atLocalTime(2026, 5, 12), now)).toBe("Yesterday")
+    expect(formatMailboxTimestamp(atLocalTime(2026, 5, 10), now)).toMatch(/Wed/)
+    expect(formatMailboxTimestamp(atLocalTime(2025, 4, 18), now)).toMatch(/2025/)
   })
 
   it("returns an empty label for invalid dates", () => {
