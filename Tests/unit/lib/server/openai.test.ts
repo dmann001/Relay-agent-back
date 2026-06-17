@@ -49,6 +49,41 @@ describe("generateStructuredResponse", () => {
     expect(body.input).toBe("email context")
   })
 
+  it("passes selected models, tools, and attachment input parts to the Responses API", async () => {
+    process.env.OPENAI_API_KEY = "server-secret"
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      id: "response-2",
+      output_text: JSON.stringify({ value: "with file" }),
+    }), { status: 200, headers: { "Content-Type": "application/json" } }))
+
+    await generateStructuredResponse({
+      instructions: "system instructions",
+      input: "email context",
+      inputParts: [
+        { type: "input_file", filename: "brief.pdf", file_data: "data:application/pdf;base64,abc" },
+      ],
+      schemaName: "test_schema",
+      jsonSchema: { type: "object", additionalProperties: false, required: ["value"], properties: { value: { type: "string" } } },
+      validator: z.object({ value: z.string() }),
+      model: "gpt-custom",
+      tools: [{ type: "web_search" }],
+    })
+
+    const [, request] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String(request?.body))
+    expect(body.model).toBe("gpt-custom")
+    expect(body.tools).toEqual([{ type: "web_search" }])
+    expect(body.input).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "email context" },
+          { type: "input_file", filename: "brief.pdf", file_data: "data:application/pdf;base64,abc" },
+        ],
+      },
+    ])
+  })
+
   it("rejects malformed provider output", async () => {
     process.env.OPENAI_API_KEY = "server-secret"
     jest.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({ output_text: "not-json" }), { status: 200 }))

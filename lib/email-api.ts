@@ -78,6 +78,20 @@ export interface ThreadAiResponse {
   responseId?: string;
 }
 
+export interface ComposeAiResponse {
+  result: {
+    answer: string;
+    subject: string;
+    body: string;
+  };
+  context: {
+    accountId: string;
+    accountEmail: string;
+  };
+  model: string;
+  responseId?: string;
+}
+
 export interface InboxBrief {
   overview: string;
   needsReply: Array<{ messageId: string; subject: string; reason: string }>;
@@ -98,6 +112,26 @@ export interface AiAccountPreference {
   signature: string;
   draftInstructions: string;
   aiEnabled: boolean;
+}
+
+export type AiToolKey =
+  | "webSearch"
+  | "fileSearch"
+  | "codeInterpreter"
+  | "imageGeneration"
+  | "computerUse"
+  | "mcpConnectors"
+  | "toolSearch";
+
+export interface AiModelOption {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface AiModelSettings {
+  defaultModel: string;
+  tools: Record<AiToolKey, boolean>;
 }
 
 export interface SyncResultSummary {
@@ -580,8 +614,26 @@ export const emailApi = {
     action: "summary" | "draft" | "tasks" | "ask";
     accountId?: string;
     prompt?: string;
+    model?: string;
+    tools?: AiToolKey[];
   }): Promise<ThreadAiResponse> {
     return request<ThreadAiResponse>("/api/ai/thread", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async runComposeAi(payload: {
+    accountId?: string;
+    prompt: string;
+    to?: string;
+    cc?: string;
+    subject?: string;
+    body?: string;
+    model?: string;
+    tools?: AiToolKey[];
+  }): Promise<ComposeAiResponse> {
+    return request<ComposeAiResponse>("/api/ai/compose", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -615,6 +667,22 @@ export const emailApi = {
       body: JSON.stringify(preference),
     });
     return updated;
+  },
+
+  async getAiModelSettings(): Promise<{
+    settings: AiModelSettings;
+    models: AiModelOption[];
+  }> {
+    return request("/api/ai/model-settings");
+  },
+
+  async updateAiModelSettings(
+    settings: AiModelSettings,
+  ): Promise<{ settings: AiModelSettings; models: AiModelOption[] }> {
+    return request("/api/ai/model-settings", {
+      method: "PATCH",
+      body: JSON.stringify(settings),
+    });
   },
 
   // ---- Visible agent activity ----

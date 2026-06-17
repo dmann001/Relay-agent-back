@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
+  Bot,
   CheckCheck,
   Inbox as InboxIcon,
   Loader2,
@@ -25,6 +26,7 @@ import { ComposeDialog } from "@/components/compose-dialog";
 import { SearchBar } from "@/components/search-bar";
 import { ThreadView } from "@/components/thread-view";
 import { AiInboxBrief } from "@/components/ai-inbox-brief";
+import { AiInboxChat } from "@/components/ai-inbox-chat";
 import { ResizeHandle } from "@/components/resize-handle";
 import { cn } from "@/lib/utils";
 import { useResizablePanel } from "@/hooks/use-resizable-panel";
@@ -126,6 +128,7 @@ export function InboxList() {
   const selectedMessageAccountId = searchParams.get("messageAccount");
   const selectedAccountId = searchParams.get("account");
   const showInboxBrief = searchParams.get("assistant") === "brief";
+  const showInboxChat = searchParams.get("assistant") === "chat";
 
   const [emails, setEmails] = useState<Email[]>([]);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
@@ -144,6 +147,10 @@ export function InboxList() {
   const requestVersion = useRef(0);
   const selectedAccount = accounts.find(({ id }) => id === selectedAccountId);
   const isOutlookOnly = selectedAccount?.provider === "outlook";
+  const selectedEmail = emails.find(({ id, accountId }) =>
+    id === selectedEmailId &&
+    (!selectedMessageAccountId || selectedMessageAccountId === accountId),
+  );
 
   const updateQuery = useCallback(
     (updates: Record<string, string | null>) => {
@@ -570,7 +577,7 @@ export function InboxList() {
     maxWidth: 560,
   });
 
-  const showSplitView = Boolean(selectedEmailId || showInboxBrief);
+  const showSplitView = Boolean(selectedEmailId || showInboxBrief || showInboxChat);
 
   return (
     <div className="flex h-full min-h-0 bg-background">
@@ -658,6 +665,19 @@ export function InboxList() {
               >
                 <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                 Brief
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => updateQuery({ assistant: "chat" })}
+                title="Open Relay AI chat"
+                className={cn(
+                  "h-8 px-2 text-xs",
+                  showInboxChat && "bg-brand-soft text-brand-strong",
+                )}
+              >
+                <Bot className="mr-1.5 h-3.5 w-3.5" />
+                AI
               </Button>
               <Button
                 variant="ghost"
@@ -1042,13 +1062,51 @@ export function InboxList() {
               updateQuery({ assistant: null, message: messageId })
             }
           />
+        ) : showInboxChat ? (
+          selectedEmailId ? (
+            <div className="flex h-full min-h-0 w-full">
+              <div className="flex h-full min-w-0 flex-1 md:max-w-[26rem] md:flex-none">
+                <AiInboxChat
+                  accountId={
+                    selectedMessageAccountId ||
+                    selectedEmail?.accountId ||
+                    selectedAccountId ||
+                    undefined
+                  }
+                  messageId={selectedEmailId}
+                  subject={selectedEmail?.subject}
+                  onClose={() => updateQuery({ assistant: null })}
+                />
+              </div>
+              <div className="hidden h-full min-w-0 flex-1 md:block">
+                <ThreadView
+                  threadId={selectedEmailId}
+                  accountId={
+                    selectedMessageAccountId ||
+                    selectedEmail?.accountId
+                  }
+                  embedded
+                  onClose={() =>
+                    updateQuery({ message: null, messageAccount: null })
+                  }
+                  onRemoved={handleThreadRemoved}
+                  onRead={handleThreadRead}
+                />
+              </div>
+            </div>
+          ) : (
+            <AiInboxChat
+              accountId={selectedAccountId || undefined}
+              onClose={() => updateQuery({ assistant: null })}
+            />
+          )
         ) : selectedEmailId ? (
           <div className="h-full min-h-0 w-full">
             <ThreadView
               threadId={selectedEmailId}
               accountId={
                 selectedMessageAccountId ||
-                emails.find(({ id }) => id === selectedEmailId)?.accountId
+                selectedEmail?.accountId
               }
               embedded
               onClose={() =>

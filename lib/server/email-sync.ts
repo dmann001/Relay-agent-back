@@ -15,6 +15,7 @@ import {
 } from '@/lib/server/gmail-accounts';
 import {
   GmailMessageMetadata,
+  fetchFullMessage,
   fetchMessageMetadataBatch,
   getProfileHistoryId,
   listDrafts,
@@ -372,6 +373,25 @@ export async function inboxHasMorePages(userId: string, category?: GmailCategory
 // Drafts sync
 // ---------------------------------------------------------------------------
 
+function htmlToDraftText(value: string): string {
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export async function syncDrafts(
   userId: string,
   account: GmailAccountRow,
@@ -380,10 +400,26 @@ export async function syncDrafts(
   const supabase = getSupabaseAdmin();
   const drafts = await listDrafts(client);
   const metasById = new Map<string, GmailMessageMetadata>();
+  const bodiesById = new Map<string, string>();
 
   if (drafts.length > 0) {
     const metas = await fetchMessageMetadataBatch(client, drafts.map((d) => d.messageId));
     for (const meta of metas) metasById.set(meta.gmailMessageId, meta);
+
+    const fullMessages = await Promise.allSettled(
+      drafts.map(async ({ messageId }) => ({
+        messageId,
+        full: await fetchFullMessage(client, messageId),
+      }))
+    );
+    for (const result of fullMessages) {
+      if (result.status !== 'fulfilled' || !result.value.full?.email) continue;
+      const { email } = result.value.full;
+      const body = email.bodyPlain?.trim()
+        ? email.bodyPlain
+        : htmlToDraftText(email.body || email.snippet || '');
+      bodiesById.set(result.value.messageId, body);
+    }
   }
 
   const rows = drafts
@@ -399,7 +435,7 @@ export async function syncDrafts(
         cc_emails: [] as string[],
         subject: meta.subject === '(No Subject)' ? '' : meta.subject,
         snippet: meta.snippet,
-        body: '',
+        body: bodiesById.get(draft.messageId) || '',
         status: 'saved' as const,
         last_edited_at: meta.date,
       };

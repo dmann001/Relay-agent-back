@@ -1,19 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, SendHorizontal } from "lucide-react";
+import { MailOpen, RefreshCw, SendHorizontal } from "lucide-react";
 import { emailApi } from "@/lib/email-api";
 import type { Email } from "@/types";
 import { formatMailboxTimestamp } from "@/lib/email-utils";
 import { AccountScopeSelect } from "@/components/account-scope-select";
+import { ThreadView } from "@/components/thread-view";
+import { cn } from "@/lib/utils";
+import { ResizeHandle } from "@/components/resize-handle";
+import { useResizablePanel } from "@/hooks/use-resizable-panel";
 
 export function SentList() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -48,6 +52,17 @@ export function SentList() {
       ),
     [emails],
   );
+  const selectedEmail = sortedEmails.find(({ id }) => id === selectedEmailId);
+  const {
+    width: listWidth,
+    isResizing: isListResizing,
+    startResize: startListResize,
+  } = useResizablePanel({
+    storageKey: "relay-sent-list-width",
+    defaultWidth: 380,
+    minWidth: 280,
+    maxWidth: 560,
+  });
 
   const handleSync = async () => {
     if (isSyncing) return;
@@ -65,10 +80,19 @@ export function SentList() {
   };
 
   return (
-    <div className="h-full min-h-0 overflow-auto bg-background">
-      <div className="flex items-center justify-between border-b border-border bg-surface-subtle px-6 py-5">
+    <div className="flex h-full min-h-0 bg-background">
+      <section
+        style={{ width: listWidth }}
+        className={cn(
+          "min-w-0 w-full flex-col bg-background md:flex md:flex-none",
+          !isListResizing && "transition-[width] duration-200",
+          selectedEmailId ? "hidden md:flex" : "flex",
+        )}
+        aria-label="Sent email list"
+      >
+      <div className="flex items-center justify-between border-b border-border bg-surface-subtle px-4 py-4">
         <div>
-          <h1 className="text-2xl font-light tracking-tight text-foreground">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
             Sent
           </h1>
           <p className="text-sm text-muted-foreground">Emails you have sent</p>
@@ -76,7 +100,10 @@ export function SentList() {
         <div className="flex items-center gap-2">
           <AccountScopeSelect
             value={selectedAccountId}
-            onChange={setSelectedAccountId}
+            onChange={(accountId) => {
+              setSelectedAccountId(accountId);
+              setSelectedEmailId(null);
+            }}
           />
           <Button
             size="sm"
@@ -99,11 +126,11 @@ export function SentList() {
         </div>
       </div>
       {isLoading ? (
-        <div className="flex h-[50vh] items-center justify-center">
+        <div className="flex h-full items-center justify-center">
           <RefreshCw className="h-6 w-6 animate-spin text-brand" />
         </div>
       ) : sortedEmails.length === 0 ? (
-        <div className="flex h-[50vh] flex-col items-center justify-center">
+        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-surface-raised">
             <SendHorizontal className="h-8 w-8 text-brand" />
           </div>
@@ -113,12 +140,23 @@ export function SentList() {
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-border">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {sortedEmails.map((email) => (
-            <Link
+            <div
               key={email.id}
-              href={`/thread/${email.id}${email.accountId ? `?account=${encodeURIComponent(email.accountId)}` : ""}`}
-              className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-surface-hover"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedEmailId(email.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedEmailId(email.id);
+                }
+              }}
+              className={cn(
+                "flex w-full cursor-pointer items-start gap-4 border-b border-border px-4 py-4 text-left transition-colors hover:bg-surface-hover",
+                selectedEmailId === email.id && "bg-brand-soft/70",
+              )}
             >
               <Avatar className="h-10 w-10 shrink-0">
                 <AvatarImage src={email.from.avatar} alt={email.from.name} />
@@ -161,10 +199,53 @@ export function SentList() {
               <div className="shrink-0 text-xs text-muted-foreground">
                 {formatMailboxTimestamp(email.date)}
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
+      </section>
+
+      <ResizeHandle
+        onMouseDown={startListResize}
+        isResizing={isListResizing}
+        label="Resize sent list"
+        className="hidden h-full md:block"
+      />
+
+      <section
+        className={cn(
+          "min-h-0 min-w-0 flex-1 bg-surface-subtle/40",
+          selectedEmailId ? "flex" : "hidden md:flex",
+        )}
+        aria-label="Sent reading pane"
+      >
+        {selectedEmailId ? (
+          <ThreadView
+            threadId={selectedEmailId}
+            accountId={selectedEmail?.accountId}
+            embedded
+            onClose={() => setSelectedEmailId(null)}
+            onRemoved={(messageId) => {
+              setEmails((current) => current.filter(({ id }) => id !== messageId));
+              setSelectedEmailId(null);
+            }}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center p-8 text-center">
+            <div className="max-w-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+                <MailOpen className="h-7 w-7 text-brand" />
+              </div>
+              <h2 className="mt-4 text-lg font-medium text-foreground">
+                Select a sent email to read
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Sent mail opens here without leaving the list.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
