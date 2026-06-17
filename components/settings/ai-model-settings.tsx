@@ -31,14 +31,14 @@ const toolRows: Array<{
   {
     key: "codeInterpreter",
     label: "Code interpreter",
-    description: "Run code for analysis-heavy workflows. Relay stores the preference but does not execute sandboxed code yet.",
-    wired: false,
+    description: "Run code for analysis-heavy workflows when selected in AI chat.",
+    wired: true,
   },
   {
     key: "imageGeneration",
     label: "Image generation",
-    description: "Generate images from prompts. Relay stores the preference for future compose and attachment workflows.",
-    wired: false,
+    description: "Generate images from prompts when selected in AI chat.",
+    wired: true,
   },
   {
     key: "computerUse",

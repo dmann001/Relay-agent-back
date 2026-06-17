@@ -27,6 +27,7 @@ import { SearchBar } from "@/components/search-bar";
 import { ThreadView } from "@/components/thread-view";
 import { AiInboxBrief } from "@/components/ai-inbox-brief";
 import { AiInboxChat } from "@/components/ai-inbox-chat";
+import { useEmailContextMenuOptional } from "@/components/email-context-menu-provider";
 import { ResizeHandle } from "@/components/resize-handle";
 import { cn } from "@/lib/utils";
 import { useResizablePanel } from "@/hooks/use-resizable-panel";
@@ -118,6 +119,7 @@ export function InboxList() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
+  const emailContextMenu = useEmailContextMenuOptional();
   const categoryParam = searchParams.get("category");
   const selectedCategory: GmailCategory = CATEGORY_VALUES.has(
     categoryParam || "",
@@ -129,6 +131,7 @@ export function InboxList() {
   const selectedAccountId = searchParams.get("account");
   const showInboxBrief = searchParams.get("assistant") === "brief";
   const showInboxChat = searchParams.get("assistant") === "chat";
+  const chatSessionId = searchParams.get("chatSession");
 
   const [emails, setEmails] = useState<Email[]>([]);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
@@ -872,6 +875,9 @@ export function InboxList() {
                         messageAccount: email.accountId || null,
                       })
                     }
+                    onContextMenu={emailContextMenu
+                      ? (event) => emailContextMenu.openEmailContextMenu(event, email)
+                      : undefined}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
@@ -1065,20 +1071,7 @@ export function InboxList() {
         ) : showInboxChat ? (
           selectedEmailId ? (
             <div className="flex h-full min-h-0 w-full">
-              <div className="flex h-full min-w-0 flex-1 md:max-w-[26rem] md:flex-none">
-                <AiInboxChat
-                  accountId={
-                    selectedMessageAccountId ||
-                    selectedEmail?.accountId ||
-                    selectedAccountId ||
-                    undefined
-                  }
-                  messageId={selectedEmailId}
-                  subject={selectedEmail?.subject}
-                  onClose={() => updateQuery({ assistant: null })}
-                />
-              </div>
-              <div className="hidden h-full min-w-0 flex-1 md:block">
+              <div className="flex h-full min-h-0 min-w-0 flex-1">
                 <ThreadView
                   threadId={selectedEmailId}
                   accountId={
@@ -1093,11 +1086,29 @@ export function InboxList() {
                   onRead={handleThreadRead}
                 />
               </div>
+              <div className="hidden h-full min-w-0 md:flex md:max-w-[26rem] md:flex-none md:shrink-0">
+                <AiInboxChat
+                  accountId={
+                    selectedMessageAccountId ||
+                    selectedEmail?.accountId ||
+                    selectedAccountId ||
+                    undefined
+                  }
+                  messageId={selectedEmailId}
+                  subject={selectedEmail?.subject}
+                  sessionId={chatSessionId || undefined}
+                  edge="end"
+                  onClose={() => updateQuery({ assistant: null, chatSession: null })}
+                  onSessionChange={(sessionId) => updateQuery({ chatSession: sessionId })}
+                />
+              </div>
             </div>
           ) : (
             <AiInboxChat
               accountId={selectedAccountId || undefined}
-              onClose={() => updateQuery({ assistant: null })}
+              sessionId={chatSessionId || undefined}
+              onClose={() => updateQuery({ assistant: null, chatSession: null })}
+              onSessionChange={(sessionId) => updateQuery({ chatSession: sessionId })}
             />
           )
         ) : selectedEmailId ? (

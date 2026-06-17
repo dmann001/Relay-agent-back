@@ -28,6 +28,7 @@ import {
   AiActionStrip,
   AiThreadAssistant,
 } from "@/components/ai-thread-assistant";
+import { useEmailContextMenuOptional } from "@/components/email-context-menu-provider";
 import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/track-commitment-dialog";
 import {
   Dialog,
@@ -102,6 +103,7 @@ export function ThreadView({
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
   const { toast } = useToast();
+  const emailContextMenu = useEmailContextMenuOptional();
 
   // The email list is served from the Relay DB metadata cache, but the full
   // body is fetched LIVE from Gmail when the email is opened.
@@ -368,7 +370,10 @@ export function ThreadView({
   }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-background">
+    <div
+      className="flex h-full min-h-0 overflow-hidden bg-background"
+      onContextMenu={emailContextMenu ? (event) => emailContextMenu.openEmailContextMenu(event, email) : undefined}
+    >
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Thread Header */}
         <div className="shrink-0 border-b border-border bg-surface-subtle px-4 py-3 sm:px-6">

@@ -4,6 +4,8 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/components/auth-provider"
+import { AiChatAttachmentsProvider } from "@/components/ai-chat-attachments-provider"
+import { EmailContextMenuProvider } from "@/components/email-context-menu-provider"
 import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
@@ -25,7 +27,11 @@ export default function RootLayout({
       >
         <ThemeProvider defaultTheme="dark">
           <AuthProvider>
-            {children}
+            <AiChatAttachmentsProvider>
+              <EmailContextMenuProvider>
+                {children}
+              </EmailContextMenuProvider>
+            </AiChatAttachmentsProvider>
             <Toaster />
           </AuthProvider>
         </ThemeProvider>

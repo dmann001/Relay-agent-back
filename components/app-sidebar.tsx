@@ -12,6 +12,7 @@ import {
   Inbox,
   LogOut,
   Mail,
+  MessagesSquare,
   PanelLeft,
   PanelLeftClose,
   PenSquare,
@@ -125,6 +126,7 @@ export function AppSidebar() {
       count: counts.commitments,
     },
     { name: "Meeting Briefs", href: "/briefs", icon: NotebookTabs, count: 0 },
+    { name: "AI Chat", href: "/ai-chat", icon: MessagesSquare, count: 0 },
     {
       name: "Agent Activity",
       href: "/activity",

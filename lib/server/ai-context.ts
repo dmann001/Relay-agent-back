@@ -234,3 +234,41 @@ function attachmentSummaryForMessage(attachments: AiAttachmentContext[], message
   });
   return `ATTACHMENTS:\n${lines.join('\n---\n')}`;
 }
+
+export type AiEmailContextRef = {
+  messageId: string;
+  accountId?: string;
+};
+
+export async function loadEmailContextsForAi(
+  userId: string,
+  refs: AiEmailContextRef[],
+) {
+  const contexts: NonNullable<Awaited<ReturnType<typeof getThreadAiContext>>>[] = [];
+  const seen = new Set<string>();
+
+  for (const ref of refs) {
+    const key = `${ref.accountId || 'default'}:${ref.messageId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const context = await getThreadAiContext(userId, ref.messageId, ref.accountId);
+    if (context) contexts.push(context);
+  }
+
+  return contexts;
+}
+
+export function combinedEmailContextText(
+  contexts: NonNullable<Awaited<ReturnType<typeof getThreadAiContext>>>[],
+): string {
+  if (!contexts.length) return '';
+  return contexts.map((context, index) => (
+    `===== ATTACHED EMAIL ${index + 1} =====\n${emailContextText(context)}`
+  )).join('\n\n');
+}
+
+export function combinedEmailContextInputParts(
+  contexts: NonNullable<Awaited<ReturnType<typeof getThreadAiContext>>>[],
+): OpenAiInputPart[] {
+  return contexts.flatMap((context) => emailContextInputParts(context));
+}
