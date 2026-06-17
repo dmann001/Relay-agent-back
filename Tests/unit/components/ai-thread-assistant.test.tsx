@@ -25,10 +25,10 @@ describe("AiThreadAssistant", () => {
 
     render(<AiThreadAssistant messageId="m1" subject="Meeting" open initialAction="draft" onOpenChange={jest.fn()} onInsertDraft={onInsertDraft} />)
 
-    expect(await screen.findByText("Tuesday works for me.")).toBeInTheDocument()
-    expect(screen.getByText("work@example.com")).toBeInTheDocument()
-    expect(screen.getByText("Relay never sends AI-generated drafts automatically.")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Insert into reply" }))
+    expect(await screen.findAllByText("Tuesday works for me.")).toHaveLength(2)
+    expect(screen.getAllByText("work@example.com")[0]).toBeInTheDocument()
+    expect(screen.getAllByText("Relay never sends AI-generated drafts automatically.")[0]).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole("button", { name: "Insert into reply" })[0])
     expect(onInsertDraft).toHaveBeenCalledWith("Tuesday works for me.")
   })
 
@@ -40,11 +40,11 @@ describe("AiThreadAssistant", () => {
     })
 
     render(<AiThreadAssistant messageId="m1" subject="Meeting" open onOpenChange={jest.fn()} onInsertDraft={jest.fn()} />)
-    fireEvent.click(screen.getByRole("button", { name: "Ask Relay" }))
-    expect(screen.getByRole("button", { name: "Submit question" })).toBeDisabled()
-    fireEvent.change(screen.getByPlaceholderText("Ask about this email…"), { target: { value: "When is it?" } })
-    fireEvent.click(screen.getByRole("button", { name: "Submit question" }))
+    fireEvent.click(screen.getAllByRole("button", { name: "Ask Relay" })[0])
+    expect(screen.getAllByRole("button", { name: "Submit question" })[0]).toBeDisabled()
+    fireEvent.change(screen.getAllByPlaceholderText("Ask about this email…")[0], { target: { value: "When is it?" } })
+    fireEvent.click(screen.getAllByRole("button", { name: "Submit question" })[0])
     await waitFor(() => expect(runThreadAi).toHaveBeenCalledWith({ messageId: "m1", action: "ask", prompt: "When is it?" }))
-    expect(await screen.findByText("The date is Tuesday.")).toBeInTheDocument()
+    expect(await screen.findAllByText("The date is Tuesday.")).toHaveLength(2)
   })
 })

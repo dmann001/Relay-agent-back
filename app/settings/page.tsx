@@ -1,45 +1,26 @@
-import { AppSidebar } from "@/components/app-sidebar";
-import { SettingsContent } from "@/components/settings-content";
-import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { redirect } from "next/navigation"
 
-export default function SettingsPage() {
-  return (
-    <div className="flex h-screen bg-background text-foreground">
-      {/* Noise Texture Overlay */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-        }}
-      />
+export default async function SettingsIndexPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const qs = new URLSearchParams()
 
-      {/* Ambient Gradient Orbs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute w-[500px] h-[500px] rounded-full blur-[150px] opacity-15"
-          style={{
-            background: "radial-gradient(circle, #E8DCC4 0%, transparent 70%)",
-            top: "10%",
-            right: "10%",
-          }}
-        />
-        <div
-          className="absolute w-[400px] h-[400px] rounded-full blur-[120px] opacity-10"
-          style={{
-            background: "radial-gradient(circle, #C4A052 0%, transparent 70%)",
-            bottom: "20%",
-            left: "5%",
-          }}
-        />
-      </div>
+  Object.entries(params).forEach(([key, value]) => {
+    if (typeof value === "string") qs.set(key, value)
+    else if (Array.isArray(value)) value.forEach((item) => qs.append(key, item))
+  })
 
-      <div className="hidden lg:flex">
-        <AppSidebar />
-      </div>
-      <div className="relative z-10 flex-1 pb-16 lg:pb-0">
-        <SettingsContent />
-      </div>
-      <MobileBottomNav />
-    </div>
-  );
+  const hasConnectionCallback =
+    params.error ||
+    params.calendarConnected ||
+    params.calendarError ||
+    params.provider
+
+  const target = hasConnectionCallback ? "/settings/connections" : "/settings/profile"
+  const query = qs.toString()
+
+  redirect(query ? `${target}?${query}` : target)
 }

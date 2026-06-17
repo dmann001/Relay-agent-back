@@ -7,13 +7,13 @@ import {
   Archive,
   Bot,
   CheckSquare,
-  ChevronLeft,
-  ChevronRight,
   FileText,
   NotebookTabs,
   Inbox,
   LogOut,
   Mail,
+  PanelLeft,
+  PanelLeftClose,
   PenSquare,
   SendHorizontal,
   Settings,
@@ -23,9 +23,11 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { ResizeHandle } from "@/components/resize-handle";
 import { ComposeDialog } from "@/components/compose-dialog";
 import { emailApi, type ConnectedAccount } from "@/lib/email-api";
 import { useAuth } from "@/components/auth-provider";
+import { useResizablePanel } from "@/hooks/use-resizable-panel";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -100,6 +102,18 @@ export function AppSidebar() {
       return next;
     });
 
+  const {
+    width: sidebarWidth,
+    isResizing: isSidebarResizing,
+    startResize: startSidebarResize,
+  } = useResizablePanel({
+    storageKey: "relay-sidebar-width",
+    defaultWidth: 240,
+    minWidth: 200,
+    maxWidth: 360,
+    disabled: collapsed,
+  });
+
   const navigation = [
     { name: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
     { name: "Sent", href: "/sent", icon: SendHorizontal, count: counts.sent },
@@ -126,27 +140,73 @@ export function AppSidebar() {
     { name: "Trash", href: "/trash", icon: Trash2, count: counts.trash },
   ];
 
+  const displayName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.user_metadata?.name as string | undefined) ||
+    user?.email ||
+    "Sign out";
+
   return (
-    <aside
-      className={cn(
-        "relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-4 text-sidebar-foreground transition-[width]",
-        collapsed ? "w-20" : "w-60",
-      )}
-    >
+    <div className="relative flex h-full shrink-0">
+      <aside
+        className={cn(
+          "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-4 text-sidebar-foreground",
+          !isSidebarResizing && "transition-[width] duration-200",
+          collapsed && "w-20",
+        )}
+        style={collapsed ? undefined : { width: sidebarWidth }}
+      >
       <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
       <div
         className={cn(
-          "mb-4 flex items-center",
-          collapsed ? "justify-center px-2" : "gap-3 px-5",
+          "mb-4 flex items-center px-3",
+          collapsed ? "justify-center" : "justify-between gap-2",
         )}
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand">
-          <Mail className="h-5 w-5 text-brand-foreground" />
+        <div
+          className={cn(
+            "flex min-w-0 items-center",
+            collapsed ? "justify-center" : "gap-3",
+          )}
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand">
+            <Mail className="h-4 w-4 text-brand-foreground" />
+          </div>
+          {!collapsed && (
+            <span className="truncate text-base font-semibold tracking-tight">
+              Relay
+            </span>
+          )}
         </div>
-        {!collapsed && (
-          <span className="text-lg font-semibold tracking-tight">Relay</span>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleCollapsed}
+          className={cn(
+            "h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            collapsed && "hidden",
+          )}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
       </div>
+
+      {collapsed && (
+        <div className="mb-2 flex justify-center px-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleCollapsed}
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       <div className="px-3">
         <Button
@@ -249,7 +309,7 @@ export function AppSidebar() {
           className={cn(
             "flex h-10 items-center rounded-lg text-sm font-medium",
             collapsed ? "justify-center" : "px-3",
-            pathname === "/settings"
+            pathname === "/settings" || pathname.startsWith("/settings/")
               ? "bg-sidebar-accent"
               : "text-muted-foreground hover:bg-sidebar-accent",
           )}
@@ -257,46 +317,31 @@ export function AppSidebar() {
           <Settings className={cn("h-4 w-4", !collapsed && "mr-3")} />
           {!collapsed && "Settings"}
         </Link>
-        <div
+        <ThemeToggle collapsed={collapsed} />
+        <button
+          type="button"
           className={cn(
-            "flex items-center rounded-lg",
-            collapsed ? "justify-center" : "justify-between px-3",
-          )}
-          title="Theme"
-        >
-          <ThemeToggle />
-          {!collapsed && (
-            <span className="text-xs text-muted-foreground">Appearance</span>
-          )}
-        </div>
-        <Button
-          className={cn(
-            "w-full bg-transparent text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
-            collapsed ? "px-0" : "justify-start",
+            "flex h-10 w-full items-center rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            collapsed ? "justify-center px-0" : "px-3",
           )}
           onClick={() => signOut()}
-          title={user?.email ? `Sign out ${user.email}` : "Sign out"}
+          title={displayName !== "Sign out" ? `Sign out ${displayName}` : "Sign out"}
         >
-          <LogOut className={cn("h-4 w-4", !collapsed && "mr-3")} />
+          <LogOut className={cn("h-4 w-4 shrink-0", !collapsed && "mr-3")} />
           {!collapsed && (
-            <span className="truncate">{user?.email || "Sign out"}</span>
+            <span className="truncate">{displayName}</span>
           )}
-        </Button>
+        </button>
       </div>
-
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={toggleCollapsed}
-        className="absolute -right-3 top-20 z-20 h-6 w-6 rounded-full bg-background"
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3" />
-        ) : (
-          <ChevronLeft className="h-3 w-3" />
-        )}
-      </Button>
-    </aside>
+      </aside>
+      {!collapsed && (
+        <ResizeHandle
+          onMouseDown={startSidebarResize}
+          isResizing={isSidebarResizing}
+          label="Resize sidebar"
+          className="h-full"
+        />
+      )}
+    </div>
   );
 }

@@ -218,7 +218,7 @@ export function CommitmentsContent() {
                 ? <Button variant="outline" size="sm" onClick={() => void removeFromCalendar(calendarEvent)} disabled={pendingId === commitment.id}><CalendarX className="mr-2 h-3.5 w-3.5" />Remove reminder</Button>
                 : calendarConnected
                   ? <Button variant="outline" size="sm" onClick={() => setCalendarPreview(commitment)} disabled={pendingId === commitment.id}><CalendarPlus className="mr-2 h-3.5 w-3.5" />Add to calendar</Button>
-                  : <Button asChild variant="outline" size="sm"><Link href="/settings"><CalendarPlus className="mr-2 h-3.5 w-3.5" />Connect calendar</Link></Button>)}
+                  : <Button asChild variant="outline" size="sm"><Link href="/settings/connections"><CalendarPlus className="mr-2 h-3.5 w-3.5" />Connect calendar</Link></Button>)}
               {(commitment.status === "active" || commitment.status === "needs_review") && <Button variant="outline" size="sm" onClick={() => void toggleMonitor(commitment, !monitor)} disabled={pendingId === commitment.id}><Radar className="mr-2 h-3.5 w-3.5" />{monitor ? "Stop monitoring" : "Monitor thread"}</Button>}
               {(commitment.status === "active" || commitment.status === "needs_review") && commitment.dueAt && commitment.providerMessageId && <Button variant="outline" size="sm" onClick={() => void prepareBrief(commitment)} disabled={pendingId === commitment.id}><FileText className="mr-2 h-3.5 w-3.5" />Prepare brief</Button>}
               {(commitment.status === "satisfied" || commitment.status === "dismissed") && <Button variant="outline" size="sm" onClick={() => void update(commitment, "reopen")} disabled={pendingId === commitment.id}><RotateCcw className="mr-2 h-3.5 w-3.5" />Reopen</Button>}

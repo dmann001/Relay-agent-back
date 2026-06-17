@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get('error');
 
   if (error) {
-    return NextResponse.redirect(`${appUrl()}/settings?error=${encodeURIComponent(error)}`);
+    return NextResponse.redirect(`${appUrl()}/settings/connections?error=${encodeURIComponent(error)}`);
   }
   if (!code || !state) {
-    return NextResponse.redirect(`${appUrl()}/settings?error=no_code`);
+    return NextResponse.redirect(`${appUrl()}/settings/connections?error=no_code`);
   }
 
   try {
@@ -48,6 +48,6 @@ export async function GET(request: NextRequest) {
     );
   } catch (err) {
     console.error('Error in Gmail OAuth callback:', err);
-    return NextResponse.redirect(`${appUrl()}/settings?error=auth_failed`);
+    return NextResponse.redirect(`${appUrl()}/settings/connections?error=auth_failed`);
   }
 }

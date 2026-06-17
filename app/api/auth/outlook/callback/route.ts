@@ -11,9 +11,9 @@ const appUrl = () => process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams;
-  if (query.get('error')) return NextResponse.redirect(`${appUrl()}/settings?provider=outlook&error=${encodeURIComponent(query.get('error')!)}`);
+  if (query.get('error')) return NextResponse.redirect(`${appUrl()}/settings/connections?provider=outlook&error=${encodeURIComponent(query.get('error')!)}`);
   const code = query.get('code'); const state = query.get('state');
-  if (!code || !state) return NextResponse.redirect(`${appUrl()}/settings?provider=outlook&error=no_code`);
+  if (!code || !state) return NextResponse.redirect(`${appUrl()}/settings/connections?provider=outlook&error=no_code`);
   try {
     const { userId } = parseOAuthState(state);
     const tokens = await exchangeOutlookCode(code);
@@ -50,6 +50,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[Outlook OAuth] callback failed:', error);
     const errorCode = error instanceof OutlookOAuthError ? error.code : 'auth_failed';
-    return NextResponse.redirect(`${appUrl()}/settings?provider=outlook&error=${encodeURIComponent(errorCode)}`);
+    return NextResponse.redirect(`${appUrl()}/settings/connections?provider=outlook&error=${encodeURIComponent(errorCode)}`);
   }
 }

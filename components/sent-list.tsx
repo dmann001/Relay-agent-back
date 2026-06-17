@@ -65,7 +65,7 @@ export function SentList() {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-background">
+    <div className="h-full min-h-0 overflow-auto bg-background">
       <div className="flex items-center justify-between border-b border-border bg-surface-subtle px-6 py-5">
         <div>
           <h1 className="text-2xl font-light tracking-tight text-foreground">
