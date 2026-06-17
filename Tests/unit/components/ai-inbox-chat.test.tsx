@@ -9,9 +9,15 @@ jest.mock("@/lib/email-api", () => ({
   EmailApiError: class EmailApiError extends Error { code?: string },
   emailApi: {
     getAiModelSettings: jest.fn(),
+    getAiChatSession: jest.fn(),
     runComposeAi: jest.fn(),
     runThreadAi: jest.fn(),
   },
+}))
+
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
 }))
 
 const api = emailApi as jest.Mocked<typeof emailApi>
@@ -33,6 +39,18 @@ describe("AiInboxChat", () => {
       },
       models: [{ id: "gpt-test", label: "GPT Test", description: "Test model" }],
     })
+    api.getAiChatSession.mockResolvedValue({
+      session: {
+        id: "session-1",
+        accountId: null,
+        messageId: null,
+        title: "Old chat",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        preview: "Hello",
+        messages: [{ id: "m1", role: "user", content: "Hello", model: null, tools: [], responseId: null, createdAt: "2026-01-01T00:00:00.000Z" }],
+      },
+    })
     api.runComposeAi.mockReset()
     api.runThreadAi.mockReset()
   })
@@ -42,28 +60,31 @@ describe("AiInboxChat", () => {
       result: { kind: "answer", answer: "The sender needs a reply.", evidence: [] },
       context: { accountId: "account-1", accountEmail: "me@example.com", messageId: "message-1", subject: "Plan" },
       model: "gpt-test",
+      sessionId: "session-1",
     })
 
     render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Plan" onClose={jest.fn()} />)
-    await screen.findByRole("combobox", { name: "OpenAI model" })
+    await screen.findByPlaceholderText("Ask about this email...")
 
     fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), { target: { value: "What is needed?" } })
     fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter" })
 
-    await waitFor(() => expect(api.runThreadAi).toHaveBeenCalledWith({
+    await waitFor(() => expect(api.runThreadAi).toHaveBeenCalledWith(expect.objectContaining({
       messageId: "message-1",
       accountId: "account-1",
       action: "ask",
       prompt: "What is needed?",
       model: "gpt-test",
       tools: [],
-    }))
+      history: [],
+      createSession: true,
+    })))
     expect(await screen.findByText("The sender needs a reply.")).toBeInTheDocument()
   })
 
   it("keeps Shift+Enter as a newline in the chat box", async () => {
     render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Plan" onClose={jest.fn()} />)
-    await screen.findByRole("combobox", { name: "OpenAI model" })
+    await screen.findByPlaceholderText("Ask about this email...")
 
     fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), { target: { value: "Line one" } })
     fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter", shiftKey: true })
@@ -79,17 +100,19 @@ describe("AiInboxChat", () => {
     })
 
     render(<AiInboxChat accountId="account-1" onClose={jest.fn()} />)
-    await screen.findByRole("combobox", { name: "OpenAI model" })
+    await screen.findByPlaceholderText("Ask Relay...")
 
     fireEvent.change(screen.getByPlaceholderText("Ask Relay..."), { target: { value: "Draft a follow-up" } })
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
-    await waitFor(() => expect(api.runComposeAi).toHaveBeenCalledWith({
+    await waitFor(() => expect(api.runComposeAi).toHaveBeenCalledWith(expect.objectContaining({
       accountId: "account-1",
       prompt: "Draft a follow-up",
       model: "gpt-test",
       tools: [],
-    }))
+      history: [],
+      createSession: true,
+    })))
     expect(await screen.findByText("I can help draft that.")).toBeInTheDocument()
   })
 
@@ -101,7 +124,7 @@ describe("AiInboxChat", () => {
     })
 
     render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Plan" onClose={jest.fn()} />)
-    await screen.findByRole("combobox", { name: "OpenAI model" })
+    await screen.findByPlaceholderText("Ask about this email...")
 
     fireEvent.click(await screen.findByRole("button", { name: "Add AI tool" }))
     fireEvent.click(screen.getByText("Web search"))
@@ -112,5 +135,27 @@ describe("AiInboxChat", () => {
     await waitFor(() => expect(api.runThreadAi).toHaveBeenCalledWith(expect.objectContaining({
       tools: ["webSearch"],
     })))
+  })
+
+  it("loads an existing chat session", async () => {
+    render(<AiInboxChat accountId="account-1" sessionId="session-1" onClose={jest.fn()} />)
+    expect(await screen.findByText("Hello")).toBeInTheDocument()
+    expect(api.getAiChatSession).toHaveBeenCalledWith("session-1")
+  })
+
+  it("shows stop while loading", async () => {
+    let resolve!: (value: any) => void
+    api.runComposeAi.mockReturnValue(new Promise((res) => { resolve = res }))
+    render(<AiInboxChat accountId="account-1" onClose={jest.fn()} />)
+    await screen.findByPlaceholderText("Ask Relay...")
+    fireEvent.change(screen.getByPlaceholderText("Ask Relay..."), { target: { value: "Hello" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument()
+    resolve({
+      result: { answer: "Done", subject: "", body: "" },
+      context: { accountId: "account-1", accountEmail: "me@example.com" },
+      model: "gpt-test",
+    })
+    expect(await screen.findByText("Done")).toBeInTheDocument()
   })
 })

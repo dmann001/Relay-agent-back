@@ -100,8 +100,22 @@ export async function updateAiModelSettings(userId: string, settings: AiModelSet
   return normalized;
 }
 
+export const WIRED_AI_TOOLS: AiToolKey[] = [
+  'webSearch',
+  'codeInterpreter',
+  'imageGeneration',
+];
+
 export function toolsForOpenAi(settings: AiModelSettings, selectedTools: AiToolKey[] = []): Array<Record<string, unknown>> {
   const tools: Array<Record<string, unknown>> = [];
-  if (settings.tools.webSearch && selectedTools.includes('webSearch')) tools.push({ type: 'web_search' });
+  if (settings.tools.webSearch && selectedTools.includes('webSearch')) {
+    tools.push({ type: 'web_search' });
+  }
+  if (settings.tools.codeInterpreter && selectedTools.includes('codeInterpreter')) {
+    tools.push({ type: 'code_interpreter', container: { type: 'auto' } });
+  }
+  if (settings.tools.imageGeneration && selectedTools.includes('imageGeneration')) {
+    tools.push({ type: 'image_generation' });
+  }
   return tools;
 }

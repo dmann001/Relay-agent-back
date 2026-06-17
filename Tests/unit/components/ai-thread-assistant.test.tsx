@@ -7,13 +7,35 @@ import { emailApi } from "@/lib/email-api"
 
 jest.mock("@/lib/email-api", () => ({
   EmailApiError: class EmailApiError extends Error { code?: string },
-  emailApi: { runThreadAi: jest.fn() },
+  emailApi: {
+    runThreadAi: jest.fn(),
+    getAiModelSettings: jest.fn(),
+    getAiChatSession: jest.fn(),
+  },
 }))
 
 const runThreadAi = emailApi.runThreadAi as jest.Mock
+const getAiModelSettings = emailApi.getAiModelSettings as jest.Mock
 
 describe("AiThreadAssistant", () => {
-  beforeEach(() => runThreadAi.mockReset())
+  beforeEach(() => {
+    runThreadAi.mockReset()
+    getAiModelSettings.mockResolvedValue({
+      settings: {
+        defaultModel: "gpt-test",
+        tools: {
+          webSearch: true,
+          fileSearch: false,
+          codeInterpreter: false,
+          imageGeneration: false,
+          computerUse: false,
+          mcpConnectors: false,
+          toolSearch: false,
+        },
+      },
+      models: [{ id: "gpt-test", label: "GPT Test", description: "Test model" }],
+    })
+  })
 
   it("shows account context and inserts an AI draft without sending", async () => {
     runThreadAi.mockResolvedValue({
@@ -41,10 +63,17 @@ describe("AiThreadAssistant", () => {
 
     render(<AiThreadAssistant messageId="m1" subject="Meeting" open onOpenChange={jest.fn()} onInsertDraft={jest.fn()} />)
     fireEvent.click(screen.getAllByRole("button", { name: "Ask Relay" })[0])
-    expect(screen.getAllByRole("button", { name: "Submit question" })[0]).toBeDisabled()
+    expect(await screen.findAllByRole("button", { name: "Send" })).toHaveLength(2)
+    expect(screen.getAllByRole("button", { name: "Send" })[0]).toBeDisabled()
     fireEvent.change(screen.getAllByPlaceholderText("Ask about this email…")[0], { target: { value: "When is it?" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "Submit question" })[0])
-    await waitFor(() => expect(runThreadAi).toHaveBeenCalledWith({ messageId: "m1", action: "ask", prompt: "When is it?" }))
-    expect(await screen.findAllByText("The date is Tuesday.")).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole("button", { name: "Send" })[0])
+    await waitFor(() => expect(runThreadAi).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: "m1",
+      action: "ask",
+      prompt: "When is it?",
+      history: [],
+      createSession: true,
+    })))
+    expect(await screen.findByText("The date is Tuesday.")).toBeInTheDocument()
   })
 })

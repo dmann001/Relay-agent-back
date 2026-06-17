@@ -26,6 +26,65 @@ export type OpenAiInputPart =
   | { type: 'input_image'; image_url: string }
   | { type: 'input_file'; filename: string; file_data: string };
 
+export type ChatTurn = { role: 'user' | 'assistant'; content: string };
+
+export class AiRequestAbortedError extends Error {
+  constructor(message = 'The AI request was cancelled') {
+    super(message);
+    this.name = 'AiRequestAbortedError';
+  }
+}
+
+export function buildChatInput(params: {
+  contextPrefix?: string;
+  history?: ChatTurn[];
+  prompt: string;
+  inputParts?: OpenAiInputPart[];
+}): string | Array<Record<string, unknown>> {
+  const history = params.history || [];
+  if (!history.length) {
+    const text = params.contextPrefix
+      ? `${params.contextPrefix}\n\nUSER:\n${params.prompt}`
+      : params.prompt;
+    if (params.inputParts?.length) {
+      return [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text },
+          ...params.inputParts,
+        ],
+      }];
+    }
+    return text;
+  }
+
+  const messages: Array<Record<string, unknown>> = [];
+  history.forEach((turn, index) => {
+    if (index === 0 && turn.role === 'user' && params.contextPrefix) {
+      messages.push({
+        role: 'user',
+        content: `${params.contextPrefix}\n\nUSER:\n${turn.content}`,
+        ...(index === 0 && params.inputParts?.length
+          ? {
+              content: [
+                { type: 'input_text', text: `${params.contextPrefix}\n\nUSER:\n${turn.content}` },
+                ...params.inputParts,
+              ],
+            }
+          : {}),
+      });
+      return;
+    }
+    messages.push({ role: turn.role, content: turn.content });
+  });
+
+  if (history[history.length - 1]?.role !== 'user' || history[history.length - 1]?.content !== params.prompt) {
+    messages.push({ role: 'user', content: params.prompt });
+  }
+
+  return messages;
+}
+
 function extractOutputText(payload: any): string {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) {
     return payload.output_text;
@@ -43,30 +102,50 @@ function extractOutputText(payload: any): string {
 
 export async function generateStructuredResponse<T>(params: {
   instructions: string;
-  input: string;
+  input: string | Array<Record<string, unknown>>;
   inputParts?: OpenAiInputPart[];
+  history?: ChatTurn[];
+  contextPrefix?: string;
+  prompt?: string;
   schemaName: string;
   jsonSchema: JsonSchema;
   validator: z.ZodType<T>;
   model?: string;
   tools?: Array<Record<string, unknown>>;
   maxOutputTokens?: number;
+  abortSignal?: AbortSignal;
 }): Promise<{ data: T; model: string; responseId?: string }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AiConfigurationError();
 
   const model = params.model || process.env.OPENAI_MODEL || DEFAULT_AI_MODEL;
-  const input = params.inputParts?.length
-    ? [{
-        role: 'user',
-        content: [
-          { type: 'input_text', text: params.input },
-          ...params.inputParts,
-        ],
-      }]
-    : params.input;
+  const input = Array.isArray(params.input)
+    ? params.input
+    : params.history?.length && params.prompt
+      ? buildChatInput({
+          contextPrefix: params.contextPrefix,
+          history: params.history,
+          prompt: params.prompt,
+          inputParts: params.inputParts,
+        })
+      : params.inputParts?.length
+        ? [{
+            role: 'user',
+            content: [
+              { type: 'input_text', text: params.input as string },
+              ...params.inputParts,
+            ],
+          }]
+        : params.input;
+  const hasTools = Boolean(params.tools?.length);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeoutMs = hasTools ? 120_000 : 45_000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  if (params.abortSignal) {
+    if (params.abortSignal.aborted) controller.abort();
+    else params.abortSignal.addEventListener('abort', onAbort);
+  }
 
   let response: Response;
   try {
@@ -81,9 +160,9 @@ export async function generateStructuredResponse<T>(params: {
         store: false,
         instructions: params.instructions,
         input,
-        ...(params.tools?.length ? { tools: params.tools } : {}),
+        ...(hasTools ? { tools: params.tools, tool_choice: 'auto' } : {}),
         max_output_tokens: params.maxOutputTokens ?? 1800,
-        reasoning: { effort: 'low' },
+        reasoning: { effort: hasTools ? 'medium' : 'low' },
         text: {
           format: {
             type: 'json_schema',
@@ -96,10 +175,14 @@ export async function generateStructuredResponse<T>(params: {
       signal: controller.signal,
     });
   } catch (error: any) {
-    if (error?.name === 'AbortError') throw new AiProviderError('The AI request timed out', 504);
+    if (error?.name === 'AbortError') {
+      if (params.abortSignal?.aborted) throw new AiRequestAbortedError();
+      throw new AiProviderError('The AI request timed out', 504);
+    }
     throw new AiProviderError('Could not reach the AI provider');
   } finally {
     clearTimeout(timeout);
+    if (params.abortSignal) params.abortSignal.removeEventListener('abort', onAbort);
   }
 
   const payload = await response.json().catch(() => ({}));

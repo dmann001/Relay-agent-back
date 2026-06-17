@@ -1,14 +1,14 @@
 "use client"
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react"
-import { Bot, Check, CheckSquare, ChevronRight, FilePenLine, Loader2, MessageCircleQuestion, Sparkles, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Bot, Check, CheckSquare, FilePenLine, Loader2, MessageCircleQuestion, Sparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { emailApi, EmailApiError, type ThreadAiResult, type ThreadAiResponse } from "@/lib/email-api"
 import { cn } from "@/lib/utils"
 import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/track-commitment-dialog"
 import { ResizeHandle } from "@/components/resize-handle"
 import { useResizablePanel } from "@/hooks/use-resizable-panel"
+import { AiChatComposer, AiChatContextAttachments, AiChatMessages, useAiChat } from "@/components/ai-chat-shared"
 
 type AiAction = "summary" | "draft" | "tasks" | "ask"
 
@@ -67,23 +67,81 @@ function ResultContent({ result, response, onInsertDraft }: { result: ThreadAiRe
     </div>
   )
 
-  return <div className="space-y-4"><p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{result.answer}</p>{!!result.evidence.length && <div><h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Evidence</h3>{result.evidence.map((item, index) => <p key={index} className="mt-2 border-l-2 border-border pl-2 text-xs leading-5 text-muted-foreground">{item}</p>)}</div>}</div>
+  return null
+}
+
+function AskRelayChat({ messageId, accountId, subject }: { messageId: string; accountId?: string; subject: string }) {
+  const chat = useAiChat({ accountId, messageId })
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <AiChatContextAttachments
+        attachments={chat.chatAttachments}
+        onRemove={chat.removeChatAttachment}
+      />
+      {chat.messages.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 text-center">
+          <Bot className="h-8 w-8 text-brand" />
+          <p className="mt-3 text-sm text-foreground">Ask about this email</p>
+          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+            Relay uses the current email as context. Follow-up replies keep the full conversation, and you can add web search from the + menu.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{subject}</p>
+          {chat.error && (
+            <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+              {chat.error}
+            </div>
+          )}
+        </div>
+      ) : (
+        <AiChatMessages
+          messages={chat.messages}
+          isLoading={chat.isLoading}
+          emptyTitle=""
+          emptyDescription=""
+          error={chat.error}
+        />
+      )}
+      <AiChatComposer
+        prompt={chat.prompt}
+        onPromptChange={chat.setPrompt}
+        onPromptKeyDown={chat.handlePromptKeyDown}
+        placeholder="Ask about this email…"
+        isLoading={chat.isLoading}
+        models={chat.models}
+        selectedModel={chat.selectedModel}
+        onModelChange={chat.setSelectedModel}
+        enabledToolKeys={chat.enabledToolKeys}
+        selectedTools={chat.selectedTools}
+        onToggleTool={chat.toggleTool}
+        onRemoveTool={(tool) => chat.setSelectedTools((current) => current.filter((item) => item !== tool))}
+        isToolMenuOpen={chat.isToolMenuOpen}
+        onToolMenuOpenChange={chat.setIsToolMenuOpen}
+        onSend={() => void chat.send()}
+        onStop={chat.stop}
+        className="p-2"
+      />
+    </div>
+  )
 }
 
 export function AiThreadAssistant({ messageId, accountId, subject, open, initialAction, onOpenChange, onInsertDraft }: AiThreadAssistantProps) {
   const [response, setResponse] = useState<ThreadAiResponse | null>(null)
   const [activeAction, setActiveAction] = useState<AiAction>(initialAction || "summary")
-  const [question, setQuestion] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const lastAutoRun = useRef<string | null>(null)
 
-  const run = async (action: AiAction, prompt?: string) => {
+  const run = async (action: AiAction) => {
+    if (action === "ask") {
+      setActiveAction("ask")
+      return
+    }
     setActiveAction(action)
     setIsLoading(true)
     setError(null)
     try {
-      setResponse(await emailApi.runThreadAi({ messageId, action, prompt, accountId }))
+      setResponse(await emailApi.runThreadAi({ messageId, action, accountId }))
     } catch (requestError: any) {
       const configured = !(requestError instanceof EmailApiError && requestError.code === "AI_NOT_CONFIGURED")
       setError(configured ? requestError.message || "Relay AI could not complete this request." : "Relay AI needs an OPENAI_API_KEY before it can analyze mail.")
@@ -92,16 +150,9 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
     }
   }
 
-  const handleQuestionKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
-    event.preventDefault()
-    if (question.trim()) void run("ask", question.trim())
-  }
-
   useEffect(() => {
     setResponse(null)
     setError(null)
-    setQuestion("")
     lastAutoRun.current = null
   }, [messageId, accountId])
 
@@ -138,18 +189,26 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
     <div className="flex h-full min-h-0 w-full flex-col bg-background">
         <header className="border-b border-border px-4 py-3">
           <div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft"><Sparkles className="h-4 w-4 text-brand-strong" /></div><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold text-foreground">Relay Assistant</h2><p className="truncate text-xs text-muted-foreground">Current email · {subject}</p></div><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} aria-label="Close assistant"><X className="h-4 w-4" /></Button></div>
-          {response?.context && <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-full border border-border bg-surface-subtle px-2 py-1 text-[11px] text-muted-foreground">{response.context.accountEmail}</span><span className="max-w-full truncate rounded-full border border-border bg-surface-subtle px-2 py-1 text-[11px] text-muted-foreground">Current email</span></div>}
+          {response?.context && activeAction !== "ask" && <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-full border border-border bg-surface-subtle px-2 py-1 text-[11px] text-muted-foreground">{response.context.accountEmail}</span><span className="max-w-full truncate rounded-full border border-border bg-surface-subtle px-2 py-1 text-[11px] text-muted-foreground">Current email</span></div>}
         </header>
 
         <div className="flex gap-1 overflow-x-auto border-b border-border p-2">
-          {(["summary", "draft", "tasks", "ask"] as AiAction[]).map((action) => <button key={action} onClick={() => action === "ask" ? setActiveAction("ask") : void run(action)} className={cn("shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium", activeAction === action ? "bg-brand-soft text-brand-strong" : "text-muted-foreground hover:bg-surface-hover")}>{actionLabels[action]}</button>)}
+          {(["summary", "draft", "tasks", "ask"] as AiAction[]).map((action) => <button key={action} onClick={() => void run(action)} className={cn("shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium", activeAction === action ? "bg-brand-soft text-brand-strong" : "text-muted-foreground hover:bg-surface-hover")}>{actionLabels[action]}</button>)}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {isLoading ? <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing this email…</div> : error ? <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4"><p className="text-sm text-destructive">{error}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void run(activeAction, activeAction === "ask" ? question : undefined)}>Try again</Button></div> : response ? <ResultContent result={response.result} response={response} onInsertDraft={onInsertDraft} /> : <div className="py-8 text-center"><Bot className="mx-auto h-8 w-8 text-brand" /><p className="mt-3 text-sm text-foreground">Choose an action to work with this email.</p><p className="mt-1 text-xs text-muted-foreground">Relay only uses the current email and account preferences.</p></div>}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {activeAction === "ask" ? (
+            <AskRelayChat messageId={messageId} accountId={accountId} subject={subject} />
+          ) : isLoading ? (
+            <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing this email…</div>
+          ) : error ? (
+            <div className="p-4"><div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4"><p className="text-sm text-destructive">{error}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void run(activeAction)}>Try again</Button></div></div>
+          ) : response ? (
+            <div className="h-full overflow-y-auto p-4"><ResultContent result={response.result} response={response} onInsertDraft={onInsertDraft} /></div>
+          ) : (
+            <div className="py-8 text-center"><Bot className="mx-auto h-8 w-8 text-brand" /><p className="mt-3 text-sm text-foreground">Choose an action to work with this email.</p><p className="mt-1 text-xs text-muted-foreground">Relay only uses the current email and account preferences.</p></div>
+          )}
         </div>
-
-        {activeAction === "ask" && <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); if (question.trim()) void run("ask", question.trim()) }}><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={handleQuestionKeyDown} maxLength={2000} placeholder="Ask about this email…" className="min-h-20 resize-none" /><Button type="submit" aria-label="Submit question" className="mt-2 w-full" disabled={!question.trim() || isLoading}>Ask Relay <ChevronRight className="ml-1 h-4 w-4" /></Button></form>}
     </div>
   )
 

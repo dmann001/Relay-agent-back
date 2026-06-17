@@ -76,6 +76,7 @@ export interface ThreadAiResponse {
   };
   model: string;
   responseId?: string;
+  sessionId?: string;
 }
 
 export interface ComposeAiResponse {
@@ -90,7 +91,42 @@ export interface ComposeAiResponse {
   };
   model: string;
   responseId?: string;
+  sessionId?: string;
 }
+
+export interface AiChatSessionSummary {
+  id: string;
+  accountId: string | null;
+  messageId: string | null;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  preview: string | null;
+}
+
+export interface AiChatMessageRecord {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  model: string | null;
+  tools: AiToolKey[];
+  responseId: string | null;
+  createdAt: string;
+}
+
+export interface AiChatSessionDetail extends AiChatSessionSummary {
+  messages: AiChatMessageRecord[];
+}
+
+export type AiChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type AiEmailContextRef = {
+  messageId: string;
+  accountId?: string;
+};
 
 export interface InboxBrief {
   overview: string;
@@ -304,21 +340,29 @@ const notifyEmailsUpdated = () => {
   }
 };
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit & { signal?: AbortSignal } = {}): Promise<T> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) {
     throw new EmailApiError("Not signed in", 401, "NO_SESSION");
   }
 
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init.headers || {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new EmailApiError("The AI request was cancelled", 499, "AI_ABORTED");
+    }
+    throw error;
+  }
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -616,10 +660,17 @@ export const emailApi = {
     prompt?: string;
     model?: string;
     tools?: AiToolKey[];
+    history?: AiChatTurn[];
+    sessionId?: string;
+    createSession?: boolean;
+    contextMessageIds?: AiEmailContextRef[];
+    signal?: AbortSignal;
   }): Promise<ThreadAiResponse> {
+    const { signal, ...body } = payload;
     return request<ThreadAiResponse>("/api/ai/thread", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
+      signal,
     });
   },
 
@@ -632,10 +683,42 @@ export const emailApi = {
     body?: string;
     model?: string;
     tools?: AiToolKey[];
+    history?: AiChatTurn[];
+    sessionId?: string;
+    createSession?: boolean;
+    contextMessageIds?: AiEmailContextRef[];
+    signal?: AbortSignal;
   }): Promise<ComposeAiResponse> {
+    const { signal, ...body } = payload;
     return request<ComposeAiResponse>("/api/ai/compose", {
       method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    });
+  },
+
+  async listAiChatSessions(limit = 50): Promise<{ sessions: AiChatSessionSummary[] }> {
+    return request(`/api/ai/chat/sessions?limit=${limit}`);
+  },
+
+  async getAiChatSession(sessionId: string): Promise<{ session: AiChatSessionDetail }> {
+    return request(`/api/ai/chat/sessions/${encodeURIComponent(sessionId)}`);
+  },
+
+  async createAiChatSession(payload: {
+    accountId?: string;
+    messageId?: string;
+    title?: string;
+  } = {}): Promise<{ session: AiChatSessionSummary }> {
+    return request("/api/ai/chat/sessions", {
+      method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteAiChatSession(sessionId: string): Promise<{ ok: boolean }> {
+    return request(`/api/ai/chat/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
     });
   },
 

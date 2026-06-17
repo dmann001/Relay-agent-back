@@ -11,11 +11,13 @@ import { formatMailboxTimestamp } from "@/lib/email-utils";
 import { AccountScopeSelect } from "@/components/account-scope-select";
 import { ThreadView } from "@/components/thread-view";
 import { cn } from "@/lib/utils";
+import { useEmailContextMenuOptional } from "@/components/email-context-menu-provider";
 import { ResizeHandle } from "@/components/resize-handle";
 import { useResizablePanel } from "@/hooks/use-resizable-panel";
 
 export function SentList() {
   const [emails, setEmails] = useState<Email[]>([]);
+  const { openEmailContextMenu } = useEmailContextMenuOptional() ?? {};
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -147,6 +149,7 @@ export function SentList() {
               role="button"
               tabIndex={0}
               onClick={() => setSelectedEmailId(email.id)}
+              onContextMenu={openEmailContextMenu ? (event) => openEmailContextMenu(event, email) : undefined}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
