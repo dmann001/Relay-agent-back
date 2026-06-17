@@ -11,7 +11,7 @@ import { parseOAuthState } from '@/lib/server/crypto';
 import { getEmailAccount } from '@/lib/server/email-accounts';
 
 const settingsUrl = (request: NextRequest, values: Record<string, string>) => {
-  const url = new URL('/settings', request.nextUrl.origin);
+  const url = new URL('/settings/connections', request.nextUrl.origin);
   Object.entries(values).forEach(([key, value]) => url.searchParams.set(key, value));
   return url;
 };

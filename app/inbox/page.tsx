@@ -1,47 +1,10 @@
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { InboxList } from "@/components/inbox-list";
-import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 
 export default function InboxPage() {
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      {/* Noise Texture Overlay */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.015] z-50"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-        }}
-      />
-
-      {/* Ambient Gradient Orbs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute w-[600px] h-[600px] rounded-full blur-[150px] opacity-15"
-          style={{
-            background: "radial-gradient(circle, #E8DCC4 0%, transparent 70%)",
-            top: "-10%",
-            right: "-5%",
-          }}
-        />
-        <div
-          className="absolute w-[400px] h-[400px] rounded-full blur-[120px] opacity-10"
-          style={{
-            background: "radial-gradient(circle, #C4A052 0%, transparent 70%)",
-            bottom: "10%",
-            left: "20%",
-          }}
-        />
-      </div>
-
-      <div className="hidden lg:flex">
-        <AppSidebar />
-      </div>
-      <div className="relative z-10 flex flex-1 min-w-0 flex-col overflow-hidden">
-        <div className="flex-1 min-h-0">
-          <InboxList />
-        </div>
-      </div>
-      <MobileBottomNav />
-    </div>
+    <AppShell>
+      <InboxList />
+    </AppShell>
   );
 }

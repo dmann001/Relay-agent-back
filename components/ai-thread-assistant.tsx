@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { emailApi, EmailApiError, type ThreadAiResult, type ThreadAiResponse } from "@/lib/email-api"
 import { cn } from "@/lib/utils"
 import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/track-commitment-dialog"
+import { ResizeHandle } from "@/components/resize-handle"
+import { useResizablePanel } from "@/hooks/use-resizable-panel"
 
 type AiAction = "summary" | "draft" | "tasks" | "ask"
 
@@ -111,11 +113,23 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId, initialAction, messageId, open])
 
+  const {
+    width: panelWidth,
+    isResizing: isPanelResizing,
+    startResize: startPanelResize,
+  } = useResizablePanel({
+    storageKey: "relay-ai-panel-width",
+    defaultWidth: 384,
+    minWidth: 280,
+    maxWidth: 560,
+    edge: "start",
+    disabled: !open,
+  })
+
   if (!open) return null
 
-  return (
-    <aside className="fixed inset-0 z-50 flex justify-end bg-black/20 md:static md:z-auto md:h-full md:w-[24rem] md:shrink-0 md:bg-transparent" aria-label="Relay AI assistant">
-      <div className="flex h-full w-full max-w-[26rem] flex-col border-l border-border bg-background shadow-2xl md:shadow-none">
+  const panelBody = (
+    <div className="flex h-full min-h-0 w-full flex-col bg-background">
         <header className="border-b border-border px-4 py-3">
           <div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-soft"><Sparkles className="h-4 w-4 text-brand-strong" /></div><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold text-foreground">Relay Assistant</h2><p className="truncate text-xs text-muted-foreground">Current email · {subject}</p></div><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)} aria-label="Close assistant"><X className="h-4 w-4" /></Button></div>
           {response?.context && <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-full border border-border bg-surface-subtle px-2 py-1 text-[11px] text-muted-foreground">{response.context.accountEmail}</span><span className="max-w-full truncate rounded-full border border-border bg-surface-subtle px-2 py-1 text-[11px] text-muted-foreground">Current email</span></div>}
@@ -130,8 +144,41 @@ export function AiThreadAssistant({ messageId, accountId, subject, open, initial
         </div>
 
         {activeAction === "ask" && <form className="border-t border-border p-3" onSubmit={(event) => { event.preventDefault(); if (question.trim()) void run("ask", question.trim()) }}><Textarea value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} placeholder="Ask about this email…" className="min-h-20 resize-none" /><Button type="submit" aria-label="Submit question" className="mt-2 w-full" disabled={!question.trim() || isLoading}>Ask Relay <ChevronRight className="ml-1 h-4 w-4" /></Button></form>}
+    </div>
+  )
+
+  return (
+    <>
+      <aside
+        className="fixed inset-0 z-50 flex justify-end bg-black/20 md:hidden"
+        aria-label="Relay AI assistant"
+      >
+        <div className="flex h-full w-full max-w-[26rem] flex-col border-l border-border bg-background shadow-2xl">
+          {panelBody}
+        </div>
+      </aside>
+
+      <div
+        className="hidden h-full shrink-0 md:flex"
+        aria-label="Relay AI assistant"
+      >
+        <ResizeHandle
+          onMouseDown={startPanelResize}
+          isResizing={isPanelResizing}
+          label="Resize AI assistant"
+          className="h-full"
+        />
+        <aside
+          className={cn(
+            "flex h-full shrink-0 flex-col border-l border-border bg-background",
+            !isPanelResizing && "transition-[width] duration-200",
+          )}
+          style={{ width: panelWidth }}
+        >
+          {panelBody}
+        </aside>
       </div>
-    </aside>
+    </>
   )
 }
 

@@ -25,7 +25,9 @@ import { ComposeDialog } from "@/components/compose-dialog";
 import { SearchBar } from "@/components/search-bar";
 import { ThreadView } from "@/components/thread-view";
 import { AiInboxBrief } from "@/components/ai-inbox-brief";
+import { ResizeHandle } from "@/components/resize-handle";
 import { cn } from "@/lib/utils";
+import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import {
   emailApi,
   EmailApiError,
@@ -84,7 +86,7 @@ function initials(name: string): string {
 
 function accountColor(accountId: string): string {
   const palette = [
-    "#C4A052",
+    "#737373",
     "#4F8A8B",
     "#7C6BAE",
     "#C46B5E",
@@ -557,12 +559,27 @@ export function InboxList() {
     GMAIL_CATEGORIES.find(({ value }) => value === selectedCategory)?.label ||
     "Primary";
 
+  const {
+    width: listWidth,
+    isResizing: isListResizing,
+    startResize: startListResize,
+  } = useResizablePanel({
+    storageKey: "relay-inbox-list-width",
+    defaultWidth: 380,
+    minWidth: 280,
+    maxWidth: 560,
+  });
+
+  const showSplitView = Boolean(selectedEmailId || showInboxBrief);
+
   return (
     <div className="flex h-full min-h-0 bg-background">
       <section
+        style={{ width: listWidth }}
         className={cn(
-          "min-w-0 flex-1 flex-col border-r border-border bg-background md:flex md:w-[min(43%,30rem)] md:flex-none",
-          selectedEmailId || showInboxBrief ? "hidden" : "flex",
+          "min-w-0 w-full flex-col bg-background md:flex md:flex-none",
+          !isListResizing && "transition-[width] duration-200",
+          showSplitView ? "hidden md:flex" : "flex",
         )}
         aria-label="Inbox message list"
       >
@@ -800,7 +817,7 @@ export function InboxList() {
                 </p>
                 {!hasAccounts && (
                   <Button asChild className="mt-4">
-                    <Link href="/settings">
+                    <Link href="/settings/connections">
                       <Settings className="mr-2 h-4 w-4" />
                       Connect Gmail
                     </Link>
@@ -1003,10 +1020,17 @@ export function InboxList() {
         </div>
       </section>
 
+      <ResizeHandle
+        onMouseDown={startListResize}
+        isResizing={isListResizing}
+        label="Resize inbox list"
+        className="hidden h-full md:block"
+      />
+
       <section
         className={cn(
-          "min-w-0 flex-1 bg-surface-subtle/40",
-          selectedEmailId || showInboxBrief ? "flex" : "hidden md:flex",
+          "flex min-h-0 min-w-0 flex-1 flex-col bg-surface-subtle/40",
+          showSplitView ? "flex" : "hidden md:flex",
         )}
         aria-label="Email reading pane"
       >

@@ -9,7 +9,7 @@ async function openLogin(page: Page) {
 test("landing page links to the public sign-in page", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: /Email without/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Email, distilled/ })).toBeVisible();
   await page.getByRole("link", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/login$/);
