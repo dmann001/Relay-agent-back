@@ -40,7 +40,7 @@ describe("generateStructuredResponse", () => {
       validator: z.object({ value: z.string() }),
     })
 
-    expect(result).toEqual({ data: { value: "safe" }, model: "gpt-test", responseId: "response-1" })
+    expect(result).toEqual({ data: { value: "safe" }, model: "gpt-test", responseId: "response-1", images: [] })
     const [, request] = fetchMock.mock.calls[0]
     const body = JSON.parse(String(request?.body))
     expect(request?.headers).toEqual(expect.objectContaining({ Authorization: "Bearer server-secret" }))
@@ -82,6 +82,27 @@ describe("generateStructuredResponse", () => {
         ],
       },
     ])
+  })
+
+  it("extracts generated image outputs from the Responses API", async () => {
+    process.env.OPENAI_API_KEY = "server-secret"
+    jest.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      id: "response-image",
+      output: [
+        { type: "image_generation_call", result: "abc123", mime_type: "image/png" },
+        { content: [{ type: "output_text", text: JSON.stringify({ value: "image ready" }) }] },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }))
+
+    const result = await generateStructuredResponse({
+      instructions: "system instructions",
+      input: "make an image",
+      schemaName: "test_schema",
+      jsonSchema: { type: "object", additionalProperties: false, required: ["value"], properties: { value: { type: "string" } } },
+      validator: z.object({ value: z.string() }),
+    })
+
+    expect(result.images).toEqual([{ mimeType: "image/png", data: "abc123" }])
   })
 
   it("rejects malformed provider output", async () => {

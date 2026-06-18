@@ -41,6 +41,20 @@ function formatInline(text: string): ReactNode[] {
 
 function renderBlock(block: string, index: number) {
   const lines = block.split("\n")
+  const imageMatch = block.trim().match(/^!\[([^\]]*)\]\((data:image\/[^)]+)\)$/)
+  if (imageMatch) {
+    return (
+      <figure key={index} className="my-3">
+        {/* Generated data URLs cannot be optimized by next/image. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageMatch[2]}
+          alt={imageMatch[1] || "Generated image"}
+          className="max-h-[28rem] max-w-full rounded-lg border border-border object-contain"
+        />
+      </figure>
+    )
+  }
   const isBulletList = lines.every((line) => !line.trim() || /^[-*]\s+/.test(line.trim()))
   const isNumberedList = lines.every((line) => !line.trim() || /^\d+\.\s+/.test(line.trim()))
 

@@ -523,48 +523,6 @@ export function InboxList() {
     [updateReadState],
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target.matches("input, textarea, select, [contenteditable='true']")
-      )
-        return;
-      if (event.key.toLowerCase() === "c") {
-        event.preventDefault();
-        setShowCompose(true);
-        return;
-      }
-      if (event.key === "Escape") {
-        if (selectedIds.size) setSelectedIds(new Set());
-        else if (selectedEmailId)
-          updateQuery({ message: null, messageAccount: null });
-        return;
-      }
-      if ((event.key !== "j" && event.key !== "k") || !filteredEmails.length)
-        return;
-
-      event.preventDefault();
-      const currentIndex = filteredEmails.findIndex(
-        ({ id }) => id === selectedEmailId,
-      );
-      const nextIndex =
-        event.key === "j"
-          ? Math.min(currentIndex + 1, filteredEmails.length - 1)
-          : Math.max(
-              currentIndex < 0 ? filteredEmails.length - 1 : currentIndex - 1,
-              0,
-            );
-      updateQuery({
-        message: filteredEmails[nextIndex].id,
-        messageAccount: filteredEmails[nextIndex].accountId || null,
-      });
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [filteredEmails, selectedEmailId, selectedIds.size, updateQuery]);
-
   const selectedCategoryLabel =
     GMAIL_CATEGORIES.find(({ value }) => value === selectedCategory)?.label ||
     "Primary";

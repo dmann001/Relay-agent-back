@@ -1,6 +1,7 @@
 import type { Email, EmailAttachment } from '@/types';
 import type { EmailAccountRow } from './email-accounts';
 import { getOutlookAccessToken } from './outlook-accounts';
+import { formatOutgoingBodyAsHtml } from './gmail-api';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const headers = (token: string) => ({
@@ -83,7 +84,7 @@ export async function modifyOutlookMessage(account: EmailAccountRow, id: string,
 
 const recipients = (values: string[] = []) => values.map((address) => ({ emailAddress: { address } }));
 const graphMessage = (input: any) => ({
-  subject: input.subject || '', body: { contentType: 'HTML', content: input.body || ' ' },
+  subject: input.subject || '', body: { contentType: 'HTML', content: formatOutgoingBodyAsHtml(input.body || ' ') },
   toRecipients: recipients(input.to), ccRecipients: recipients(input.cc),
   ...(input.attachments?.length ? { attachments: input.attachments.map((a: any) => ({
     '@odata.type': '#microsoft.graph.fileAttachment', name: a.filename, contentType: a.mimeType, contentBytes: a.data,

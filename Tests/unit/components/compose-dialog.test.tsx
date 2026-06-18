@@ -26,6 +26,8 @@ describe("ComposeDialog account selection", () => {
     api.runComposeAi.mockResolvedValue({
       result: {
         answer: "Here is a cleaner draft.",
+        to: ["ada@example.com"],
+        cc: [],
         subject: "Updated project plan",
         body: "Hi Ada,\n\nHere is the updated plan.",
       },

@@ -272,3 +272,63 @@ export function combinedEmailContextInputParts(
 ): OpenAiInputPart[] {
   return contexts.flatMap((context) => emailContextInputParts(context));
 }
+
+export type AiUserContextFile = {
+  filename: string;
+  mimeType: string;
+  data: string;
+};
+
+export function parseUserContextFiles(files: AiUserContextFile[]): AiUserContextFile[] {
+  const parsed: AiUserContextFile[] = [];
+  for (const file of files.slice(0, MAX_MODEL_ATTACHMENTS)) {
+    const data = normalizeBase64(file.data);
+    let byteLength = 0;
+    try {
+      byteLength = Buffer.from(data, 'base64').length;
+    } catch {
+      continue;
+    }
+    if (byteLength > MAX_ATTACHMENT_BYTES) continue;
+
+    const mimeType = file.mimeType || 'application/octet-stream';
+    const filename = file.filename || 'upload';
+    const allowed = isTextAttachment(mimeType, filename)
+      || isImageAttachment(mimeType)
+      || isPdfAttachment(mimeType, filename);
+    if (!allowed) continue;
+
+    parsed.push({ filename, mimeType, data });
+  }
+  return parsed;
+}
+
+export function userContextFilesTextSummary(files: AiUserContextFile[]): string {
+  const lines = files.flatMap((file) => {
+    const mimeType = file.mimeType || 'application/octet-stream';
+    const filename = file.filename || 'upload';
+    if (!isTextAttachment(mimeType, filename)) return [];
+    const text = decodeBase64Text(file.data).slice(0, MAX_TEXT_ATTACHMENT_CHARS);
+    return [`===== UPLOADED FILE: ${filename} =====\n${text || '(empty file)'}`];
+  });
+  return lines.join('\n\n');
+}
+
+export function userContextFileInputParts(files: AiUserContextFile[]): OpenAiInputPart[] {
+  const parts: OpenAiInputPart[] = [];
+  for (const file of files) {
+    const mimeType = file.mimeType || 'application/octet-stream';
+    const filename = file.filename || 'upload';
+    const data = normalizeBase64(file.data);
+    const dataUrl = `data:${mimeType};base64,${data}`;
+
+    if (isImageAttachment(mimeType)) {
+      parts.push({ type: 'input_image', image_url: dataUrl });
+      continue;
+    }
+    if (isPdfAttachment(mimeType, filename)) {
+      parts.push({ type: 'input_file', filename, file_data: dataUrl });
+    }
+  }
+  return parts;
+}

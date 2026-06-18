@@ -312,6 +312,22 @@ const sanitizeHeaderValue = (value: string): string =>
 const foldBase64 = (value: string): string =>
   value.replace(/\s+/g, '').match(/.{1,76}/g)?.join('\r\n') || '';
 
+const escapeHtml = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export const formatOutgoingBodyAsHtml = (content: string) => {
+  const hasHtml = /<\/?[a-z][\s\S]*>/i.test(content);
+  if (hasHtml) return content;
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const lines = paragraph.split('\n').map((line) => escapeHtml(line));
+      return `<p>${lines.join('<br />')}</p>`;
+    })
+    .join('');
+};
+
 export const buildRawMessage = (params: {
   to: string[];
   cc?: string[];
@@ -328,20 +344,7 @@ export const buildRawMessage = (params: {
   }
   headers.push(`Subject: ${params.subject}`);
 
-  const formatBodyAsHtml = (content: string) => {
-    const hasHtml = /<\/?[a-z][\s\S]*>/i.test(content);
-    if (hasHtml) return content;
-    return content
-      .split('\n')
-      .map((line) =>
-        line.trim() === ''
-          ? '<br />'
-          : line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      )
-      .join('<br />');
-  };
-
-  const htmlBody = formatBodyAsHtml(params.body);
+  const htmlBody = formatOutgoingBodyAsHtml(params.body);
   let message = '';
 
   if (params.attachments && params.attachments.length > 0) {

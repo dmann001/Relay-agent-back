@@ -65,7 +65,9 @@ export function AiInboxChat({
 
       <AiChatContextAttachments
         attachments={chat.chatAttachments}
+        fileAttachments={chat.fileAttachments}
         onRemove={chat.removeChatAttachment}
+        onRemoveFile={chat.removeFileAttachment}
       />
 
       {chat.messages.length === 0 ? (
@@ -92,6 +94,9 @@ export function AiInboxChat({
           emptyTitle=""
           emptyDescription=""
           error={chat.error}
+          onCopyMessage={(content) => void chat.copyMessage(content)}
+          onSaveDraft={(index) => void chat.saveDraftFromChat(index)}
+          onSendDraft={(index) => void chat.sendDraftFromChat(index)}
         />
       )}
 
@@ -112,6 +117,9 @@ export function AiInboxChat({
         onToolMenuOpenChange={chat.setIsToolMenuOpen}
         onSend={() => void chat.send()}
         onStop={chat.stop}
+        accountId={accountId}
+        messageId={messageId}
+        fileAttachmentCount={chat.fileAttachments.length}
       />
     </div>
   )
