@@ -200,6 +200,88 @@ function LandingArtAccents() {
   )
 }
 
+const liveSignals = [
+  "Brief updated",
+  "3 replies ready",
+  "2 commitments tracked",
+  "Meeting prep synced",
+]
+
+function LandingLiveVisuals() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none fixed inset-0 z-[1] overflow-hidden"
+    >
+      <div className="landing-live-scan absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-neutral-900/20 to-transparent dark:via-white/20" />
+
+      <div className="landing-live-thread landing-live-thread-a absolute left-[8%] top-[18%] hidden h-24 w-px bg-gradient-to-b from-transparent via-neutral-900/20 to-transparent dark:via-white/20 lg:block" />
+      <div className="landing-live-thread landing-live-thread-b absolute right-[12%] top-[44%] hidden h-32 w-px bg-gradient-to-b from-transparent via-neutral-900/20 to-transparent dark:via-white/20 lg:block" />
+      <div className="landing-live-thread landing-live-thread-c absolute left-[18%] bottom-[18%] hidden h-20 w-px bg-gradient-to-b from-transparent via-neutral-900/20 to-transparent dark:via-white/20 lg:block" />
+
+      <div className="landing-live-pulse absolute left-[10%] top-[28%] hidden h-2 w-2 rounded-full bg-neutral-900/40 dark:bg-white/50 lg:block" />
+      <div className="landing-live-pulse landing-live-delay-1 absolute right-[18%] top-[36%] hidden h-2 w-2 rounded-full bg-neutral-900/40 dark:bg-white/50 lg:block" />
+      <div className="landing-live-pulse landing-live-delay-2 absolute left-[24%] bottom-[22%] hidden h-2 w-2 rounded-full bg-neutral-900/40 dark:bg-white/50 lg:block" />
+    </div>
+  )
+}
+
+function HeroLiveOverlay() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl"
+    >
+      <div className="landing-mockup-light absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/35 to-transparent dark:via-white/10" />
+
+      <div className="landing-live-card absolute -right-3 top-8 hidden rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-left shadow-[0_18px_50px_-22px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/70 md:block">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+            Live
+          </span>
+        </div>
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          Inbox syncing
+        </p>
+      </div>
+
+      <div className="landing-live-card landing-live-card-delay absolute -left-4 bottom-10 hidden rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.45)] backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/70 sm:block">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />
+          <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            Draft ready
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LiveSignalRail() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none mx-auto mt-8 flex max-w-4xl overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]"
+    >
+      <div className="landing-signal-marquee flex min-w-max gap-3 pr-3">
+        {[...liveSignals, ...liveSignals].map((signal, index) => (
+          <span
+            key={`${signal}-${index}`}
+            className="flex items-center gap-2 rounded-full border border-neutral-200/70 bg-white/55 px-3 py-1.5 text-xs text-neutral-500 shadow-sm backdrop-blur-sm dark:border-neutral-800 dark:bg-neutral-900/55 dark:text-neutral-400"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {signal}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -242,6 +324,7 @@ export function LandingPage() {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[var(--landing-bg)] text-[var(--landing-fg)] selection:bg-neutral-200 dark:selection:bg-neutral-800">
       <LandingBackdrop />
+      <LandingLiveVisuals />
       <header
         className={cn(
           "landing-nav-shell fixed inset-x-0 top-0 z-50",
@@ -491,9 +574,11 @@ export function LandingPage() {
           </div>
 
           <div
-            className={`mx-auto mt-14 max-w-4xl transition-all duration-700 delay-150 md:mt-16 ${isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
+            className={`relative mx-auto mt-14 max-w-4xl transition-all duration-700 delay-150 md:mt-16 ${isLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}
           >
             <ProductMockup variant="hero" scene="inbox" />
+            <HeroLiveOverlay />
+            <LiveSignalRail />
           </div>
         </section>
 
