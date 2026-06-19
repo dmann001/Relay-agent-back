@@ -9,10 +9,21 @@ export interface AiChatEmailAttachment {
   fromName?: string
 }
 
+export interface AiChatFileAttachment {
+  id: string
+  filename: string
+  mimeType: string
+  data: string
+  size: number
+}
+
 interface AiChatAttachmentsContextValue {
   attachments: AiChatEmailAttachment[]
+  fileAttachments: AiChatFileAttachment[]
   addAttachment: (attachment: AiChatEmailAttachment) => boolean
   removeAttachment: (messageId: string, accountId?: string) => void
+  addFileAttachment: (attachment: AiChatFileAttachment) => boolean
+  removeFileAttachment: (id: string) => void
   clearAttachments: () => void
 }
 
@@ -24,6 +35,7 @@ function attachmentKey(messageId: string, accountId?: string) {
 
 export function AiChatAttachmentsProvider({ children }: { children: ReactNode }) {
   const [attachments, setAttachments] = useState<AiChatEmailAttachment[]>([])
+  const [fileAttachments, setFileAttachments] = useState<AiChatFileAttachment[]>([])
 
   const addAttachment = useCallback((attachment: AiChatEmailAttachment) => {
     let added = false
@@ -43,13 +55,37 @@ export function AiChatAttachmentsProvider({ children }: { children: ReactNode })
     setAttachments((current) => current.filter((item) => attachmentKey(item.messageId, item.accountId) !== key))
   }, [])
 
+  const addFileAttachment = useCallback((attachment: AiChatFileAttachment) => {
+    let added = false
+    setFileAttachments((current) => {
+      if (current.length >= 4) return current
+      if (current.some((item) => item.id === attachment.id)) return current
+      added = true
+      return [...current, attachment]
+    })
+    return added
+  }, [])
+
+  const removeFileAttachment = useCallback((id: string) => {
+    setFileAttachments((current) => current.filter((item) => item.id !== id))
+  }, [])
+
   const clearAttachments = useCallback(() => {
     setAttachments([])
+    setFileAttachments([])
   }, [])
 
   const value = useMemo(
-    () => ({ attachments, addAttachment, removeAttachment, clearAttachments }),
-    [addAttachment, attachments, clearAttachments, removeAttachment],
+    () => ({
+      attachments,
+      fileAttachments,
+      addAttachment,
+      removeAttachment,
+      addFileAttachment,
+      removeFileAttachment,
+      clearAttachments,
+    }),
+    [addAttachment, attachments, clearAttachments, fileAttachments, addFileAttachment, removeAttachment, removeFileAttachment],
   )
 
   return (

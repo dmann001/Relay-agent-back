@@ -27,6 +27,7 @@ export type OpenAiInputPart =
   | { type: 'input_file'; filename: string; file_data: string };
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
+export type GeneratedImage = { mimeType: string; data: string };
 
 export class AiRequestAbortedError extends Error {
   constructor(message = 'The AI request was cancelled') {
@@ -100,6 +101,32 @@ function extractOutputText(payload: any): string {
   throw new AiProviderError('The AI provider returned no text output');
 }
 
+function extractGeneratedImages(payload: any): GeneratedImage[] {
+  const images: GeneratedImage[] = [];
+  const addImage = (value: unknown, mimeType = 'image/png') => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    const dataUrlMatch = value.match(/^data:([^;]+);base64,(.+)$/);
+    if (dataUrlMatch) {
+      images.push({ mimeType: dataUrlMatch[1], data: dataUrlMatch[2] });
+      return;
+    }
+    images.push({ mimeType, data: value });
+  };
+
+  for (const item of payload?.output || []) {
+    if (item?.type === 'image_generation_call') {
+      addImage(item.result, item.mime_type || item.mimeType || 'image/png');
+    }
+    for (const content of item?.content || []) {
+      if (content?.type === 'output_image') {
+        addImage(content.image_url || content.imageUrl || content.data, content.mime_type || content.mimeType || 'image/png');
+      }
+    }
+  }
+
+  return images;
+}
+
 export async function generateStructuredResponse<T>(params: {
   instructions: string;
   input: string | Array<Record<string, unknown>>;
@@ -114,7 +141,7 @@ export async function generateStructuredResponse<T>(params: {
   tools?: Array<Record<string, unknown>>;
   maxOutputTokens?: number;
   abortSignal?: AbortSignal;
-}): Promise<{ data: T; model: string; responseId?: string }> {
+}): Promise<{ data: T; model: string; responseId?: string; images: GeneratedImage[] }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new AiConfigurationError();
 
@@ -204,5 +231,5 @@ export async function generateStructuredResponse<T>(params: {
     throw new AiProviderError('The AI provider returned an unexpected response shape');
   }
 
-  return { data: validated.data, model, responseId: payload?.id };
+  return { data: validated.data, model, responseId: payload?.id, images: extractGeneratedImages(payload) };
 }

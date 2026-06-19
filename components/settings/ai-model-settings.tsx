@@ -43,8 +43,8 @@ const toolRows: Array<{
   {
     key: "computerUse",
     label: "Computer use",
-    description: "Operate a browser or desktop environment. Relay keeps this disabled until an explicit workflow exists.",
-    wired: false,
+    description: "Browse the web with OpenAI computer use and Relay's Playwright browser harness.",
+    wired: true,
   },
   {
     key: "mcpConnectors",
@@ -195,7 +195,7 @@ export function AiModelSettingsPage() {
                 <div>
                   <CardTitle className="text-base font-medium">OpenAI tools</CardTitle>
                   <CardDescription>
-                    Web search is active when enabled. Other OpenAI hosted tools are saved here for future Relay workflows.
+                    Enable OpenAI hosted tools for AI chat. Computer use runs through Relay&apos;s browser harness (simulated or Playwright).
                   </CardDescription>
                 </div>
               </div>

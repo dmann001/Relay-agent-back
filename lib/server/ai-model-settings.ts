@@ -104,7 +104,30 @@ export const WIRED_AI_TOOLS: AiToolKey[] = [
   'webSearch',
   'codeInterpreter',
   'imageGeneration',
+  'computerUse',
 ];
+
+export function isComputerUseRequested(
+  settings: AiModelSettings,
+  selectedTools: AiToolKey[] = [],
+): boolean {
+  return settings.tools.computerUse && selectedTools.includes('computerUse');
+}
+
+export function resolveAiTooling(
+  settings: AiModelSettings,
+  selectedTools: AiToolKey[] = [],
+) {
+  const computerUse = isComputerUseRequested(settings, selectedTools);
+  const structuredToolKeys = computerUse
+    ? selectedTools.filter((tool) => tool !== 'computerUse')
+    : selectedTools;
+
+  return {
+    computerUse,
+    structuredTools: toolsForOpenAi(settings, structuredToolKeys),
+  };
+}
 
 export function toolsForOpenAi(settings: AiModelSettings, selectedTools: AiToolKey[] = []): Array<Record<string, unknown>> {
   const tools: Array<Record<string, unknown>> = [];

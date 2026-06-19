@@ -7,11 +7,13 @@ import { emailApi } from "@/lib/email-api"
 
 jest.mock("@/lib/email-api", () => ({
   EmailApiError: class EmailApiError extends Error { code?: string },
+  WIRED_AI_TOOLS: ["webSearch", "codeInterpreter", "computerUse"],
   emailApi: {
     getAiModelSettings: jest.fn(),
     getAiChatSession: jest.fn(),
     runComposeAi: jest.fn(),
     runThreadAi: jest.fn(),
+    listEmails: jest.fn(),
   },
 }))
 
@@ -67,7 +69,7 @@ describe("AiInboxChat", () => {
     await screen.findByPlaceholderText("Ask about this email...")
 
     fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), { target: { value: "What is needed?" } })
-    fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter" })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
     await waitFor(() => expect(api.runThreadAi).toHaveBeenCalledWith(expect.objectContaining({
       messageId: "message-1",
@@ -82,19 +84,19 @@ describe("AiInboxChat", () => {
     expect(await screen.findByText("The sender needs a reply.")).toBeInTheDocument()
   })
 
-  it("keeps Shift+Enter as a newline in the chat box", async () => {
+  it("does not use Enter as a chat send shortcut", async () => {
     render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Plan" onClose={jest.fn()} />)
     await screen.findByPlaceholderText("Ask about this email...")
 
     fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), { target: { value: "Line one" } })
-    fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter", shiftKey: true })
+    fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter" })
 
     expect(api.runThreadAi).not.toHaveBeenCalled()
   })
 
   it("uses compose AI when no email is selected", async () => {
     api.runComposeAi.mockResolvedValue({
-      result: { answer: "I can help draft that.", subject: "", body: "" },
+      result: { answer: "I can help draft that.", to: [], cc: [], subject: "", body: "" },
       context: { accountId: "account-1", accountEmail: "me@example.com" },
       model: "gpt-test",
     })
@@ -126,7 +128,7 @@ describe("AiInboxChat", () => {
     render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Plan" onClose={jest.fn()} />)
     await screen.findByPlaceholderText("Ask about this email...")
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add AI tool" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Attach context or tools" }))
     fireEvent.click(screen.getByText("Web search"))
     expect(screen.getByRole("button", { name: "Remove Web search" })).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), { target: { value: "Look this up" } })
@@ -143,6 +145,16 @@ describe("AiInboxChat", () => {
     expect(api.getAiChatSession).toHaveBeenCalledWith("session-1")
   })
 
+  it("keeps history loaded when the inbox context resolves after resume", async () => {
+    const { rerender } = render(<AiInboxChat messageId="message-1" sessionId="session-1" onClose={jest.fn()} />)
+    expect(await screen.findByText("Hello")).toBeInTheDocument()
+
+    rerender(<AiInboxChat accountId="account-1" messageId="message-1" sessionId="session-1" onClose={jest.fn()} />)
+
+    expect(await screen.findByText("Hello")).toBeInTheDocument()
+    expect(api.getAiChatSession).toHaveBeenCalledWith("session-1")
+  })
+
   it("shows stop while loading", async () => {
     let resolve!: (value: any) => void
     api.runComposeAi.mockReturnValue(new Promise((res) => { resolve = res }))
@@ -152,7 +164,7 @@ describe("AiInboxChat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
     expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument()
     resolve({
-      result: { answer: "Done", subject: "", body: "" },
+      result: { answer: "Done", to: [], cc: [], subject: "", body: "" },
       context: { accountId: "account-1", accountEmail: "me@example.com" },
       model: "gpt-test",
     })

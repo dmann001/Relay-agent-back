@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
       body: draftBody = "",
       threadId,
       inReplyToMessageId,
+      attachments,
     } = body;
 
     const accounts = await listEmailAccounts(userId);
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
       body: draftBody || " ",
       threadId,
       inReplyToMessageId,
+      attachments,
     };
 
     let result: { draftId: string; messageId?: string | null };

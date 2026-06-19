@@ -177,12 +177,14 @@ describe("InboxList", () => {
     expect(mockedApi.modifyEmail).toHaveBeenCalledWith("message-2", "markRead", undefined)
   })
 
-  it("supports j/k navigation and Escape without hijacking text inputs", async () => {
+  it("does not navigate from global letter shortcuts", async () => {
     render(<InboxList />)
     await screen.findByText("Project update")
 
     fireEvent.keyDown(window, { key: "j" })
-    expect(replace).toHaveBeenCalledWith("/inbox?message=message-1", { scroll: false })
+    fireEvent.keyDown(window, { key: "k" })
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(replace).not.toHaveBeenCalled()
 
     replace.mockClear()
     fireEvent.keyDown(screen.getByPlaceholderText("Search emails..."), { key: "j" })

@@ -73,3 +73,20 @@ export const useTheme = () => {
 
   return context
 }
+
+export function useEffectiveTheme(): "light" | "dark" {
+  const { theme } = useTheme()
+  const [effectiveTheme, setEffectiveTheme] = React.useState<"light" | "dark">("light")
+
+  React.useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
+    const update = () => {
+      setEffectiveTheme(theme === "dark" || (theme === "system" && media.matches) ? "dark" : "light")
+    }
+    update()
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [theme])
+
+  return effectiveTheme
+}

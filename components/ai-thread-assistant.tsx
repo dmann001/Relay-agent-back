@@ -77,7 +77,9 @@ function AskRelayChat({ messageId, accountId, subject }: { messageId: string; ac
     <div className="flex h-full min-h-0 flex-col">
       <AiChatContextAttachments
         attachments={chat.chatAttachments}
+        fileAttachments={chat.fileAttachments}
         onRemove={chat.removeChatAttachment}
+        onRemoveFile={chat.removeFileAttachment}
       />
       {chat.messages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 text-center">
@@ -119,6 +121,9 @@ function AskRelayChat({ messageId, accountId, subject }: { messageId: string; ac
         onToolMenuOpenChange={chat.setIsToolMenuOpen}
         onSend={() => void chat.send()}
         onStop={chat.stop}
+        accountId={accountId}
+        messageId={messageId}
+        fileAttachmentCount={chat.fileAttachments.length}
         className="p-2"
       />
     </div>

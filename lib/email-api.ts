@@ -76,12 +76,21 @@ export interface ThreadAiResponse {
   };
   model: string;
   responseId?: string;
+  images?: AiGeneratedImage[];
   sessionId?: string;
+  computerUse?: ComputerUseSummary;
+}
+
+export interface AiGeneratedImage {
+  mimeType: string;
+  data: string;
 }
 
 export interface ComposeAiResponse {
   result: {
     answer: string;
+    to: string[];
+    cc: string[];
     subject: string;
     body: string;
   };
@@ -91,7 +100,9 @@ export interface ComposeAiResponse {
   };
   model: string;
   responseId?: string;
+  images?: AiGeneratedImage[];
   sessionId?: string;
+  computerUse?: ComputerUseSummary;
 }
 
 export interface AiChatSessionSummary {
@@ -158,6 +169,25 @@ export type AiToolKey =
   | "computerUse"
   | "mcpConnectors"
   | "toolSearch";
+
+export const WIRED_AI_TOOLS: AiToolKey[] = [
+  "webSearch",
+  "codeInterpreter",
+  "imageGeneration",
+  "computerUse",
+];
+
+export interface ComputerUseSummary {
+  driver: string;
+  stepCount: number;
+  truncated: boolean;
+  steps?: Array<{
+    step: number;
+    callId: string;
+    actions: string[];
+    driver: string;
+  }>;
+}
 
 export interface AiModelOption {
   id: string;
@@ -539,6 +569,7 @@ export const emailApi = {
     body: string;
     threadId?: string;
     inReplyToMessageId?: string;
+    attachments?: Array<{ filename: string; mimeType: string; data: string }>;
   }): Promise<{ draftId: string; gmailDraftId: string }> {
     const result = await request<{ draftId: string; gmailDraftId: string }>(
       "/api/drafts",
@@ -664,6 +695,7 @@ export const emailApi = {
     sessionId?: string;
     createSession?: boolean;
     contextMessageIds?: AiEmailContextRef[];
+    contextFiles?: Array<{ filename: string; mimeType: string; data: string }>;
     signal?: AbortSignal;
   }): Promise<ThreadAiResponse> {
     const { signal, ...body } = payload;
@@ -687,10 +719,33 @@ export const emailApi = {
     sessionId?: string;
     createSession?: boolean;
     contextMessageIds?: AiEmailContextRef[];
+    contextFiles?: Array<{ filename: string; mimeType: string; data: string }>;
+    generatedAttachments?: Array<{ filename: string; mimeType: string; data: string }>;
     signal?: AbortSignal;
   }): Promise<ComposeAiResponse> {
     const { signal, ...body } = payload;
     return request<ComposeAiResponse>("/api/ai/compose", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    });
+  },
+
+  async runComputerUseAi(payload: {
+    prompt: string;
+    model?: string;
+    instructions?: string;
+    startUrl?: string;
+    tools?: AiToolKey[];
+    signal?: AbortSignal;
+  }): Promise<{
+    answer: string;
+    model: string;
+    responseId?: string;
+    computerUse: ComputerUseSummary;
+  }> {
+    const { signal, ...body } = payload;
+    return request("/api/ai/computer-use", {
       method: "POST",
       body: JSON.stringify(body),
       signal,

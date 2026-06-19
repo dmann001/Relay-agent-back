@@ -233,9 +233,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
   }
 
   const handleAiPromptKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
-    event.preventDefault()
-    void handleRunAi()
+    if (event.nativeEvent.isComposing) return
   }
 
   const handleSend = async () => {
