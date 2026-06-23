@@ -18,6 +18,12 @@ export type EmailAction =
   | "star"
   | "unstar";
 
+export interface EmailsUpdatedDetail {
+  messageId?: string;
+  accountId?: string;
+  action?: EmailAction;
+}
+
 export interface ConnectedAccount {
   id: string;
   email: string;
@@ -364,9 +370,11 @@ export class EmailApiError extends Error {
   }
 }
 
-const notifyEmailsUpdated = () => {
+const notifyEmailsUpdated = (detail?: EmailsUpdatedDetail) => {
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("relay-emails-updated"));
+    window.dispatchEvent(
+      new CustomEvent<EmailsUpdatedDetail>("relay-emails-updated", { detail }),
+    );
   }
 };
 
@@ -510,7 +518,7 @@ export const emailApi = {
       method: "POST",
       body: JSON.stringify({ action, ...(accountId ? { accountId } : {}) }),
     });
-    notifyEmailsUpdated();
+    notifyEmailsUpdated({ messageId, action, accountId });
   },
 
   async getAttachment(

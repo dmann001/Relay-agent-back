@@ -153,7 +153,11 @@ export function useAiChat({ accountId, messageId, initialSessionId, onSessionId 
   const attachmentsContext = useAiChatAttachmentsOptional()
   const attachments = attachmentsContext?.attachments
   const chatAttachments = useMemo(() => attachments ?? [], [attachments])
-  const fileAttachments = attachmentsContext?.fileAttachments ?? []
+  const contextFileAttachments = attachmentsContext?.fileAttachments
+  const fileAttachments = useMemo(
+    () => contextFileAttachments ?? [],
+    [contextFileAttachments],
+  )
   const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [prompt, setPrompt] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -702,7 +706,7 @@ export function AiChatComposer({
   const excludeMessageIds = messageId ? [messageId] : []
 
   return (
-    <div className={cn("border-t border-border bg-background p-3", className)}>
+    <div className={cn("border-t border-border bg-background p-2", className)}>
       {attachError && (
         <div className="mx-auto mb-2 w-full max-w-3xl rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           {attachError}
@@ -731,7 +735,7 @@ export function AiChatComposer({
       )}
       <form
         className={cn(
-          "relative mx-auto flex w-full max-w-3xl items-end gap-2 rounded-3xl border border-border bg-card p-2 shadow-sm transition-colors",
+          "relative mx-auto flex w-full max-w-3xl items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-none transition-colors",
           isDragOver && "border-brand bg-brand/5",
         )}
         onSubmit={(event) => {
@@ -759,7 +763,7 @@ export function AiChatComposer({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-full bg-surface-subtle"
+            className="h-9 w-9 rounded-xl bg-surface-subtle"
             onClick={() => onToolMenuOpenChange(!isToolMenuOpen)}
             aria-label="Attach context or tools"
           >
@@ -842,7 +846,7 @@ export function AiChatComposer({
           onChange={(event) => onPromptChange(event.target.value)}
           onKeyDown={onPromptKeyDown}
           placeholder={isDragOver ? "Drop file to attach..." : placeholder}
-          className="min-h-11 flex-1 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0"
+          className="min-h-10 flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm shadow-none focus-visible:ring-0"
           maxLength={2000}
         />
         {isLoading ? (
@@ -850,7 +854,7 @@ export function AiChatComposer({
             type="button"
             size="icon"
             variant="destructive"
-            className="h-9 w-9 shrink-0 rounded-full"
+            className="h-9 w-9 shrink-0 rounded-xl"
             onClick={onStop}
             aria-label="Stop"
           >
@@ -860,7 +864,7 @@ export function AiChatComposer({
           <Button
             type="submit"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-full"
+            className="h-9 w-9 shrink-0 rounded-xl"
             disabled={!canSend}
             aria-label="Send"
           >

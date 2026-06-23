@@ -5,30 +5,41 @@ import { usePathname } from "next/navigation"
 import { Bot, BrainCircuit, Plug, UserRound } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const items = [
+const groups = [
   {
-    href: "/settings/profile",
-    label: "Profile",
-    description: "Account and identity",
-    icon: UserRound,
+    label: "Personal",
+    items: [
+      {
+        href: "/settings/profile",
+        label: "Profile",
+        icon: UserRound,
+      },
+    ],
   },
   {
-    href: "/settings/connections",
-    label: "Connections",
-    description: "Email accounts and calendar",
-    icon: Plug,
+    label: "Mail",
+    items: [
+      {
+        href: "/settings/connections",
+        label: "Connected accounts",
+        icon: Plug,
+      },
+    ],
   },
   {
-    href: "/settings/ai",
-    label: "AI personalization",
-    description: "Writing style and drafts",
-    icon: Bot,
-  },
-  {
-    href: "/settings/ai-models",
-    label: "AI models",
-    description: "Default model and tools",
-    icon: BrainCircuit,
+    label: "AI & Agents",
+    items: [
+      {
+        href: "/settings/ai",
+        label: "Agent personalization",
+        icon: Bot,
+      },
+      {
+        href: "/settings/ai-models",
+        label: "Models & tools",
+        icon: BrainCircuit,
+      },
+    ],
   },
 ] as const
 
@@ -36,32 +47,38 @@ export function SettingsNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="space-y-1" aria-label="Settings sections">
-      {items.map(({ href, label, description, icon: Icon }) => {
-        const active =
-          pathname === href ||
-          pathname.startsWith(`${href}/`) ||
-          (href === "/settings/profile" && pathname === "/settings")
+    <nav className="space-y-5" aria-label="Settings sections">
+      {groups.map((group) => (
+        <div key={group.label}>
+          <div className="mb-1 px-3 text-sm font-semibold text-muted-foreground">
+            {group.label}
+          </div>
+          <div className="space-y-0.5">
+            {group.items.map(({ href, label, icon: Icon }) => {
+              const active =
+                pathname === href ||
+                pathname.startsWith(`${href}/`) ||
+                (href === "/settings/profile" && pathname === "/settings")
 
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors",
-              active
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
-            )}
-          >
-            <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", active && "text-foreground")} />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">{label}</span>
-              <span className="block text-xs text-muted-foreground">{description}</span>
-            </span>
-          </Link>
-        )
-      })}
+              return (
+                <Link
+                  key={`${group.label}-${label}`}
+                  href={href}
+                  className={cn(
+                    "flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                  )}
+                >
+                  <Icon className={cn("h-4 w-4 shrink-0", active && "text-foreground")} />
+                  <span className="min-w-0 truncate">{label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </nav>
   )
 }

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
   Bot,
+  Clock3,
   CheckCheck,
   Inbox as InboxIcon,
   Loader2,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   Settings,
   Sparkles,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -36,6 +38,7 @@ import {
   EmailApiError,
   type ConnectedAccount,
   type EmailAction,
+  type EmailsUpdatedDetail,
 } from "@/lib/email-api";
 import { useToast } from "@/hooks/use-toast";
 import type { Email } from "@/types";
@@ -131,6 +134,7 @@ export function InboxList() {
   const selectedAccountId = searchParams.get("account");
   const showInboxBrief = searchParams.get("assistant") === "brief";
   const showInboxChat = searchParams.get("assistant") === "chat";
+  const chatMaximized = searchParams.get("chatSize") === "max";
   const chatSessionId = searchParams.get("chatSession");
 
   const [emails, setEmails] = useState<Email[]>([]);
@@ -147,6 +151,7 @@ export function InboxList() {
   const [bulkAction, setBulkAction] = useState<EmailAction | null>(null);
   const [showCompose, setShowCompose] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const emailsRef = useRef<Email[]>([]);
   const requestVersion = useRef(0);
   const selectedAccount = accounts.find(({ id }) => id === selectedAccountId);
   const isOutlookOnly = selectedAccount?.provider === "outlook";
@@ -245,6 +250,10 @@ export function InboxList() {
     },
     [loadEmails, selectedAccountId, selectedCategory, toast],
   );
+
+  useEffect(() => {
+    emailsRef.current = emails;
+  }, [emails]);
 
   useEffect(() => {
     let cancelled = false;
@@ -374,10 +383,22 @@ export function InboxList() {
 
   const removeEmails = useCallback(
     (ids: Set<string>) => {
-      setEmails((current) =>
-        current.filter((email) => !ids.has(emailKey(email))),
+      const currentEmails = emailsRef.current;
+      const removedEmails = currentEmails.filter((email) =>
+        ids.has(emailKey(email)),
       );
-      setTotalEmails((current) => Math.max(0, current - ids.size));
+      if (!removedEmails.length) return;
+      const unreadRemoved = removedEmails.filter((email) => !email.read).length;
+
+      const nextEmails = currentEmails.filter(
+        (email) => !ids.has(emailKey(email)),
+      );
+      emailsRef.current = nextEmails;
+      setEmails(nextEmails);
+      setTotalEmails((current) => Math.max(0, current - removedEmails.length));
+      if (unreadRemoved) {
+        setUnreadTotal((current) => Math.max(0, current - unreadRemoved));
+      }
       setSelectedIds(new Set());
       if (
         selectedEmailId &&
@@ -389,12 +410,42 @@ export function InboxList() {
   );
 
   const updateReadState = useCallback((ids: Set<string>, read: boolean) => {
-    setEmails((current) =>
-      current.map((email) =>
-        ids.has(emailKey(email)) ? { ...email, read } : email,
-      ),
+    const currentEmails = emailsRef.current;
+    const unreadDelta = currentEmails.reduce((sum, email) => {
+      if (!ids.has(emailKey(email)) || email.read === read) return sum;
+      return sum + (read ? -1 : 1);
+    }, 0);
+
+    const nextEmails = currentEmails.map((email) =>
+      ids.has(emailKey(email)) ? { ...email, read } : email,
     );
+    emailsRef.current = nextEmails;
+    setEmails(nextEmails);
+    if (unreadDelta) {
+      setUnreadTotal((current) => Math.max(0, current + unreadDelta));
+    }
   }, []);
+
+  useEffect(() => {
+    const onEmailsUpdated = (event: Event) => {
+      const detail =
+        event instanceof CustomEvent
+          ? (event.detail as EmailsUpdatedDetail | undefined)
+          : undefined;
+      if (!detail?.messageId || !detail.action) return;
+
+      const ids = new Set([
+        `${detail.accountId || "unknown"}:${detail.messageId}`,
+      ]);
+      if (detail.action === "markRead" || detail.action === "markUnread") {
+        updateReadState(ids, detail.action === "markRead");
+      }
+    };
+
+    window.addEventListener("relay-emails-updated", onEmailsUpdated);
+    return () =>
+      window.removeEventListener("relay-emails-updated", onEmailsUpdated);
+  }, [updateReadState]);
 
   const runBulkAction = async (
     action: "archive" | "trash" | "markRead" | "markUnread",
@@ -402,6 +453,7 @@ export function InboxList() {
     const ids = new Set(selectedIds);
     if (!ids.size || bulkAction) return;
     const snapshot = emails;
+    const snapshotUnreadTotal = unreadTotal;
     setBulkAction(action);
     if (action === "archive" || action === "trash") removeEmails(ids);
     else updateReadState(ids, action === "markRead");
@@ -417,7 +469,9 @@ export function InboxList() {
       (_, index) => results[index].status === "rejected",
     );
     if (failedIds.length) {
+      emailsRef.current = snapshot;
       setEmails(snapshot);
+      setUnreadTotal(snapshotUnreadTotal);
       setTotalEmails((current) =>
         action === "archive" || action === "trash"
           ? current + ids.size
@@ -458,12 +512,15 @@ export function InboxList() {
     event.stopPropagation();
     const ids = new Set([emailKey(email)]);
     const snapshot = emails;
+    const snapshotUnreadTotal = unreadTotal;
     if (action === "archive" || action === "trash") removeEmails(ids);
     else updateReadState(ids, action === "markRead");
     try {
       await emailApi.modifyEmail(email.id, action, email.accountId);
     } catch (error: any) {
+      emailsRef.current = snapshot;
       setEmails(snapshot);
+      setUnreadTotal(snapshotUnreadTotal);
       setTotalEmails((current) =>
         action === "archive" || action === "trash" ? current + 1 : current,
       );
@@ -533,25 +590,26 @@ export function InboxList() {
     startResize: startListResize,
   } = useResizablePanel({
     storageKey: "relay-inbox-list-width",
-    defaultWidth: 380,
-    minWidth: 280,
-    maxWidth: 560,
+    defaultWidth: 430,
+    minWidth: 320,
+    maxWidth: 620,
   });
 
-  const showSplitView = Boolean(selectedEmailId || showInboxBrief || showInboxChat);
+  const showSplitView = Boolean(selectedEmailId || showInboxBrief);
 
   return (
-    <div className="flex h-full min-h-0 bg-background">
+    <div className="relative flex h-full min-h-0 bg-background p-2">
+      <div className="flex h-full min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card">
       <section
         style={{ width: listWidth }}
         className={cn(
-          "min-w-0 w-full flex-col bg-background md:flex md:flex-none",
+          "min-w-0 w-full flex-col bg-card md:flex md:flex-none",
           !isListResizing && "transition-[width] duration-200",
           showSplitView ? "hidden md:flex" : "flex",
         )}
         aria-label="Inbox message list"
       >
-        <header className="shrink-0 border-b border-border bg-surface-subtle/95 px-3 py-3 backdrop-blur sm:px-4">
+        <header className="shrink-0 border-b border-border bg-background/95 px-3 py-3 backdrop-blur sm:px-4">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <SearchBar onSearch={setSearchQuery} />
@@ -630,7 +688,7 @@ export function InboxList() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => updateQuery({ assistant: "chat" })}
+                onClick={() => updateQuery({ assistant: "chat", chatSize: null })}
                 title="Open Relay AI chat"
                 className={cn(
                   "h-8 px-2 text-xs",
@@ -676,10 +734,10 @@ export function InboxList() {
                     })
                   }
                   className={cn(
-                    "shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                    "shrink-0 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
                     selectedCategory === category.value
-                      ? "bg-brand-soft text-brand-strong"
-                      : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                      ? "bg-surface-hover text-foreground"
+                      : "text-muted-foreground hover:bg-surface-subtle hover:text-foreground",
                   )}
                 >
                   {category.label}
@@ -690,7 +748,7 @@ export function InboxList() {
         </header>
 
         <div
-          className="flex h-11 shrink-0 items-center border-b border-border bg-card px-3 sm:px-4"
+          className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 sm:px-4"
           aria-live="polite"
         >
           {selectedIds.size ? (
@@ -819,13 +877,13 @@ export function InboxList() {
                     key={email.id}
                     role="listitem"
                     className={cn(
-                      "group relative flex min-h-[76px] cursor-pointer items-start gap-2 border-b border-border px-3 py-2.5 transition-colors sm:px-4",
+                      "group relative flex min-h-[68px] cursor-pointer items-start gap-2 border-b border-border/80 px-3 py-2 transition-colors sm:px-4",
                       selected
-                        ? "bg-brand-soft/70"
+                        ? "bg-surface-hover"
                         : !email.read
-                          ? "bg-brand-soft/25"
-                          : "bg-background",
-                      "hover:bg-surface-hover",
+                          ? "bg-card"
+                          : "bg-card",
+                      "hover:bg-surface-subtle focus-visible:bg-surface-hover",
                     )}
                     onClick={() =>
                       updateQuery({
@@ -849,7 +907,7 @@ export function InboxList() {
                     aria-current={selected ? "true" : undefined}
                   >
                     <div
-                      className="flex w-5 shrink-0 justify-center pt-2"
+                      className="flex w-5 shrink-0 justify-center pt-2.5"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <Checkbox
@@ -859,7 +917,7 @@ export function InboxList() {
                       />
                     </div>
                     <span
-                      className="mt-3 h-2 w-2 shrink-0 rounded-full"
+                      className="mt-4 h-1.5 w-1.5 shrink-0 rounded-full"
                       style={{
                         backgroundColor: accountColor(email.accountId || ""),
                       }}
@@ -870,9 +928,9 @@ export function InboxList() {
                         "Connected account"
                       }
                     />
-                    <Avatar className="mt-0.5 h-8 w-8 shrink-0 border border-border">
+                    <Avatar className="mt-0.5 h-9 w-9 shrink-0 border border-border">
                       <AvatarImage src={email.from.avatar} alt="" />
-                      <AvatarFallback className="text-[10px]">
+                      <AvatarFallback className="text-[11px] font-medium">
                         {initials(email.from.name)}
                       </AvatarFallback>
                     </Avatar>
@@ -880,7 +938,7 @@ export function InboxList() {
                       <div className="flex items-baseline gap-2">
                         <span
                           className={cn(
-                            "min-w-0 flex-1 truncate text-sm",
+                            "min-w-0 flex-1 truncate text-[13px] leading-5",
                             !email.read
                               ? "font-semibold text-foreground"
                               : "font-medium text-foreground",
@@ -890,7 +948,7 @@ export function InboxList() {
                         </span>
                         <time
                           className={cn(
-                            "shrink-0 text-[11px]",
+                            "shrink-0 text-[11px] leading-5",
                             !email.read
                               ? "font-medium text-brand-strong"
                               : "text-muted-foreground",
@@ -901,7 +959,7 @@ export function InboxList() {
                       </div>
                       <div
                         className={cn(
-                          "mt-0.5 truncate text-sm",
+                          "truncate text-[13px] leading-5",
                           !email.read
                             ? "font-semibold text-foreground"
                             : "text-foreground",
@@ -913,7 +971,7 @@ export function InboxList() {
                         {email.hasAttachments && (
                           <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
                         )}
-                        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        <p className="min-w-0 flex-1 truncate text-[12px] leading-5 text-muted-foreground">
                           {cleanSnippet(email) || "No preview available"}
                         </p>
                         <span
@@ -1013,7 +1071,7 @@ export function InboxList() {
 
       <section
         className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col bg-surface-subtle/40",
+          "flex min-h-0 min-w-0 flex-1 flex-col border-l border-border bg-background",
           showSplitView ? "flex" : "hidden md:flex",
         )}
         aria-label="Email reading pane"
@@ -1026,49 +1084,6 @@ export function InboxList() {
               updateQuery({ assistant: null, message: messageId })
             }
           />
-        ) : showInboxChat ? (
-          selectedEmailId ? (
-            <div className="flex h-full min-h-0 w-full">
-              <div className="flex h-full min-h-0 min-w-0 flex-1">
-                <ThreadView
-                  threadId={selectedEmailId}
-                  accountId={
-                    selectedMessageAccountId ||
-                    selectedEmail?.accountId
-                  }
-                  embedded
-                  onClose={() =>
-                    updateQuery({ message: null, messageAccount: null })
-                  }
-                  onRemoved={handleThreadRemoved}
-                  onRead={handleThreadRead}
-                />
-              </div>
-              <div className="hidden h-full min-w-0 md:flex md:max-w-[26rem] md:flex-none md:shrink-0">
-                <AiInboxChat
-                  accountId={
-                    selectedMessageAccountId ||
-                    selectedEmail?.accountId ||
-                    selectedAccountId ||
-                    undefined
-                  }
-                  messageId={selectedEmailId}
-                  subject={selectedEmail?.subject}
-                  sessionId={chatSessionId || undefined}
-                  edge="end"
-                  onClose={() => updateQuery({ assistant: null, chatSession: null })}
-                  onSessionChange={(sessionId) => updateQuery({ chatSession: sessionId })}
-                />
-              </div>
-            </div>
-          ) : (
-            <AiInboxChat
-              accountId={selectedAccountId || undefined}
-              sessionId={chatSessionId || undefined}
-              onClose={() => updateQuery({ assistant: null, chatSession: null })}
-              onSessionChange={(sessionId) => updateQuery({ chatSession: sessionId })}
-            />
-          )
         ) : selectedEmailId ? (
           <div className="h-full min-h-0 w-full">
             <ThreadView
@@ -1101,6 +1116,61 @@ export function InboxList() {
           </div>
         )}
       </section>
+      </div>
+
+      {showInboxChat ? (
+        <div
+          className={cn(
+            "fixed z-50",
+            chatMaximized
+              ? "inset-x-3 top-3 bottom-2 lg:left-[calc(240px+0.75rem)]"
+              : "bottom-2 right-3 h-[min(46rem,calc(100vh-1.5rem))] w-[min(31rem,calc(100vw-1.5rem))]",
+          )}
+        >
+          <AiInboxChat
+            accountId={
+              selectedMessageAccountId ||
+              selectedEmail?.accountId ||
+              selectedAccountId ||
+              undefined
+            }
+            messageId={selectedEmailId || undefined}
+            subject={selectedEmail?.subject}
+            sessionId={chatSessionId || undefined}
+            variant="floating"
+            maximized={chatMaximized}
+            onToggleMaximize={() =>
+              updateQuery({ chatSize: chatMaximized ? null : "max" })
+            }
+            onClose={() =>
+              updateQuery({ assistant: null, chatSize: null, chatSession: null })
+            }
+            onSessionChange={(sessionId) => updateQuery({ chatSession: sessionId })}
+          />
+        </div>
+      ) : (
+        <div className="fixed bottom-3 right-3 z-40 flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 rounded-full border-border bg-card text-muted-foreground shadow-sm hover:bg-surface-hover"
+            asChild
+            aria-label="Chat history"
+            title="Chat history"
+          >
+            <Link href="/ai-chat">
+              <Clock3 className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            onClick={() => updateQuery({ assistant: "chat", chatSize: null })}
+            className="h-9 rounded-lg bg-foreground px-3 text-background shadow-sm hover:bg-foreground/90"
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Ask Relay
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

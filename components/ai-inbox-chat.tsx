@@ -1,7 +1,18 @@
 "use client"
 
 import Link from "next/link"
-import { Bot, History, Sparkles, X } from "lucide-react"
+import {
+  Bot,
+  Box,
+  History,
+  Maximize2,
+  Minimize2,
+  Search,
+  Sparkles,
+  WandSparkles,
+  X,
+  Zap,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AiChatComposer, AiChatContextAttachments, AiChatMessages, useAiChat } from "@/components/ai-chat-shared"
 import { cn } from "@/lib/utils"
@@ -12,9 +23,19 @@ interface AiInboxChatProps {
   subject?: string
   sessionId?: string
   edge?: "start" | "end"
+  variant?: "split" | "floating"
+  maximized?: boolean
   onClose: () => void
+  onToggleMaximize?: () => void
   onSessionChange?: (sessionId: string | null) => void
 }
+
+const starterPrompts = [
+  { label: "Create a draft", prompt: "Draft a concise reply to the current email.", icon: Box },
+  { label: "Research a topic", prompt: "Research this topic and summarize what matters.", icon: Search },
+  { label: "Summarize inbox", prompt: "Summarize what needs attention in my inbox.", icon: Zap },
+  { label: "Polish text", prompt: "Polish this draft while keeping my voice.", icon: WandSparkles },
+]
 
 export function AiInboxChat({
   accountId,
@@ -22,7 +43,10 @@ export function AiInboxChat({
   subject,
   sessionId: initialSessionId,
   edge = "start",
+  variant = "split",
+  maximized = false,
   onClose,
+  onToggleMaximize,
   onSessionChange,
 }: AiInboxChatProps) {
   const chat = useAiChat({
@@ -34,31 +58,43 @@ export function AiInboxChat({
 
   return (
     <div className={cn(
-      "flex h-full min-h-0 w-full flex-col bg-background",
-      edge === "end" ? "border-l border-border" : "border-r border-border",
+      "flex h-full min-h-0 w-full flex-col overflow-hidden bg-card",
+      variant === "split" && (edge === "end" ? "border-l border-border" : "border-r border-border"),
+      variant === "floating" && "rounded-xl border border-border shadow-2xl",
     )}>
-      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
-          <Sparkles className="h-4 w-4" />
-        </div>
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-sm font-semibold text-foreground">Relay AI</h1>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {messageId ? `Current email${subject ? ` · ${subject}` : ""}` : "Ask about your inbox or draft a message"}
-          </p>
+          <h1 className="truncate text-sm font-semibold text-foreground">New chat</h1>
+          {messageId && (
+            <p className="truncate text-xs text-muted-foreground">
+              Current email{subject ? ` · ${subject}` : ""}
+            </p>
+          )}
         </div>
-        <Button variant="ghost" size="icon" asChild aria-label="Chat history">
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" asChild aria-label="Chat history">
           <Link href="/ai-chat">
             <History className="h-4 w-4" />
           </Link>
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => {
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => {
           chat.startNewChat()
           onSessionChange?.(null)
-        }}>
-          New chat
+        }} aria-label="Start new chat" title="Start new chat">
+          <Sparkles className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close AI chat">
+        {onToggleMaximize && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground"
+            onClick={onToggleMaximize}
+            aria-label={maximized ? "Restore chat size" : "Maximize chat"}
+            title={maximized ? "Restore chat size" : "Maximize chat"}
+          >
+            {maximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        )}
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={onClose} aria-label="Close AI chat">
           <X className="h-4 w-4" />
         </Button>
       </header>
@@ -71,16 +107,34 @@ export function AiInboxChat({
       />
 
       {chat.messages.length === 0 ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card">
-            <Bot className="h-6 w-6 text-brand" />
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-6 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full">
+            <Bot className="h-5 w-5 text-muted-foreground" />
           </div>
-          <h2 className="mt-4 text-base font-medium text-foreground">Ask Relay anything</h2>
+          <h2 className="mt-2 text-base font-medium text-foreground">Welcome to Relay</h2>
           <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-            {messageId
-              ? "Ask about the open email, request a summary, or get help deciding how to reply."
-              : "Ask for writing help or quick inbox guidance. Open an email to ask with message context."}
+            Ask anything or tell Relay what you need.
           </p>
+          <div className={cn(
+            "mt-5 flex max-w-xl flex-wrap justify-center gap-2",
+            !maximized && "max-w-sm",
+          )}>
+            {starterPrompts.map(({ label, prompt, icon: Icon }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => chat.setPrompt(prompt)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 space-y-2 text-sm text-muted-foreground">
+            <div><kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-xs">@</kbd> to mention any issue, email, or document</div>
+            <div><kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-xs">Tab</kbd> to add current view to context</div>
+          </div>
           {chat.error && (
             <div className="mt-4 max-w-sm rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
               {chat.error}

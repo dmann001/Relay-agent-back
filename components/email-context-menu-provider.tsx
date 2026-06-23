@@ -101,7 +101,6 @@ export function EmailContextMenuProvider({ children }: { children: ReactNode }) 
     closeMenu()
     try {
       await emailApi.modifyEmail(email.id, action, email.accountId)
-      window.dispatchEvent(new Event("relay-emails-updated"))
       toast({
         title: action === "archive"
           ? "Email archived"

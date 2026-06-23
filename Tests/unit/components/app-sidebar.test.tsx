@@ -100,32 +100,50 @@ describe("AppSidebar", () => {
     jest.clearAllMocks()
   })
 
-  it("renders counts, connected accounts, and core navigation", async () => {
+  it("renders counts, connected accounts, workspace menu, and core navigation", async () => {
     render(<AppSidebar />)
 
     expect(screen.getByRole("link", { name: /Inbox/ })).toHaveAttribute("href", "/inbox")
     expect(screen.getByRole("link", { name: /Sent/ })).toHaveAttribute("href", "/sent")
-    expect(screen.getByRole("link", { name: /Settings/ })).toHaveAttribute("href", "/settings")
+    expect(screen.getByRole("button", { name: "Open workspace menu" })).toBeInTheDocument()
 
-    expect(await screen.findByText("work@example.com")).toBeInTheDocument()
+    expect(await screen.findByText("Gmail")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Gmail/ })).toHaveAttribute("title", "work@example.com")
     expect(screen.getByText("12 unread")).toBeInTheDocument()
-    expect(screen.getByText("me@example.com")).toBeInTheDocument()
+    expect(screen.getByText("Outlook")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Outlook/ })).toHaveAttribute("title", "me@example.com")
     expect(screen.getByText("Fix")).toBeInTheDocument()
     expect(screen.getByText("7")).toBeInTheDocument()
     expect(screen.getByText("6")).toBeInTheDocument()
     expect(screen.getByText("5")).toBeInTheDocument()
   })
 
-  it("opens compose and signs out from the user action", async () => {
+  it("opens compose from the single sidebar action and signs out from the workspace menu", async () => {
     render(<AppSidebar />)
 
     await waitFor(() => expect(api.getCounts).toHaveBeenCalled())
     expect(screen.getByTestId("sidebar-compose-state")).toHaveTextContent("compose closed")
-    fireEvent.click(screen.getByRole("button", { name: /Compose/ }))
+    fireEvent.click(screen.getByRole("button", { name: "New email" }))
     expect(screen.getByTestId("sidebar-compose-state")).toHaveTextContent("compose open")
 
-    fireEvent.click(screen.getByRole("button", { name: "D. Relay" }))
+    fireEvent.click(screen.getByRole("button", { name: "Open workspace menu" }))
+    expect(screen.getByRole("link", { name: /Settings/ })).toHaveAttribute("href", "/settings/profile")
+    expect(screen.getByRole("link", { name: /Notifications/ })).toHaveAttribute("href", "/activity")
+    fireEvent.click(screen.getByRole("button", { name: /Log out/ }))
     expect(signOut).toHaveBeenCalledTimes(1)
+  })
+
+  it("collapses grouped navigation sections", async () => {
+    render(<AppSidebar />)
+
+    await waitFor(() => expect(api.getCounts).toHaveBeenCalled())
+    expect(screen.getByRole("link", { name: /Commitments/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }))
+    expect(screen.queryByRole("link", { name: /Commitments/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }))
+    expect(screen.getByRole("link", { name: /Commitments/ })).toBeInTheDocument()
   })
 
   it("persists collapsed sidebar state", async () => {
