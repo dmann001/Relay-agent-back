@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { InboxList } from "@/components/inbox-list"
 import { emailApi } from "@/lib/email-api"
 import type { Email } from "@/types"
@@ -175,6 +175,26 @@ describe("InboxList", () => {
     await waitFor(() => expect(mockedApi.modifyEmail).toHaveBeenCalledTimes(2))
     expect(mockedApi.modifyEmail).toHaveBeenCalledWith("message-1", "markRead", undefined)
     expect(mockedApi.modifyEmail).toHaveBeenCalledWith("message-2", "markRead", undefined)
+  })
+
+  it("updates loaded unread counts from read and unread mutation events", async () => {
+    render(<InboxList />)
+    await screen.findByText("Project update")
+    expect(screen.getByText("1 unread · 2 total")).toBeInTheDocument()
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("relay-emails-updated", {
+        detail: { messageId: "message-1", action: "markRead" },
+      }))
+    })
+    await waitFor(() => expect(screen.getByText("0 unread · 2 total")).toBeInTheDocument())
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("relay-emails-updated", {
+        detail: { messageId: "message-1", action: "markUnread" },
+      }))
+    })
+    await waitFor(() => expect(screen.getByText("1 unread · 2 total")).toBeInTheDocument())
   })
 
   it("does not navigate from global letter shortcuts", async () => {

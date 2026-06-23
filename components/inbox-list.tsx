@@ -38,6 +38,7 @@ import {
   EmailApiError,
   type ConnectedAccount,
   type EmailAction,
+  type EmailsUpdatedDetail,
 } from "@/lib/email-api";
 import { useToast } from "@/hooks/use-toast";
 import type { Email } from "@/types";
@@ -150,6 +151,7 @@ export function InboxList() {
   const [bulkAction, setBulkAction] = useState<EmailAction | null>(null);
   const [showCompose, setShowCompose] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const emailsRef = useRef<Email[]>([]);
   const requestVersion = useRef(0);
   const selectedAccount = accounts.find(({ id }) => id === selectedAccountId);
   const isOutlookOnly = selectedAccount?.provider === "outlook";
@@ -248,6 +250,10 @@ export function InboxList() {
     },
     [loadEmails, selectedAccountId, selectedCategory, toast],
   );
+
+  useEffect(() => {
+    emailsRef.current = emails;
+  }, [emails]);
 
   useEffect(() => {
     let cancelled = false;
@@ -377,10 +383,22 @@ export function InboxList() {
 
   const removeEmails = useCallback(
     (ids: Set<string>) => {
-      setEmails((current) =>
-        current.filter((email) => !ids.has(emailKey(email))),
+      const currentEmails = emailsRef.current;
+      const removedEmails = currentEmails.filter((email) =>
+        ids.has(emailKey(email)),
       );
-      setTotalEmails((current) => Math.max(0, current - ids.size));
+      if (!removedEmails.length) return;
+      const unreadRemoved = removedEmails.filter((email) => !email.read).length;
+
+      const nextEmails = currentEmails.filter(
+        (email) => !ids.has(emailKey(email)),
+      );
+      emailsRef.current = nextEmails;
+      setEmails(nextEmails);
+      setTotalEmails((current) => Math.max(0, current - removedEmails.length));
+      if (unreadRemoved) {
+        setUnreadTotal((current) => Math.max(0, current - unreadRemoved));
+      }
       setSelectedIds(new Set());
       if (
         selectedEmailId &&
@@ -392,12 +410,42 @@ export function InboxList() {
   );
 
   const updateReadState = useCallback((ids: Set<string>, read: boolean) => {
-    setEmails((current) =>
-      current.map((email) =>
-        ids.has(emailKey(email)) ? { ...email, read } : email,
-      ),
+    const currentEmails = emailsRef.current;
+    const unreadDelta = currentEmails.reduce((sum, email) => {
+      if (!ids.has(emailKey(email)) || email.read === read) return sum;
+      return sum + (read ? -1 : 1);
+    }, 0);
+
+    const nextEmails = currentEmails.map((email) =>
+      ids.has(emailKey(email)) ? { ...email, read } : email,
     );
+    emailsRef.current = nextEmails;
+    setEmails(nextEmails);
+    if (unreadDelta) {
+      setUnreadTotal((current) => Math.max(0, current + unreadDelta));
+    }
   }, []);
+
+  useEffect(() => {
+    const onEmailsUpdated = (event: Event) => {
+      const detail =
+        event instanceof CustomEvent
+          ? (event.detail as EmailsUpdatedDetail | undefined)
+          : undefined;
+      if (!detail?.messageId || !detail.action) return;
+
+      const ids = new Set([
+        `${detail.accountId || "unknown"}:${detail.messageId}`,
+      ]);
+      if (detail.action === "markRead" || detail.action === "markUnread") {
+        updateReadState(ids, detail.action === "markRead");
+      }
+    };
+
+    window.addEventListener("relay-emails-updated", onEmailsUpdated);
+    return () =>
+      window.removeEventListener("relay-emails-updated", onEmailsUpdated);
+  }, [updateReadState]);
 
   const runBulkAction = async (
     action: "archive" | "trash" | "markRead" | "markUnread",
@@ -405,6 +453,7 @@ export function InboxList() {
     const ids = new Set(selectedIds);
     if (!ids.size || bulkAction) return;
     const snapshot = emails;
+    const snapshotUnreadTotal = unreadTotal;
     setBulkAction(action);
     if (action === "archive" || action === "trash") removeEmails(ids);
     else updateReadState(ids, action === "markRead");
@@ -420,7 +469,9 @@ export function InboxList() {
       (_, index) => results[index].status === "rejected",
     );
     if (failedIds.length) {
+      emailsRef.current = snapshot;
       setEmails(snapshot);
+      setUnreadTotal(snapshotUnreadTotal);
       setTotalEmails((current) =>
         action === "archive" || action === "trash"
           ? current + ids.size
@@ -461,12 +512,15 @@ export function InboxList() {
     event.stopPropagation();
     const ids = new Set([emailKey(email)]);
     const snapshot = emails;
+    const snapshotUnreadTotal = unreadTotal;
     if (action === "archive" || action === "trash") removeEmails(ids);
     else updateReadState(ids, action === "markRead");
     try {
       await emailApi.modifyEmail(email.id, action, email.accountId);
     } catch (error: any) {
+      emailsRef.current = snapshot;
       setEmails(snapshot);
+      setUnreadTotal(snapshotUnreadTotal);
       setTotalEmails((current) =>
         action === "archive" || action === "trash" ? current + 1 : current,
       );

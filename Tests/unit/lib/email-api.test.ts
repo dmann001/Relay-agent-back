@@ -84,6 +84,24 @@ describe("email API client", () => {
       }),
     );
     expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener("relay-emails-updated", listener);
+  });
+
+  it("includes mutation details on email update events", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(response({ success: true }));
+    const listener = jest.fn();
+    window.addEventListener("relay-emails-updated", listener);
+
+    await emailApi.modifyEmail("message-1", "markRead", "account-1");
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toBeInstanceOf(CustomEvent);
+    expect(listener.mock.calls[0][0].detail).toEqual({
+      messageId: "message-1",
+      action: "markRead",
+      accountId: "account-1",
+    });
+    window.removeEventListener("relay-emails-updated", listener);
   });
 
   it("URL-encodes account and draft identifiers", async () => {
