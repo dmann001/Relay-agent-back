@@ -1,23 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Archive,
   Bot,
   CheckSquare,
+  ChevronDown,
   FileText,
   NotebookTabs,
   Inbox,
   LogOut,
-  Mail,
   MessagesSquare,
   PanelLeft,
   PanelLeftClose,
   PenSquare,
+  Search,
   SendHorizontal,
-  Settings,
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,10 @@ export function AppSidebar() {
   const { user, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [counts, setCounts] = useState({
     inbox: 0,
     drafts: 0,
@@ -96,6 +99,26 @@ export function AppSidebar() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!showProfileMenu) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowProfileMenu(false);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showProfileMenu]);
+
   const toggleCollapsed = () =>
     setCollapsed((current) => {
       const next = !current;
@@ -115,31 +138,31 @@ export function AppSidebar() {
     disabled: collapsed,
   });
 
-  const navigation = [
-    { name: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
-    { name: "Sent", href: "/sent", icon: SendHorizontal, count: counts.sent },
-    { name: "Drafts", href: "/drafts", icon: FileText, count: counts.drafts },
+  const navigationGroups = [
     {
-      name: "Commitments",
-      href: "/commitments",
-      icon: CheckSquare,
-      count: counts.commitments,
-    },
-    { name: "Meeting Briefs", href: "/briefs", icon: NotebookTabs, count: 0 },
-    { name: "AI Chat", href: "/ai-chat", icon: MessagesSquare, count: 0 },
-    {
-      name: "Agent Activity",
-      href: "/activity",
-      icon: Bot,
-      count: counts.agentActivity,
+      label: null,
+      items: [
+        { name: "Inbox", href: "/inbox", icon: Inbox, count: counts.inbox },
+        { name: "Sent", href: "/sent", icon: SendHorizontal, count: counts.sent },
+        { name: "Drafts", href: "/drafts", icon: FileText, count: counts.drafts },
+      ],
     },
     {
-      name: "Archives",
-      href: "/archives",
-      icon: Archive,
-      count: counts.archives,
+      label: "Workspace",
+      items: [
+        { name: "Commitments", href: "/commitments", icon: CheckSquare, count: counts.commitments },
+        { name: "Meeting briefs", href: "/briefs", icon: NotebookTabs, count: 0 },
+        { name: "Activity", href: "/activity", icon: Bot, count: counts.agentActivity },
+      ],
     },
-    { name: "Trash", href: "/trash", icon: Trash2, count: counts.trash },
+    {
+      label: "Library",
+      items: [
+        { name: "AI chat", href: "/ai-chat", icon: MessagesSquare, count: 0 },
+        { name: "Archives", href: "/archives", icon: Archive, count: counts.archives },
+        { name: "Trash", href: "/trash", icon: Trash2, count: counts.trash },
+      ],
+    },
   ];
 
   const displayName =
@@ -148,38 +171,118 @@ export function AppSidebar() {
     user?.email ||
     "Sign out";
 
+  const accountLabel = (account: ConnectedAccount) =>
+    account.provider === "outlook" ? "Outlook" : "Gmail";
+
+  const toggleGroup = (label: string) =>
+    setCollapsedGroups((current) => ({
+      ...current,
+      [label]: !current[label],
+    }));
+
   return (
     <div className="relative flex h-full shrink-0">
       <aside
         className={cn(
-          "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-4 text-sidebar-foreground",
+          "flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar py-3 text-sidebar-foreground",
           !isSidebarResizing && "transition-[width] duration-200",
           collapsed && "w-20",
         )}
         style={collapsed ? undefined : { width: sidebarWidth }}
       >
       <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
-      <div
-        className={cn(
-          "mb-4 flex items-center px-3",
-          collapsed ? "justify-center" : "justify-between gap-2",
-        )}
-      >
-        <div
-          className={cn(
-            "flex min-w-0 items-center",
-            collapsed ? "justify-center" : "gap-3",
-          )}
-        >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand">
-            <Mail className="h-4 w-4 text-brand-foreground" />
-          </div>
-          {!collapsed && (
-            <span className="truncate text-base font-semibold tracking-tight">
-              Relay
-            </span>
+      <div className={cn("mb-3 flex items-center px-3", collapsed ? "justify-center" : "gap-2")}>
+        <div className="relative min-w-0 flex-1" ref={profileMenuRef}>
+          <button
+            type="button"
+            className={cn(
+              "flex min-w-0 items-center rounded-lg hover:bg-sidebar-accent",
+              collapsed ? "justify-center" : "w-full gap-2",
+            )}
+            title="Open workspace menu"
+            aria-label="Open workspace menu"
+            aria-expanded={showProfileMenu}
+            onClick={() => setShowProfileMenu((current) => !current)}
+          >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-brand-foreground">
+              {displayName.slice(0, 2).toUpperCase()}
+            </div>
+            {!collapsed && (
+              <>
+                <span className="truncate text-sm font-semibold tracking-tight">
+                  {displayName.split("@")[0] || "Relay"}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </>
+            )}
+          </button>
+          {showProfileMenu && (
+            <div className="absolute left-0 top-9 z-50 w-72 overflow-hidden rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
+              <Link
+                href="/settings/profile"
+                onClick={() => setShowProfileMenu(false)}
+                className="flex h-10 items-center justify-between rounded-lg px-3 text-sm font-medium hover:bg-surface-hover"
+              >
+                Settings
+                <span className="text-xs text-muted-foreground">G then S</span>
+              </Link>
+              <Link
+                href="/activity"
+                onClick={() => setShowProfileMenu(false)}
+                className="flex h-10 items-center rounded-lg px-3 text-sm font-medium hover:bg-surface-hover"
+              >
+                Notifications
+              </Link>
+              <ThemeToggle
+                collapsed={false}
+                className="h-10 rounded-lg px-3 hover:bg-surface-hover"
+              />
+              <Link
+                href="/settings/connections"
+                onClick={() => setShowProfileMenu(false)}
+                className="flex h-10 items-center justify-between rounded-lg px-3 text-sm font-medium hover:bg-surface-hover"
+              >
+                Connected accounts
+                <span className="text-xs text-muted-foreground">G then A</span>
+              </Link>
+              <div className="-mx-1.5 my-1 border-t border-border" />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProfileMenu(false);
+                  void signOut();
+                }}
+                className="flex h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-medium hover:bg-surface-hover"
+              >
+                Log out
+                <LogOut className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
           )}
         </div>
+        {!collapsed && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              aria-label="Search workspace"
+              title="Search workspace"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowCompose(true)}
+              className="h-8 w-8 rounded-full bg-sidebar-accent text-sidebar-foreground hover:bg-surface-hover"
+              aria-label="New email"
+              title="New email"
+            >
+              <PenSquare className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -210,63 +313,73 @@ export function AppSidebar() {
         </div>
       )}
 
-      <div className="px-3">
-        <Button
-          onClick={() => setShowCompose(true)}
-          className={cn(
-            "mb-4 bg-brand text-brand-foreground hover:bg-brand-strong",
-            collapsed ? "h-11 w-full px-0" : "w-full justify-start",
-          )}
-          title="Compose email"
-        >
-          <PenSquare className={cn("h-4 w-4", !collapsed && "mr-2")} />
-          {!collapsed && "Compose"}
-        </Button>
-      </div>
-
-      <nav className="flex flex-col gap-1 px-3">
-        {navigation.map((item) => {
-          const active = pathname === item.href;
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              title={item.name}
-              className={cn(
-                "group flex h-10 items-center rounded-lg text-sm font-medium transition-colors",
-                collapsed ? "justify-center px-0" : "px-3",
-                active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
-              )}
-            >
-              <Icon
-                className={cn(
-                  "h-4 w-4",
-                  !collapsed && "mr-3",
-                  active && "text-brand",
-                )}
-              />
-              {!collapsed && <span>{item.name}</span>}
-              {item.count > 0 && (
-                <Badge
+      <nav className="flex flex-col gap-4 px-3">
+        {navigationGroups.map((group, groupIndex) => (
+          <div key={group.label || `primary-${groupIndex}`}>
+            {!collapsed && group.label && (
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                className="mb-1 flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                aria-expanded={!collapsedGroups[group.label]}
+              >
+                {group.label}
+                <ChevronDown
                   className={cn(
-                    "h-5 min-w-5 justify-center rounded-full border-0 bg-brand-soft px-1.5 text-[10px] text-brand-strong",
-                    collapsed ? "absolute ml-7 -mt-6" : "ml-auto",
+                    "h-3 w-3 transition-transform",
+                    collapsedGroups[group.label] && "-rotate-90",
                   )}
-                >
-                  {item.count > 99 ? "99+" : item.count}
-                </Badge>
-              )}
-            </Link>
-          );
-        })}
+                />
+              </button>
+            )}
+            {!(group.label && collapsedGroups[group.label] && !collapsed) && (
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = pathname === item.href;
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    title={item.name}
+                    className={cn(
+                      "group flex h-9 items-center rounded-lg text-sm font-medium transition-colors",
+                      collapsed ? "justify-center px-0" : "px-2.5",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        "h-4 w-4",
+                        !collapsed && "mr-2.5",
+                        active && "text-foreground",
+                      )}
+                    />
+                    {!collapsed && <span className="truncate">{item.name}</span>}
+                    {item.count > 0 && (
+                      <Badge
+                        className={cn(
+                          "h-5 min-w-5 justify-center rounded-full border-0 bg-transparent px-1.5 text-[11px] font-medium text-muted-foreground",
+                          collapsed ? "absolute ml-7 -mt-6 bg-brand-soft text-brand-strong" : "ml-auto",
+                        )}
+                      >
+                        {item.count > 99 ? "99+" : item.count}
+                      </Badge>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+            )}
+          </div>
+        ))}
       </nav>
 
       {!collapsed && accounts.length > 0 && (
         <div className="mt-5 px-3">
-          <div className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="px-2 text-xs font-medium text-muted-foreground">
             Accounts
           </div>
           <div className="mt-2 space-y-1">
@@ -274,7 +387,8 @@ export function AppSidebar() {
               <Link
                 key={account.id}
                 href={`/inbox?account=${encodeURIComponent(account.id)}`}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-sidebar-accent"
+                title={account.email}
+                className="flex h-9 items-center gap-2 rounded-lg px-2.5 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
               >
                 <span
                   className={cn(
@@ -286,8 +400,8 @@ export function AppSidebar() {
                         : "bg-amber-500",
                   )}
                 />
-                <span className="min-w-0 flex-1 truncate text-xs">
-                  {account.email}
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {accountLabel(account)}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
                   {account.syncStatus === "error"
@@ -304,37 +418,7 @@ export function AppSidebar() {
         </div>
       )}
 
-      <div className="mt-auto space-y-1 px-3">
-        <Link
-          href="/settings"
-          title="Settings"
-          className={cn(
-            "flex h-10 items-center rounded-lg text-sm font-medium",
-            collapsed ? "justify-center" : "px-3",
-            pathname === "/settings" || pathname.startsWith("/settings/")
-              ? "bg-sidebar-accent"
-              : "text-muted-foreground hover:bg-sidebar-accent",
-          )}
-        >
-          <Settings className={cn("h-4 w-4", !collapsed && "mr-3")} />
-          {!collapsed && "Settings"}
-        </Link>
-        <ThemeToggle collapsed={collapsed} />
-        <button
-          type="button"
-          className={cn(
-            "flex h-10 w-full items-center rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
-            collapsed ? "justify-center px-0" : "px-3",
-          )}
-          onClick={() => signOut()}
-          title={displayName !== "Sign out" ? `Sign out ${displayName}` : "Sign out"}
-        >
-          <LogOut className={cn("h-4 w-4 shrink-0", !collapsed && "mr-3")} />
-          {!collapsed && (
-            <span className="truncate">{displayName}</span>
-          )}
-        </button>
-      </div>
+      <div className="mt-auto" />
       </aside>
       {!collapsed && (
         <ResizeHandle

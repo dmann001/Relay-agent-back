@@ -25,7 +25,7 @@ export function SearchBar({
       <Input
         type="search"
         placeholder="Search emails..."
-        className="h-11 w-full max-w-md rounded-xl border-input bg-surface-raised pl-11 pr-10 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-brand focus:ring-2 focus:ring-brand/20"
+        className="h-10 w-full max-w-md rounded-lg border-input bg-background pl-10 pr-10 text-[13px] text-foreground shadow-none placeholder:text-muted-foreground focus:border-ring focus:ring-1 focus:ring-ring/20"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
