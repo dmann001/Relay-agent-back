@@ -90,14 +90,28 @@ describe("AiInboxChat", () => {
     expect(await screen.findByText("The sender needs a reply.")).toBeInTheDocument()
   })
 
-  it("does not use Enter as a chat send shortcut", async () => {
+  it("sends with Enter and keeps Shift+Enter for a new line", async () => {
+    api.runThreadAi.mockResolvedValue({
+      result: { kind: "answer", answer: "Sent from keyboard.", evidence: [] },
+      context: { accountId: "account-1", accountEmail: "me@example.com", messageId: "message-1", subject: "Plan" },
+      model: "gpt-test",
+    })
+
     render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Plan" onClose={jest.fn()} />)
     await screen.findByPlaceholderText("Ask about this email...")
 
     fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), { target: { value: "Line one" } })
+    fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter", shiftKey: true })
+    expect(api.runThreadAi).not.toHaveBeenCalled()
+
     fireEvent.keyDown(screen.getByPlaceholderText("Ask about this email..."), { key: "Enter" })
 
-    expect(api.runThreadAi).not.toHaveBeenCalled()
+    await waitFor(() => expect(api.runThreadAi).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: "message-1",
+      accountId: "account-1",
+      action: "ask",
+      prompt: "Line one",
+    })))
   })
 
   it("uses compose AI when no email is selected", async () => {

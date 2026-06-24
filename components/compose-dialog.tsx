@@ -62,6 +62,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
   const [draftStatus, setDraftStatus] = useState<DraftStatus>("idle")
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextAutosave = useRef(true)
+  const suppressCloseAutosave = useRef(false)
 
   const isEditingDraft = Boolean(draft?.id)
   const { toast } = useToast()
@@ -206,7 +207,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
-      if (!isSending && (to.trim() || subject.trim() || body.trim())) void saveDraft(true)
+      if (!suppressCloseAutosave.current && !isSending && (to.trim() || subject.trim() || body.trim())) void saveDraft(true)
+      suppressCloseAutosave.current = false
       setTo("")
       setCc("")
       setSubject("")
@@ -300,6 +302,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
       })
 
       toast({ title: "Email sent!", description: `Your email to ${to} has been sent successfully.` })
+      suppressCloseAutosave.current = true
       handleOpenChange(false)
     } catch (error: any) {
       console.error("Send email error:", error)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Bot, Check, Loader2, Save, Trash2, X } from "lucide-react"
+import { Bot, Check, Loader2, Pencil, Save, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -146,6 +146,20 @@ function MemoryReview() {
     }
   }
 
+  const updateMemoryText = async (memory: MemoryItem, text: string) => {
+    setBusyId(memory.id)
+    try {
+      const result = await emailApi.updateMemory({ id: memory.id, action: "update", text })
+      if (result.memory) {
+        setMemories((current) => current.map((item) => item.id === memory.id ? result.memory! : item))
+      }
+    } catch (error: any) {
+      toast({ title: "Could not edit memory", description: error.message || "Try again.", variant: "destructive" })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const remove = async (memory: MemoryItem) => {
     setBusyId(memory.id)
     try {
@@ -209,6 +223,7 @@ function MemoryReview() {
               busyId={busyId}
               onAccept={(memory) => void run(memory, "accept")}
               onReject={(memory) => void run(memory, "reject")}
+              onUpdate={(memory, text) => void updateMemoryText(memory, text)}
               onDelete={remove}
             />
             <MemoryList
@@ -234,6 +249,7 @@ function MemoryList({
   onAccept,
   onReject,
   onArchive,
+  onUpdate,
   onDelete,
 }: {
   title: string
@@ -243,8 +259,12 @@ function MemoryList({
   onAccept?: (memory: MemoryItem) => void
   onReject?: (memory: MemoryItem) => void
   onArchive?: (memory: MemoryItem) => void
+  onUpdate?: (memory: MemoryItem, text: string) => void
   onDelete: (memory: MemoryItem) => void
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState("")
+
   return (
     <section className="space-y-2">
       <h3 className="text-sm font-medium text-foreground">{title}</h3>
@@ -255,30 +275,88 @@ function MemoryList({
           {memories.map((memory) => (
             <div key={memory.id} className="flex items-start gap-3 p-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm leading-6 text-foreground">{memory.text}</p>
+                {editingId === memory.id ? (
+                  <Textarea
+                    value={editText}
+                    onChange={(event) => setEditText(event.target.value)}
+                    className="min-h-20 text-sm"
+                    maxLength={1000}
+                  />
+                ) : (
+                  <p className="text-sm leading-6 text-foreground">{memory.text}</p>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {memory.type} · {memory.scope} · {memory.source}
+                  {[
+                    memory.type,
+                    memory.scope,
+                    memory.source,
+                    typeof memory.confidence === "number" ? `${Math.round(memory.confidence * 100)}% confidence` : null,
+                    memory.occurrence_count && memory.occurrence_count > 1 ? `${memory.occurrence_count} occurrences` : null,
+                    memory.last_seen_at ? `last seen ${new Date(memory.last_seen_at).toLocaleDateString()}` : null,
+                  ].filter(Boolean).join(" · ")}
                 </p>
               </div>
               <div className="flex shrink-0 gap-1">
-                {onAccept && (
+                {onUpdate && editingId === memory.id && (
+                  <>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      disabled={busyId === memory.id || !editText.trim()}
+                      onClick={() => {
+                        onUpdate(memory, editText.trim())
+                        setEditingId(null)
+                      }}
+                      aria-label="Save memory text"
+                    >
+                      <Save className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8"
+                      disabled={busyId === memory.id}
+                      onClick={() => setEditingId(null)}
+                      aria-label="Cancel memory edit"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+                {onUpdate && editingId !== memory.id && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    disabled={busyId === memory.id}
+                    onClick={() => {
+                      setEditingId(memory.id)
+                      setEditText(memory.text)
+                    }}
+                    aria-label="Edit memory"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+                {onAccept && editingId !== memory.id && (
                   <Button size="icon" variant="ghost" className="h-8 w-8" disabled={busyId === memory.id} onClick={() => onAccept(memory)} aria-label="Accept memory">
                     <Check className="h-4 w-4" />
                   </Button>
                 )}
-                {onReject && (
+                {onReject && editingId !== memory.id && (
                   <Button size="icon" variant="ghost" className="h-8 w-8" disabled={busyId === memory.id} onClick={() => onReject(memory)} aria-label="Reject memory">
                     <X className="h-4 w-4" />
                   </Button>
                 )}
-                {onArchive && (
+                {onArchive && editingId !== memory.id && (
                   <Button size="icon" variant="ghost" className="h-8 w-8" disabled={busyId === memory.id} onClick={() => onArchive(memory)} aria-label="Archive memory">
                     <X className="h-4 w-4" />
                   </Button>
                 )}
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" disabled={busyId === memory.id} onClick={() => onDelete(memory)} aria-label="Delete memory">
+                {editingId !== memory.id && <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" disabled={busyId === memory.id} onClick={() => onDelete(memory)} aria-label="Delete memory">
                   <Trash2 className="h-4 w-4" />
-                </Button>
+                </Button>}
               </div>
             </div>
           ))}

@@ -64,7 +64,12 @@ describe("Supabase schema security contract", () => {
     expect(schema).toContain("create table if not exists public.memory_items");
     expect(schema).toContain("create table if not exists public.draft_feedback");
     expect(schema).toContain("status in ('pending', 'accepted', 'rejected', 'archived')");
+    expect(schema).toContain("fingerprint text");
+    expect(schema).toContain("occurrence_count int not null default 1");
+    expect(schema).toContain("last_seen_at timestamptz");
+    expect(schema).toContain("superseded_by uuid references public.memory_items");
     expect(schema).toContain("memory_items_user_status_idx");
+    expect(schema).toContain("memory_items_active_fingerprint_uidx");
     expect(schema).toContain("draft_feedback_user_created_idx");
     expect(schema).toContain("alter table public.memory_items enable row level security");
     expect(schema).toContain("alter table public.draft_feedback enable row level security");

@@ -193,13 +193,13 @@ export function AppSidebar() {
         style={collapsed ? undefined : { width: sidebarWidth }}
       >
       <ComposeDialog open={showCompose} onOpenChange={setShowCompose} />
-      <div className={cn("mb-3 flex items-center px-3", collapsed ? "justify-center" : "gap-2")}>
-        <div className="relative min-w-0 flex-1" ref={profileMenuRef}>
+      <div className={cn("mb-3 flex items-center px-3", collapsed ? "flex-col gap-0.5" : "gap-2")}>
+        <div className={cn("relative min-w-0", collapsed ? "w-full" : "flex-1")} ref={profileMenuRef}>
           <button
             type="button"
             className={cn(
               "flex min-w-0 items-center rounded-lg hover:bg-sidebar-accent",
-              collapsed ? "justify-center" : "w-full gap-2",
+              collapsed ? "h-9 w-full justify-center" : "h-9 w-full gap-2 px-2.5",
             )}
             title="Open workspace menu"
             aria-label="Open workspace menu"
@@ -301,12 +301,11 @@ export function AppSidebar() {
       </div>
 
       {collapsed && (
-        <div className="mb-2 flex justify-center px-3">
+        <div className="mb-2 px-3">
           <Button
             variant="ghost"
-            size="icon"
             onClick={toggleCollapsed}
-            className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="h-9 w-full justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
             aria-label="Expand sidebar"
             title="Expand sidebar"
           >

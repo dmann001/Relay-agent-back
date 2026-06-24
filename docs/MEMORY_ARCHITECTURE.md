@@ -46,12 +46,17 @@ thread summaries, drafts, tasks, Q&A, and inbox briefs. AI thread context uses
 the complete Gmail conversation and is explicitly scoped to the owning account.
 The UI exposes these controls in Settings, Inbox, and Thread View.
 
-This is the foundation for the memory design below, not the full learning loop.
-`ai_account_preferences` stores explicit per-account instructions today; the
-proposed `agent_memory` profile, `draft_feedback`, contact learning, and semantic
-retrieval remain future work. The eventual personalization service should merge
-account preferences at the highest priority and preserve account boundaries in
-all retrieval and feedback records.
+This was the foundation for the memory design below. As of the 2026-06 memory
+implementation work, Relay now has `agent_memory`, `memory_items`,
+`draft_feedback`, contact-aware personalization, scoped semantic retrieval,
+context-source display, and memory quality controls. Future work should build on
+that implementation instead of re-creating the foundation.
+
+`ai_account_preferences` remains the highest-priority per-account instruction
+source. Default account writing style is displayed as default context, not as a
+user-created preference. When a compose request is not tied to an account and
+the user has multiple connected accounts, Relay must require account selection
+instead of silently choosing the oldest connected account.
 
 ## Trusted Personal Memory Architecture
 
@@ -227,7 +232,7 @@ become durable memory.
 
 ### Add `draft_feedback`
 
-This is the only new table required for the first useful version.
+This table is implemented.
 
 ```sql
 create table public.draft_feedback (
@@ -246,6 +251,36 @@ Apply RLS using `auth.uid() = user_id`.
 
 This captures the strongest learning signal: what Relay suggested versus what
 the user actually sent.
+
+### Implemented `memory_items` Quality Fields
+
+Memory suggestions now include quality and maintenance metadata:
+
+```sql
+fingerprint text,
+occurrence_count int not null default 1,
+last_seen_at timestamptz,
+superseded_by uuid references public.memory_items(id)
+```
+
+Rules:
+
+- All new pending suggestions should go through
+  `createPendingMemorySuggestion()` in `lib/server/memory-quality.ts`.
+- Do not directly insert pending `memory_items` from a new learning source
+  unless deliberately bypassing dedupe and thresholds.
+- Confidence thresholds are type-specific:
+  - `style` and `contact`: `0.55`
+  - `preference`: `0.65`
+  - `project`, `recent_context`, and `fact`: `0.75`
+- Duplicate pending suggestions merge into one row by fingerprint and scope,
+  increasing `occurrence_count` and updating `last_seen_at`.
+- Matching accepted memories block new pending duplicates.
+- Accepted style/preference memories are compacted into
+  `agent_memory.writing_profile.learnedStyleNotes` by
+  `runMemoryMaintenance()` in `lib/server/memory-maintenance.ts`.
+- Maintenance is exposed at `POST /api/memory/maintenance` and also runs after
+  memory accept, edit, archive, and delete actions.
 
 ## Personalization Context
 
@@ -314,6 +349,16 @@ Context priority:
 Keep the assembled context small and label facts as preferences, not
 instructions. Email content must never override the system prompt.
 
+Implemented context source behavior:
+
+- AI responses include `contextSources`.
+- Chat responses persist context sources inside the hidden `relay-chat` metadata
+  marker.
+- The chat UI displays a "Context used" disclosure with source labels and
+  metadata only. It must not expose raw email body text.
+- Account default style is labeled as "Default writing style for ..." unless the
+  user customized writing style, draft instructions, or signature.
+
 ## Learning Loop
 
 ### Explicit Preferences
@@ -345,6 +390,15 @@ compacted writing profile.
 
 Require repeated evidence before changing a learned setting. Explicit settings
 always win over inferred behavior.
+
+Implemented behavior:
+
+- `recordDraftFeedback()` stores generated-vs-final draft bodies after provider
+  send succeeds.
+- Draft feedback may create pending style/contact suggestions.
+- Suggestions remain pending until accepted.
+- Sensitive content is filtered before feedback or suggestion storage.
+- Duplicate suggestions merge through the fingerprint flow above.
 
 ### Contact Learning
 
@@ -486,13 +540,15 @@ behavior where `match_embeddings` can search without a user filter.
 
 ### Draft Generation
 
-Update `app/api/ai/generate-draft/route.ts` to:
+Implemented through `app/api/ai/compose/route.ts`:
 
 1. Authenticate the user.
 2. Fetch `PersonalizationContext`.
 3. Build one structured prompt with profile, contact context, thread context,
    and relevant sent examples.
 4. Return the draft and a short list of context sources used.
+5. If multiple accounts are connected and no account is supplied, return
+   `ACCOUNT_REQUIRED` instead of selecting `accounts[0]`.
 
 ### Send Flow
 
@@ -506,6 +562,16 @@ Update `app/api/emails/send/route.ts` to accept an optional:
 
 After Gmail confirms the send, store `draft_feedback`. Learning must not block
 the send response.
+
+Implemented send behavior:
+
+- `app/api/emails/send/route.ts` records draft feedback in a non-blocking
+  background path after provider send succeeds.
+- If a cached Gmail/Outlook draft id no longer exists remotely, send falls back
+  to a normal provider send instead of surfacing "Requested entity was not
+  found."
+- `components/compose-dialog.tsx` suppresses close-time autosave after a
+  successful send, avoiding accidental draft recreation.
 
 ### Agent Commands
 
@@ -560,6 +626,12 @@ signals.
   links.
 - Provide "View what Relay knows", edit, reset, and disable-learning controls.
 - Deleting an account must delete its profile, feedback, and embeddings.
+- Do not present default account writing style as if the user explicitly set a
+  preference.
+- Do not silently choose an account for compose AI when multiple connected
+  accounts exist.
+- Context-source UI must remain metadata-only and should not reveal hidden raw
+  source content.
 
 ## Implementation Plan
 
@@ -581,8 +653,10 @@ email history.
 - Add a profile compaction job for recent sent samples.
 - Store communication preferences in `contacts.metadata`.
 
-Result: Relay gradually matches the user's real writing style and adapts by
-recipient.
+Status: implemented as a first version, with confirmed pending suggestions,
+fingerprint dedupe, memory maintenance, and editable review UI. Future work can
+improve the quality of inferred suggestions, but should preserve the pending
+approval model.
 
 ### Phase 3: Agent-Wide Personalization
 
@@ -591,8 +665,10 @@ recipient.
 - Add memory review, correction, reset, and disable controls.
 - Use learned contact importance in priority scoring.
 
-Result: drafting, triage, and commands share one consistent understanding of
-the user.
+Status: partially implemented. Compose, thread assistant, inbox brief, meeting
+AI, and meeting briefs use the personalization context. Memory review,
+correction, reset, learning toggle, and context-source display are implemented.
+Priority scoring and broader command personalization still need follow-up work.
 
 ### Phase 4: Hybrid Mailbox Retrieval
 
