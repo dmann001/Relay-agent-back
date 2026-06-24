@@ -13,6 +13,9 @@ jest.mock("@/lib/email-api", () => ({
     getAiChatSession: jest.fn(),
     runComposeAi: jest.fn(),
     runThreadAi: jest.fn(),
+    draftCalendarMeeting: jest.fn(),
+    createCalendarMeeting: jest.fn(),
+    listCalendarConnections: jest.fn(),
     listEmails: jest.fn(),
   },
 }))
@@ -53,6 +56,9 @@ describe("AiInboxChat", () => {
         messages: [{ id: "m1", role: "user", content: "Hello", model: null, tools: [], responseId: null, createdAt: "2026-01-01T00:00:00.000Z" }],
       },
     })
+    api.listCalendarConnections.mockResolvedValue([])
+    api.draftCalendarMeeting.mockReset()
+    api.createCalendarMeeting.mockReset()
     api.runComposeAi.mockReset()
     api.runThreadAi.mockReset()
   })
@@ -116,6 +122,44 @@ describe("AiInboxChat", () => {
       createSession: true,
     })))
     expect(await screen.findByText("I can help draft that.")).toBeInTheDocument()
+  })
+
+  it("routes reminder-in-calendar prompts from an open email to calendar drafting", async () => {
+    api.draftCalendarMeeting.mockResolvedValue({
+      draft: {
+        title: "Get Starbucks coffee",
+        description: "Reminder from the current discount email.",
+        startsAt: "2026-06-24T13:00:00.000Z",
+        endsAt: "2026-06-24T13:30:00.000Z",
+        timezone: "America/Toronto",
+        attendees: [],
+        location: "College",
+        createConference: false,
+        reminderMinutes: 30,
+        accountId: "account-1",
+        needsAccountSelection: false,
+        missing: [],
+        rationale: "The user asked for a calendar reminder.",
+      },
+      model: "gpt-test",
+    })
+
+    render(<AiInboxChat accountId="account-1" messageId="message-1" subject="Discount" onClose={jest.fn()} />)
+    await screen.findByPlaceholderText("Ask about this email...")
+
+    fireEvent.change(screen.getByPlaceholderText("Ask about this email..."), {
+      target: { value: "Can you add reminder in cal so I dont forget coffee around 9 am on 24" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => expect(api.draftCalendarMeeting).toHaveBeenCalledWith(expect.objectContaining({
+      accountId: "account-1",
+      messageId: "message-1",
+      prompt: "Can you add reminder in cal so I dont forget coffee around 9 am on 24",
+    })))
+    expect(api.runThreadAi).not.toHaveBeenCalled()
+    expect(await screen.findByText("Calendar invite")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Get Starbucks coffee")).toBeInTheDocument()
   })
 
   it("only sends web search when selected from the plus menu", async () => {

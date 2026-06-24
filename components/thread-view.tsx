@@ -128,14 +128,16 @@ export function ThreadView({
           accountEmail: thread.accountEmail,
         };
         setThreadMessages(thread.messages);
-        setEmail({ ...fullEmail, read: true });
+        setEmail({ ...fullEmail, read: thread.readUpdateError ? fullEmail.read : true });
 
-        // Mark as read in Gmail + DB cache (fire and forget).
-        if (!fullEmail.read) {
+        if (thread.readUpdateError) {
+          toast({
+            title: "Could not mark as read",
+            description: thread.readUpdateError,
+            variant: "destructive",
+          });
+        } else if (!fullEmail.read) {
           onRead?.(threadId, fullEmail.accountId);
-          void emailApi
-            .modifyEmail(threadId, "markRead", fullEmail.accountId)
-            .catch(() => {});
         }
       } catch (error: any) {
         if (cancelled) return;
@@ -149,7 +151,7 @@ export function ThreadView({
     return () => {
       cancelled = true;
     };
-  }, [accountId, onRead, threadId]);
+  }, [accountId, onRead, threadId, toast]);
 
   const handleSaveDraft = async () => {
     if (!email || !draftContent.trim()) return;

@@ -44,6 +44,52 @@ describe("email API client", () => {
     );
   });
 
+  it("uses cursor pagination without also sending an offset", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(
+      response({
+        emails: [],
+        total: 0,
+        hasMore: true,
+        cacheHasMore: true,
+        providerHasMore: false,
+        nextCursor: "cursor-2",
+      }),
+    );
+
+    await expect(
+      emailApi.listEmails("inbox", {
+        limit: 25,
+        offset: 50,
+        cursor: "cursor-1",
+      }),
+    ).resolves.toMatchObject({
+      cacheHasMore: true,
+      providerHasMore: false,
+      nextCursor: "cursor-2",
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/emails?mailbox=inbox&limit=25&cursor=cursor-1",
+      expect.any(Object),
+    );
+  });
+
+  it("sends authenticated provider search parameters", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(response({ emails: [], total: 0 }));
+
+    await emailApi.searchEmails({ q: "discount", accountId: "account-1", limit: 25 });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/emails/search?q=discount&limit=25&accountId=account-1",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer session-token",
+          "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
+
   it("rejects calls when no Supabase session exists", async () => {
     getSession.mockResolvedValue({ data: { session: null } });
 
@@ -96,6 +142,28 @@ describe("email API client", () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0]).toBeInstanceOf(CustomEvent);
+    expect(listener.mock.calls[0][0].detail).toEqual({
+      messageId: "message-1",
+      action: "markRead",
+      accountId: "account-1",
+    });
+    window.removeEventListener("relay-emails-updated", listener);
+  });
+
+  it("dispatches read update events returned by opened threads", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(response({
+      messages: [],
+      accountId: "account-1",
+      accountEmail: "me@example.com",
+      threadId: "thread-1",
+      readUpdatedMessageIds: ["message-1"],
+    }));
+    const listener = jest.fn();
+    window.addEventListener("relay-emails-updated", listener);
+
+    await emailApi.getThread("message-1", "account-1");
+
+    expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail).toEqual({
       messageId: "message-1",
       action: "markRead",

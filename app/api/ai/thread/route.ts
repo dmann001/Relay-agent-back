@@ -8,6 +8,7 @@ import { AiRateLimitError, enforceAiRateLimit } from '@/lib/server/ai-rate-limit
 import { aiToolKeySchema, getAiModelSettings, resolveAiTooling } from '@/lib/server/ai-model-settings';
 import { appendAiChatMessages, createAiChatSession } from '@/lib/server/ai-chat-sessions';
 import { runChatComputerUse, withComputerUseMetadata } from '@/lib/server/computer-use/chat-integration';
+import { getPersonalizationContext, personalizationContextText } from '@/lib/server/personalization';
 
 const chatTurnSchema = z.object({
   role: z.enum(['user', 'assistant']),
@@ -119,6 +120,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'AI is disabled for this account', code: 'AI_DISABLED' }, { status: 403 });
     }
 
+    const personalization = await getPersonalizationContext({
+      userId,
+      accountId: context.account.id,
+      accountEmail: context.account.email,
+      operation: 'thread',
+      query: [parsed.data.action, parsed.data.prompt, context.email.subject].filter(Boolean).join('\n'),
+      contactEmail: context.email.from?.email,
+      messageId: parsed.data.messageId,
+      threadId: context.email.threadId,
+      limit: 5,
+    });
+
     const definition = schemas[parsed.data.action];
     const modelSettings = await getAiModelSettings(userId);
     const attachedRefs = (parsed.data.contextMessageIds || []).filter(
@@ -134,6 +147,10 @@ export async function POST(request: NextRequest) {
     if (uploadedFileContext) {
       emailContext = `${emailContext}\n\n${uploadedFileContext}`;
     }
+    const personalizationText = personalizationContextText(personalization);
+    if (personalizationText) {
+      emailContext = `${personalizationText}\n\n${emailContext}`;
+    }
     const mergedInputParts = [
       ...emailContextInputParts(context),
       ...combinedEmailContextInputParts(attachedContexts),
@@ -145,7 +162,7 @@ export async function POST(request: NextRequest) {
     const isAsk = parsed.data.action === 'ask';
 
     if (computerUse && isAsk && !userContextFiles.length) {
-      const instructions = `${baseInstructions}\n${actionInstructions(parsed.data.action, context.preference, parsed.data.prompt)}`;
+      const instructions = `${baseInstructions}\n${personalizationContextText(personalization)}\n${actionInstructions(parsed.data.action, personalization.preference, parsed.data.prompt)}`;
       const computerResult = await runChatComputerUse({
         instructions,
         history,
@@ -199,11 +216,12 @@ export async function POST(request: NextRequest) {
           truncated: computerResult.truncated,
           steps: computerResult.steps,
         },
+        contextSources: personalization.sources,
       });
     }
 
     const result = await generateStructuredResponse({
-      instructions: `${baseInstructions}\n${actionInstructions(parsed.data.action, context.preference, parsed.data.prompt)}`,
+      instructions: `${baseInstructions}\n${actionInstructions(parsed.data.action, personalization.preference, parsed.data.prompt)}`,
       input: isAsk
         ? buildChatInput({
             contextPrefix: emailContext,
@@ -251,6 +269,7 @@ export async function POST(request: NextRequest) {
         messageId: context.email.id,
         subject: context.email.subject,
       },
+      contextSources: personalization.sources,
       model: result.model,
       responseId: result.responseId,
       images: result.images,

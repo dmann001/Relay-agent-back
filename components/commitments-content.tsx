@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
-  AlertCircle,
   CalendarClock,
   CalendarPlus,
   CalendarX,
-  Check,
   CheckCircle2,
   Clock3,
   ExternalLink,
@@ -16,6 +14,8 @@ import {
   Radar,
   RefreshCw,
   RotateCcw,
+  Search,
+  X,
   XCircle,
 } from "lucide-react"
 import { AccountScopeSelect } from "@/components/account-scope-select"
@@ -25,6 +25,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ProviderIcon } from "@/components/provider-icon"
 import { emailApi, type CalendarConnection, type Commitment, type CommitmentCalendarEvent, type CommitmentMonitor } from "@/lib/email-api"
 import { cn } from "@/lib/utils"
+
+type CommitmentView = "open" | "attention" | "upcoming" | "done"
 
 const typeLabels = {
   my_task: "My task",
@@ -36,7 +38,11 @@ const typeLabels = {
 function formatDate(value: string | null) {
   if (!value) return "No due date"
   return new Intl.DateTimeFormat(undefined, {
-    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(new Date(value))
 }
 
@@ -46,10 +52,16 @@ function isOverdue(commitment: Commitment) {
     && (!commitment.snoozedUntil || new Date(commitment.snoozedUntil).getTime() <= Date.now())
 }
 
+function needsAttention(commitment: Commitment) {
+  return commitment.status === "needs_review" || isOverdue(commitment)
+}
+
 export function CommitmentsContent() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [accountId, setAccountId] = useState("")
-  const [view, setView] = useState<"open" | "completed" | "dismissed">("open")
+  const [view, setView] = useState<CommitmentView>("open")
+  const [query, setQuery] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([])
@@ -72,6 +84,7 @@ export function CommitmentsContent() {
       setCalendarConnections(connections)
       setCalendarEvents(events)
       setMonitors(activeMonitors)
+      setSelectedId((current) => current && result.commitments.some(({ id }) => id === current) ? current : null)
     } catch (caught: any) {
       setError(caught.message || "Could not load commitments.")
     } finally {
@@ -86,20 +99,34 @@ export function CommitmentsContent() {
     return () => window.removeEventListener("relay-commitments-updated", onUpdate)
   }, [load])
 
-  const visible = useMemo(() => commitments.filter(({ status }) => {
-    if (view === "completed") return status === "satisfied"
-    if (view === "dismissed") return status === "dismissed" || status === "expired"
-    return status === "active" || status === "needs_review"
-  }), [commitments, view])
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return commitments.filter((commitment) => {
+      const open = commitment.status === "active" || commitment.status === "needs_review"
+      if (view === "open" && !open) return false
+      if (view === "attention" && !needsAttention(commitment)) return false
+      if (view === "upcoming" && !(commitment.status === "active" && commitment.dueAt && !isOverdue(commitment))) return false
+      if (view === "done" && !["satisfied", "dismissed", "expired"].includes(commitment.status)) return false
+      if (!needle) return true
+      return [
+        commitment.title,
+        commitment.description,
+        commitment.expectedOutcome,
+        commitment.evidence,
+        commitment.ownerName,
+        commitment.accountEmail,
+      ].join(" ").toLowerCase().includes(needle)
+    })
+  }, [commitments, query, view])
 
-  const sections = useMemo(() => {
-    if (view !== "open") return [{ title: view === "completed" ? "Completed" : "Dismissed", items: visible }]
-    return [
-      { title: "Needs attention", items: visible.filter((item) => item.status === "needs_review" || isOverdue(item)) },
-      { title: "Upcoming", items: visible.filter((item) => item.status === "active" && !isOverdue(item) && item.dueAt) },
-      { title: "No due date", items: visible.filter((item) => item.status === "active" && !item.dueAt) },
-    ]
-  }, [view, visible])
+  const selected = visible.find(({ id }) => id === selectedId) || visible[0] || null
+
+  const counts = {
+    open: commitments.filter(({ status }) => status === "active" || status === "needs_review").length,
+    attention: commitments.filter(needsAttention).length,
+    upcoming: commitments.filter((item) => item.status === "active" && item.dueAt && !isOverdue(item)).length,
+    done: commitments.filter(({ status }) => ["satisfied", "dismissed", "expired"].includes(status)).length,
+  }
 
   const update = async (commitment: Commitment, action: "complete" | "reopen" | "dismiss" | "snooze") => {
     setPendingId(commitment.id)
@@ -174,79 +201,294 @@ export function CommitmentsContent() {
     }
   }
 
-  return <div className="h-full overflow-y-auto bg-background">
-    <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-5 py-4 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4">
-        <div><h1 className="text-xl font-semibold tracking-tight text-foreground">Commitments</h1><p className="mt-1 text-sm text-muted-foreground">Track obligations grounded in Gmail and Outlook conversations.</p></div>
-        <div className="flex items-center gap-2"><AccountScopeSelect value={accountId} onChange={setAccountId} /><Button variant="outline" size="sm" onClick={() => void load()} disabled={isLoading}><RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh</Button></div>
-      </div>
-      <div className="mx-auto mt-4 flex max-w-5xl gap-1">
-        {(["open", "completed", "dismissed"] as const).map((item) => <button key={item} onClick={() => setView(item)} className={cn("rounded-lg px-3 py-1.5 text-xs font-medium capitalize", view === item ? "bg-brand-soft text-brand-strong" : "text-muted-foreground hover:bg-surface-hover")}>{item}</button>)}
-      </div>
-    </header>
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <header className="shrink-0 border-b border-border bg-background/95 px-4 py-3 backdrop-blur lg:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Commitments</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Obligations extracted from email, calendarized, and monitored.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <AccountScopeSelect value={accountId} onChange={setAccountId} />
+            <Button variant="outline" size="sm" onClick={() => void load()} disabled={isLoading}>
+              <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          <Metric label="Open" value={counts.open} />
+          <Metric label="Needs attention" value={counts.attention} tone={counts.attention ? "danger" : "normal"} />
+          <Metric label="Upcoming" value={counts.upcoming} />
+          <Metric label="Done" value={counts.done} />
+        </div>
+      </header>
 
-    <div className="mx-auto max-w-5xl space-y-8 p-5">
-      {error && <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">{error}</div>}
-      {isLoading && !commitments.length ? <div className="flex min-h-72 items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading commitments…</div> : !visible.length ? <div className="rounded-2xl border border-dashed border-border p-10 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-brand" /><h2 className="mt-4 text-lg font-medium">No {view} commitments</h2><p className="mt-2 text-sm text-muted-foreground">{view === "open" ? "Open an email, ask Relay to extract tasks, and track one that matters." : "Commitments will move here as you update them."}</p></div> : sections.map((section) => section.items.length ? <section key={section.title}>
-        <div className="mb-3 flex items-center gap-2"><h2 className="text-sm font-semibold">{section.title}</h2><Badge variant="secondary">{section.items.length}</Badge></div>
-        <div className="space-y-3">{section.items.map((commitment) => {
-          const overdue = isOverdue(commitment)
-          const calendarEvent = calendarEvents.find((item) => item.commitmentId === commitment.id)
-          const calendarConnected = calendarConnections.some((item) => item.accountId === commitment.accountId && item.status === "connected")
-          const monitor = monitors.find((item) => item.commitmentId === commitment.id && item.status === "active")
-          const sourceHref = commitment.providerMessageId && commitment.accountId
-            ? `/thread/${encodeURIComponent(commitment.providerMessageId)}?account=${encodeURIComponent(commitment.accountId)}`
-            : null
-          return <article key={commitment.id} className={cn("rounded-2xl border bg-card p-4", overdue ? "border-destructive/30" : "border-border")}>
-            <div className="flex items-start gap-3">
-              <div className={cn("mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", overdue ? "bg-destructive/10 text-destructive" : commitment.status === "needs_review" ? "bg-amber-500/10 text-amber-600" : "bg-brand-soft text-brand-strong")}>{overdue || commitment.status === "needs_review" ? <AlertCircle className="h-4 w-4" /> : <Check className="h-4 w-4" />}</div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2"><h3 className="font-medium text-foreground">{commitment.title}</h3><Badge variant="outline" className="text-[10px]">{typeLabels[commitment.type]}</Badge>{overdue && <Badge variant="destructive" className="text-[10px]">Overdue</Badge>}</div>
-                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  {commitment.provider && <span className="flex items-center gap-1.5"><ProviderIcon provider={commitment.provider} className="h-3.5 w-3.5" />{commitment.accountEmail}</span>}
-                  <span><Clock3 className="mr-1 inline h-3.5 w-3.5" />{formatDate(commitment.dueAt)}</span>
-                  {commitment.ownerName && <span>Owner: {commitment.ownerName}</span>}
-                </div>
-                {commitment.evidence && <p className="mt-3 border-l-2 border-border pl-3 text-xs leading-5 text-muted-foreground">{commitment.evidence}</p>}
-                {commitment.snoozedUntil && new Date(commitment.snoozedUntil).getTime() > Date.now() && <p className="mt-2 text-xs text-brand-strong">Snoozed until {formatDate(commitment.snoozedUntil)}</p>}
+      <div className="flex min-h-0 flex-1">
+        <section className="flex min-w-0 flex-1 flex-col">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-3">
+            <div className="relative min-w-56 flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search commitments"
+                className="h-9 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div className="flex gap-1 overflow-x-auto">
+              {(["open", "attention", "upcoming", "done"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setView(item)}
+                  className={cn(
+                    "shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium capitalize",
+                    view === item ? "bg-surface-hover text-foreground" : "text-muted-foreground hover:bg-surface-subtle hover:text-foreground",
+                  )}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {error ? (
+              <div className="m-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>
+            ) : isLoading && !commitments.length ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading commitments...
               </div>
+            ) : !visible.length ? (
+              <div className="m-4 rounded-lg border border-dashed border-border p-8 text-center">
+                <CheckCircle2 className="mx-auto h-9 w-9 text-muted-foreground" />
+                <h2 className="mt-3 text-sm font-medium text-foreground">No commitments in this view</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Track follow-ups from an email thread and they will appear here.</p>
+              </div>
+            ) : visible.map((commitment) => (
+              <CommitmentRow
+                key={commitment.id}
+                commitment={commitment}
+                selected={selected?.id === commitment.id}
+                calendarEvent={calendarEvents.find((item) => item.commitmentId === commitment.id)}
+                monitor={monitors.find((item) => item.commitmentId === commitment.id && item.status === "active")}
+                onSelect={() => setSelectedId(commitment.id)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <CommitmentDetail
+          commitment={selected}
+          pendingId={pendingId}
+          calendarEvent={selected ? calendarEvents.find((item) => item.commitmentId === selected.id) : undefined}
+          calendarConnected={selected ? calendarConnections.some((item) => item.accountId === selected.accountId && item.status === "connected") : false}
+          monitor={selected ? monitors.find((item) => item.commitmentId === selected.id && item.status === "active") : undefined}
+          onComplete={(commitment) => void update(commitment, "complete")}
+          onDismiss={(commitment) => void update(commitment, "dismiss")}
+          onSnooze={(commitment) => void update(commitment, "snooze")}
+          onReopen={(commitment) => void update(commitment, "reopen")}
+          onAddCalendar={(commitment) => setCalendarPreview(commitment)}
+          onRemoveCalendar={(event) => void removeFromCalendar(event)}
+          onToggleMonitor={(commitment, enabled) => void toggleMonitor(commitment, enabled)}
+          onPrepareBrief={(commitment) => void prepareBrief(commitment)}
+          onClose={() => setSelectedId(null)}
+        />
+      </div>
+
+      <Dialog open={Boolean(calendarPreview)} onOpenChange={(open) => !open && setCalendarPreview(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve calendar reminder</DialogTitle>
+            <DialogDescription>Review the external calendar action. No attendees will be invited.</DialogDescription>
+          </DialogHeader>
+          {calendarPreview ? (
+            <div className="space-y-3 rounded-lg border border-border bg-surface-subtle p-4 text-sm">
+              <Field label="Event" value={calendarPreview.title} />
+              <Field label="Starts" value={formatDate(calendarPreview.dueAt)} />
+              <Field label="Calendar" value={calendarPreview.accountEmail || "Connected account"} />
+              <Field label="Reminder" value="30 minutes before" />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
-              {sourceHref && <Button asChild variant="outline" size="sm"><Link href={sourceHref}><ExternalLink className="mr-2 h-3.5 w-3.5" />Open email</Link></Button>}
-              {(commitment.status === "active" || commitment.status === "needs_review") && <><Button size="sm" onClick={() => void update(commitment, "complete")} disabled={pendingId === commitment.id}><CheckCircle2 className="mr-2 h-3.5 w-3.5" />Complete</Button><Button variant="outline" size="sm" onClick={() => void update(commitment, "snooze")} disabled={pendingId === commitment.id}><CalendarClock className="mr-2 h-3.5 w-3.5" />Snooze 1 day</Button><Button variant="ghost" size="sm" onClick={() => void update(commitment, "dismiss")} disabled={pendingId === commitment.id}><XCircle className="mr-2 h-3.5 w-3.5" />Dismiss</Button></>}
-              {(commitment.status === "active" || commitment.status === "needs_review") && commitment.dueAt && (calendarEvent
-                ? <Button variant="outline" size="sm" onClick={() => void removeFromCalendar(calendarEvent)} disabled={pendingId === commitment.id}><CalendarX className="mr-2 h-3.5 w-3.5" />Remove reminder</Button>
-                : calendarConnected
-                  ? <Button variant="outline" size="sm" onClick={() => setCalendarPreview(commitment)} disabled={pendingId === commitment.id}><CalendarPlus className="mr-2 h-3.5 w-3.5" />Add to calendar</Button>
-                  : <Button asChild variant="outline" size="sm"><Link href="/settings/connections"><CalendarPlus className="mr-2 h-3.5 w-3.5" />Connect calendar</Link></Button>)}
-              {(commitment.status === "active" || commitment.status === "needs_review") && <Button variant="outline" size="sm" onClick={() => void toggleMonitor(commitment, !monitor)} disabled={pendingId === commitment.id}><Radar className="mr-2 h-3.5 w-3.5" />{monitor ? "Stop monitoring" : "Monitor thread"}</Button>}
-              {(commitment.status === "active" || commitment.status === "needs_review") && commitment.dueAt && commitment.providerMessageId && <Button variant="outline" size="sm" onClick={() => void prepareBrief(commitment)} disabled={pendingId === commitment.id}><FileText className="mr-2 h-3.5 w-3.5" />Prepare brief</Button>}
-              {(commitment.status === "satisfied" || commitment.status === "dismissed") && <Button variant="outline" size="sm" onClick={() => void update(commitment, "reopen")} disabled={pendingId === commitment.id}><RotateCcw className="mr-2 h-3.5 w-3.5" />Reopen</Button>}
-            </div>
-          </article>
-        })}</div>
-      </section> : null)}
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCalendarPreview(null)}>Cancel</Button>
+            <Button onClick={() => calendarPreview && void addToCalendar(calendarPreview)} disabled={!calendarPreview || pendingId === calendarPreview.id}>
+              {calendarPreview && pendingId === calendarPreview.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-2 h-4 w-4" />}
+              Create reminder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-    <Dialog open={Boolean(calendarPreview)} onOpenChange={(open) => !open && setCalendarPreview(null)}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Approve calendar reminder</DialogTitle>
-          <DialogDescription>Review the exact external action Relay will perform. No attendees will be invited.</DialogDescription>
-        </DialogHeader>
-        {calendarPreview && <div className="space-y-3 rounded-xl border border-border bg-surface-subtle p-4 text-sm">
-          <div><span className="text-muted-foreground">Event</span><p className="font-medium">{calendarPreview.title}</p></div>
-          <div><span className="text-muted-foreground">Starts</span><p>{formatDate(calendarPreview.dueAt)}</p></div>
-          <div><span className="text-muted-foreground">Calendar</span><p>{calendarPreview.accountEmail}</p></div>
-          <div><span className="text-muted-foreground">Reminder</span><p>30 minutes before</p></div>
-        </div>}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setCalendarPreview(null)}>Cancel</Button>
-          <Button onClick={() => calendarPreview && void addToCalendar(calendarPreview)} disabled={!calendarPreview || pendingId === calendarPreview.id}>
-            {calendarPreview && pendingId === calendarPreview.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="mr-2 h-4 w-4" />}
-            Create reminder
+  )
+}
+
+function Metric({ label, value, tone = "normal" }: { label: string; value: number; tone?: "normal" | "danger" }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className={cn("text-sm font-semibold", tone === "danger" && "text-destructive")}>{value}</span>
+    </div>
+  )
+}
+
+function CommitmentRow({
+  commitment,
+  selected,
+  calendarEvent,
+  monitor,
+  onSelect,
+}: {
+  commitment: Commitment
+  selected: boolean
+  calendarEvent?: CommitmentCalendarEvent
+  monitor?: CommitmentMonitor
+  onSelect: () => void
+}) {
+  const overdue = isOverdue(commitment)
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "grid w-full grid-cols-[auto_1fr_auto] gap-3 border-b border-border px-4 py-3 text-left hover:bg-surface-subtle",
+        selected && "bg-surface-subtle",
+      )}
+    >
+      <span className={cn("mt-1 h-2.5 w-2.5 rounded-full", overdue ? "bg-destructive" : commitment.status === "needs_review" ? "bg-amber-500" : commitment.status === "satisfied" ? "bg-emerald-500" : "bg-muted-foreground")} />
+      <span className="min-w-0">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium text-foreground">{commitment.title}</span>
+          <Badge variant="outline" className="text-[10px]">{typeLabels[commitment.type]}</Badge>
+          {overdue ? <Badge variant="destructive" className="text-[10px]">Overdue</Badge> : null}
+        </span>
+        <span className="mt-1 line-clamp-1 text-sm text-muted-foreground">{commitment.description || commitment.evidence || commitment.expectedOutcome || "No description"}</span>
+        <span className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          {commitment.provider ? <span className="flex items-center gap-1.5"><ProviderIcon provider={commitment.provider} className="h-3.5 w-3.5" />{commitment.accountEmail}</span> : null}
+          <span><Clock3 className="mr-1 inline h-3 w-3" />{formatDate(commitment.dueAt)}</span>
+          {calendarEvent ? <span>Calendar</span> : null}
+          {monitor ? <span>Monitored</span> : null}
+        </span>
+      </span>
+      <span className="hidden text-right text-xs text-muted-foreground sm:block">{commitment.ownerName || "No owner"}</span>
+    </button>
+  )
+}
+
+function CommitmentDetail({
+  commitment,
+  pendingId,
+  calendarEvent,
+  calendarConnected,
+  monitor,
+  onComplete,
+  onDismiss,
+  onSnooze,
+  onReopen,
+  onAddCalendar,
+  onRemoveCalendar,
+  onToggleMonitor,
+  onPrepareBrief,
+  onClose,
+}: {
+  commitment: Commitment | null
+  pendingId: string | null
+  calendarEvent?: CommitmentCalendarEvent
+  calendarConnected: boolean
+  monitor?: CommitmentMonitor
+  onComplete: (commitment: Commitment) => void
+  onDismiss: (commitment: Commitment) => void
+  onSnooze: (commitment: Commitment) => void
+  onReopen: (commitment: Commitment) => void
+  onAddCalendar: (commitment: Commitment) => void
+  onRemoveCalendar: (event: CommitmentCalendarEvent) => void
+  onToggleMonitor: (commitment: Commitment, enabled: boolean) => void
+  onPrepareBrief: (commitment: Commitment) => void
+  onClose: () => void
+}) {
+  if (!commitment) {
+    return (
+      <aside className="hidden w-[25rem] shrink-0 border-l border-border bg-card xl:block">
+        <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+          Select a commitment to view actions.
+        </div>
+      </aside>
+    )
+  }
+
+  const open = commitment.status === "active" || commitment.status === "needs_review"
+  const sourceHref = commitment.providerMessageId && commitment.accountId
+    ? `/thread/${encodeURIComponent(commitment.providerMessageId)}?account=${encodeURIComponent(commitment.accountId)}`
+    : null
+
+  return (
+    <aside className="fixed inset-0 z-50 flex justify-end bg-black/20 xl:static xl:z-auto xl:w-[25rem] xl:shrink-0 xl:bg-transparent">
+      <div className="flex h-full w-full max-w-[28rem] flex-col border-l border-border bg-card shadow-2xl xl:shadow-none">
+      <div className="border-b border-border p-4">
+        <div className="flex items-start gap-3">
+          <span className={cn("mt-1 h-2.5 w-2.5 rounded-full", isOverdue(commitment) ? "bg-destructive" : commitment.status === "needs_review" ? "bg-amber-500" : "bg-emerald-500")} />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-foreground">{commitment.title}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{typeLabels[commitment.type]} · {formatDate(commitment.dueAt)}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 xl:hidden" onClick={onClose} aria-label="Close commitment details">
+            <X className="h-4 w-4" />
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </div>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="space-y-3 rounded-lg border border-border bg-background p-3 text-sm">
+          <Field label="Expected outcome" value={commitment.expectedOutcome || "Not specified"} />
+          <Field label="Owner" value={commitment.ownerEmail || commitment.ownerName || "Not assigned"} />
+          <Field label="Account" value={commitment.accountEmail || "Unknown account"} />
+        </div>
+        {commitment.evidence ? (
+          <blockquote className="mt-4 border-l-2 border-border pl-3 text-sm leading-6 text-muted-foreground">{commitment.evidence}</blockquote>
+        ) : null}
+        {commitment.snoozedUntil && new Date(commitment.snoozedUntil).getTime() > Date.now() ? (
+          <div className="mt-4 rounded-lg border border-border bg-surface-subtle p-3 text-sm text-muted-foreground">Snoozed until {formatDate(commitment.snoozedUntil)}</div>
+        ) : null}
+      </div>
+      <footer className="grid gap-2 border-t border-border p-3">
+        {sourceHref ? (
+          <Button asChild variant="outline">
+            <Link href={sourceHref}><ExternalLink className="mr-2 h-4 w-4" />Open email</Link>
+          </Button>
+        ) : null}
+        {open ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Button onClick={() => onComplete(commitment)} disabled={pendingId === commitment.id}><CheckCircle2 className="mr-2 h-4 w-4" />Complete</Button>
+            <Button variant="outline" onClick={() => onSnooze(commitment)} disabled={pendingId === commitment.id}><CalendarClock className="mr-2 h-4 w-4" />Snooze</Button>
+            <Button variant="outline" onClick={() => onDismiss(commitment)} disabled={pendingId === commitment.id}><XCircle className="mr-2 h-4 w-4" />Dismiss</Button>
+            {calendarEvent ? (
+              <Button variant="outline" onClick={() => onRemoveCalendar(calendarEvent)} disabled={pendingId === commitment.id}><CalendarX className="mr-2 h-4 w-4" />Uncalendar</Button>
+            ) : commitment.dueAt && calendarConnected ? (
+              <Button variant="outline" onClick={() => onAddCalendar(commitment)} disabled={pendingId === commitment.id}><CalendarPlus className="mr-2 h-4 w-4" />Calendar</Button>
+            ) : commitment.dueAt ? (
+              <Button asChild variant="outline"><Link href="/settings/connections"><CalendarPlus className="mr-2 h-4 w-4" />Connect</Link></Button>
+            ) : null}
+            <Button variant="outline" onClick={() => onToggleMonitor(commitment, !monitor)} disabled={pendingId === commitment.id}><Radar className="mr-2 h-4 w-4" />{monitor ? "Stop monitor" : "Monitor"}</Button>
+            {commitment.dueAt && commitment.providerMessageId ? (
+              <Button variant="outline" onClick={() => onPrepareBrief(commitment)} disabled={pendingId === commitment.id}><FileText className="mr-2 h-4 w-4" />Brief</Button>
+            ) : null}
+          </div>
+        ) : (
+          <Button variant="outline" onClick={() => onReopen(commitment)} disabled={pendingId === commitment.id}><RotateCcw className="mr-2 h-4 w-4" />Reopen</Button>
+        )}
+      </footer>
+      </div>
+    </aside>
+  )
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 text-foreground">{value}</div>
+    </div>
+  )
 }

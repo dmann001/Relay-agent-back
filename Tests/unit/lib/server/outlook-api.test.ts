@@ -30,6 +30,21 @@ describe("Microsoft Graph mail adapter", () => {
     });
   });
 
+  it("uses the Outlook sender when from is omitted", () => {
+    expect(outlookMessageToEmail({
+      id: "message",
+      conversationId: "conversation",
+      subject: "Sender fallback",
+      sender: { emailAddress: { name: "Fallback Sender", address: "fallback@example.com" } },
+    }, "account")).toMatchObject({
+      subject: "Sender fallback",
+      from: expect.objectContaining({
+        name: "Fallback Sender",
+        email: "fallback@example.com",
+      }),
+    });
+  });
+
   it("uses Graph move semantics for archive", async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true, status: 200, json: async () => ({ id: "immutable-message" }),

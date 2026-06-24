@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -45,6 +45,7 @@ import type { Email } from "@/types";
 
 const PAGE_SIZE = 50;
 const GMAIL_CATEGORIES = [
+  { value: "all", label: "All" },
   { value: "primary", label: "Primary" },
   { value: "updates", label: "Updates" },
   { value: "promotions", label: "Promotions" },
@@ -90,22 +91,6 @@ function initials(name: string): string {
   );
 }
 
-function accountColor(accountId: string): string {
-  const palette = [
-    "#737373",
-    "#4F8A8B",
-    "#7C6BAE",
-    "#C46B5E",
-    "#5B7FA3",
-    "#6F8F55",
-  ];
-  const hash = [...accountId].reduce(
-    (sum, char) => sum + char.charCodeAt(0),
-    0,
-  );
-  return palette[hash % palette.length];
-}
-
 function cleanSnippet(email: Email): string {
   return (email.snippet || email.bodyPlain || "")
     .replace(/<[^>]*>/g, "")
@@ -128,7 +113,7 @@ export function InboxList() {
     categoryParam || "",
   )
     ? (categoryParam as GmailCategory)
-    : "primary";
+    : "all";
   const selectedEmailId = searchParams.get("message");
   const selectedMessageAccountId = searchParams.get("messageAccount");
   const selectedAccountId = searchParams.get("account");
@@ -141,21 +126,27 @@ export function InboxList() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [totalEmails, setTotalEmails] = useState(0);
   const [unreadTotal, setUnreadTotal] = useState(0);
-  const [hasMoreFromGmail, setHasMoreFromGmail] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [cacheHasMore, setCacheHasMore] = useState(false);
+  const [providerHasMore, setProviderHasMore] = useState(false);
   const [hasAccounts, setHasAccounts] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Email[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<EmailAction | null>(null);
   const [showCompose, setShowCompose] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const emailsRef = useRef<Email[]>([]);
+  const searchResultsRef = useRef<Email[]>([]);
   const requestVersion = useRef(0);
   const selectedAccount = accounts.find(({ id }) => id === selectedAccountId);
   const isOutlookOnly = selectedAccount?.provider === "outlook";
-  const selectedEmail = emails.find(({ id, accountId }) =>
+  const selectedEmail = [...emails, ...searchResults].find(({ id, accountId }) =>
     id === selectedEmailId &&
     (!selectedMessageAccountId || selectedMessageAccountId === accountId),
   );
@@ -178,32 +169,34 @@ export function InboxList() {
       category: GmailCategory,
       append = false,
       outlookOnly = isOutlookOnly,
+      cursor: string | null = null,
     ) => {
       const version = append
         ? requestVersion.current
         : ++requestVersion.current;
-      const offset = append ? emails.length : 0;
       const result = await emailApi.listEmails("inbox", {
         limit: PAGE_SIZE,
-        offset,
-        category: outlookOnly ? undefined : category,
+        cursor: append ? cursor : null,
+        category: outlookOnly || category === "all" ? undefined : category,
         accountId: selectedAccountId || undefined,
       });
       if (version !== requestVersion.current) return;
 
       setEmails((current) => {
         if (!append) return result.emails;
-        const existing = new Set(current.map(({ id }) => id));
+        const existing = new Set(current.map((email) => emailKey(email)));
         return [
           ...current,
-          ...result.emails.filter(({ id }) => !existing.has(id)),
+          ...result.emails.filter((email) => !existing.has(emailKey(email))),
         ];
       });
       setTotalEmails(result.total);
       setUnreadTotal(result.unreadTotal ?? 0);
-      setHasMoreFromGmail(result.hasMore ?? false);
+      setNextCursor(result.nextCursor ?? null);
+      setCacheHasMore(result.cacheHasMore ?? false);
+      setProviderHasMore(result.providerHasMore ?? false);
     },
-    [emails.length, isOutlookOnly, selectedAccountId],
+    [isOutlookOnly, selectedAccountId],
   );
 
   const syncInbox = useCallback(
@@ -254,6 +247,10 @@ export function InboxList() {
   useEffect(() => {
     emailsRef.current = emails;
   }, [emails]);
+
+  useEffect(() => {
+    searchResultsRef.current = searchResults;
+  }, [searchResults]);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,9 +307,47 @@ export function InboxList() {
     return () => window.clearInterval(interval);
   }, [hasAccounts, syncInbox]);
 
-  useEffect(() => {
+  const runSearch = useCallback(async (query: string) => {
+    const trimmed = query.trim();
+    setSearchQuery(query);
     setSelectedIds(new Set());
-  }, [searchQuery]);
+    if (!trimmed) {
+      setSearchResults([]);
+      setSearchTotal(0);
+      setIsSearching(false);
+      return;
+    }
+    const version = ++requestVersion.current;
+    setIsSearching(true);
+    try {
+      const result = await emailApi.searchEmails({
+        q: trimmed,
+        accountId: selectedAccountId || undefined,
+        limit: PAGE_SIZE,
+      });
+      if (version !== requestVersion.current) return;
+      setSearchResults(result.emails);
+      setSearchTotal(result.total);
+      if (result.errors?.length) {
+        toast({
+          title: "Some accounts could not be searched",
+          description: result.errors.map((error) => error.message).join("; "),
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      if (version !== requestVersion.current) return;
+      setSearchResults([]);
+      setSearchTotal(0);
+      toast({
+        title: "Search failed",
+        description: error.message || "Could not search connected accounts.",
+        variant: "destructive",
+      });
+    } finally {
+      if (version === requestVersion.current) setIsSearching(false);
+    }
+  }, [selectedAccountId, toast]);
 
   useEffect(() => {
     const openCompose = () => setShowCompose(true);
@@ -320,32 +355,25 @@ export function InboxList() {
     return () => window.removeEventListener("relay-compose", openCompose);
   }, []);
 
-  const filteredEmails = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return emails;
-    return emails.filter(
-      (email) =>
-        email.subject.toLowerCase().includes(query) ||
-        email.from.name.toLowerCase().includes(query) ||
-        email.from.email.toLowerCase().includes(query) ||
-        cleanSnippet(email).toLowerCase().includes(query),
-    );
-  }, [emails, searchQuery]);
+  const isSearchActive = Boolean(searchQuery.trim());
+  const visibleEmails = isSearchActive ? searchResults : emails;
 
-  const canLoadMore = emails.length < totalEmails || hasMoreFromGmail;
+  const canLoadMore = !isSearchActive && Boolean(nextCursor) && (cacheHasMore || providerHasMore);
   const loadMore = useCallback(async () => {
     if (isLoadingMore || isLoading || !canLoadMore) return;
+    const cursor = nextCursor;
+    if (!cursor) return;
     setIsLoadingMore(true);
     try {
-      if (emails.length >= totalEmails && hasMoreFromGmail) {
+      if (!cacheHasMore && providerHasMore) {
         await emailApi.sync("inbox", {
           loadMore: true,
           force: true,
-          category: selectedCategory,
+          category: selectedCategory === "all" ? undefined : selectedCategory,
           accountId: selectedAccountId || undefined,
         });
       }
-      await loadEmails(selectedCategory, true);
+      await loadEmails(selectedCategory, true, isOutlookOnly, cursor);
     } catch (error: any) {
       toast({
         title: "Could not load more mail",
@@ -356,16 +384,17 @@ export function InboxList() {
       setIsLoadingMore(false);
     }
   }, [
+    cacheHasMore,
     canLoadMore,
-    emails.length,
-    hasMoreFromGmail,
     isLoading,
     isLoadingMore,
+    isOutlookOnly,
     loadEmails,
+    nextCursor,
+    providerHasMore,
     selectedAccountId,
     selectedCategory,
     toast,
-    totalEmails,
   ]);
 
   useEffect(() => {
@@ -384,10 +413,14 @@ export function InboxList() {
   const removeEmails = useCallback(
     (ids: Set<string>) => {
       const currentEmails = emailsRef.current;
+      const currentSearchResults = searchResultsRef.current;
       const removedEmails = currentEmails.filter((email) =>
         ids.has(emailKey(email)),
       );
-      if (!removedEmails.length) return;
+      const removedSearchResults = currentSearchResults.filter((email) =>
+        ids.has(emailKey(email)),
+      );
+      if (!removedEmails.length && !removedSearchResults.length) return;
       const unreadRemoved = removedEmails.filter((email) => !email.read).length;
 
       const nextEmails = currentEmails.filter(
@@ -395,7 +428,13 @@ export function InboxList() {
       );
       emailsRef.current = nextEmails;
       setEmails(nextEmails);
+      const nextSearchResults = currentSearchResults.filter(
+        (email) => !ids.has(emailKey(email)),
+      );
+      searchResultsRef.current = nextSearchResults;
+      setSearchResults(nextSearchResults);
       setTotalEmails((current) => Math.max(0, current - removedEmails.length));
+      setSearchTotal((current) => Math.max(0, current - removedSearchResults.length));
       if (unreadRemoved) {
         setUnreadTotal((current) => Math.max(0, current - unreadRemoved));
       }
@@ -411,6 +450,7 @@ export function InboxList() {
 
   const updateReadState = useCallback((ids: Set<string>, read: boolean) => {
     const currentEmails = emailsRef.current;
+    const currentSearchResults = searchResultsRef.current;
     const unreadDelta = currentEmails.reduce((sum, email) => {
       if (!ids.has(emailKey(email)) || email.read === read) return sum;
       return sum + (read ? -1 : 1);
@@ -421,6 +461,11 @@ export function InboxList() {
     );
     emailsRef.current = nextEmails;
     setEmails(nextEmails);
+    const nextSearchResults = currentSearchResults.map((email) =>
+      ids.has(emailKey(email)) ? { ...email, read } : email,
+    );
+    searchResultsRef.current = nextSearchResults;
+    setSearchResults(nextSearchResults);
     if (unreadDelta) {
       setUnreadTotal((current) => Math.max(0, current + unreadDelta));
     }
@@ -453,6 +498,7 @@ export function InboxList() {
     const ids = new Set(selectedIds);
     if (!ids.size || bulkAction) return;
     const snapshot = emails;
+    const searchSnapshot = searchResults;
     const snapshotUnreadTotal = unreadTotal;
     setBulkAction(action);
     if (action === "archive" || action === "trash") removeEmails(ids);
@@ -460,7 +506,7 @@ export function InboxList() {
 
     const results = await Promise.allSettled(
       [...ids].map((key) => {
-        const email = emails.find((candidate) => emailKey(candidate) === key);
+        const email = visibleEmails.find((candidate) => emailKey(candidate) === key);
         if (!email) return Promise.reject(new Error("Email no longer loaded"));
         return emailApi.modifyEmail(email.id, action, email.accountId);
       }),
@@ -471,6 +517,8 @@ export function InboxList() {
     if (failedIds.length) {
       emailsRef.current = snapshot;
       setEmails(snapshot);
+      searchResultsRef.current = searchSnapshot;
+      setSearchResults(searchSnapshot);
       setUnreadTotal(snapshotUnreadTotal);
       setTotalEmails((current) =>
         action === "archive" || action === "trash"
@@ -512,6 +560,7 @@ export function InboxList() {
     event.stopPropagation();
     const ids = new Set([emailKey(email)]);
     const snapshot = emails;
+    const searchSnapshot = searchResults;
     const snapshotUnreadTotal = unreadTotal;
     if (action === "archive" || action === "trash") removeEmails(ids);
     else updateReadState(ids, action === "markRead");
@@ -520,6 +569,8 @@ export function InboxList() {
     } catch (error: any) {
       emailsRef.current = snapshot;
       setEmails(snapshot);
+      searchResultsRef.current = searchSnapshot;
+      setSearchResults(searchSnapshot);
       setUnreadTotal(snapshotUnreadTotal);
       setTotalEmails((current) =>
         action === "archive" || action === "trash" ? current + 1 : current,
@@ -533,14 +584,14 @@ export function InboxList() {
   };
 
   const allVisibleSelected =
-    filteredEmails.length > 0 &&
-    filteredEmails.every((email) => selectedIds.has(emailKey(email)));
+    visibleEmails.length > 0 &&
+    visibleEmails.every((email) => selectedIds.has(emailKey(email)));
   const toggleAllVisible = () =>
     setSelectedIds((current) => {
       const next = new Set(current);
       if (allVisibleSelected)
-        filteredEmails.forEach((email) => next.delete(emailKey(email)));
-      else filteredEmails.forEach((email) => next.add(emailKey(email)));
+        visibleEmails.forEach((email) => next.delete(emailKey(email)));
+      else visibleEmails.forEach((email) => next.add(emailKey(email)));
       return next;
     });
 
@@ -582,7 +633,7 @@ export function InboxList() {
 
   const selectedCategoryLabel =
     GMAIL_CATEGORIES.find(({ value }) => value === selectedCategory)?.label ||
-    "Primary";
+    "All";
 
   const {
     width: listWidth,
@@ -612,7 +663,7 @@ export function InboxList() {
         <header className="shrink-0 border-b border-border bg-background/95 px-3 py-3 backdrop-blur sm:px-4">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
-              <SearchBar onSearch={setSearchQuery} />
+              <SearchBar onSearch={runSearch} isSearching={isSearching} />
             </div>
             <Button
               onClick={() => setShowCompose(true)}
@@ -640,7 +691,7 @@ export function InboxList() {
                     ? "Clear visible selection"
                     : "Select visible emails"
                 }
-                disabled={!filteredEmails.length}
+                disabled={!visibleEmails.length}
               />
               <div className="min-w-0">
                 <label className="sr-only" htmlFor="inbox-account-scope">
@@ -728,8 +779,7 @@ export function InboxList() {
                   }
                   onClick={() =>
                     updateQuery({
-                      category:
-                        category.value === "primary" ? null : category.value,
+                      category: category.value === "all" ? null : category.value,
                       message: null,
                     })
                   }
@@ -810,7 +860,7 @@ export function InboxList() {
             <div className="flex w-full items-center justify-between text-xs text-muted-foreground">
               <span>
                 {searchQuery
-                  ? `${filteredEmails.length} loaded match${filteredEmails.length === 1 ? "" : "es"}`
+                  ? `${searchTotal} provider result${searchTotal === 1 ? "" : "s"}`
                   : `${emails.length} of ${totalEmails} loaded`}
               </span>
               {isSyncing && (
@@ -836,7 +886,7 @@ export function InboxList() {
                 Loading mail…
               </span>
             </div>
-          ) : filteredEmails.length === 0 ? (
+          ) : visibleEmails.length === 0 ? (
             <div className="flex h-full items-center justify-center p-6 text-center">
               <div className="max-w-sm">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-brand-soft">
@@ -844,12 +894,12 @@ export function InboxList() {
                 </div>
                 <h2 className="mt-4 text-base font-semibold">
                   {searchQuery
-                    ? "No loaded emails match"
+                    ? "No matching emails"
                     : `No ${selectedCategoryLabel} emails`}
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {searchQuery
-                    ? "Try another search or clear the query."
+                    ? "Try another search or check connected account access."
                     : hasAccounts
                       ? "This quick view is empty."
                       : "Connect Gmail to start receiving email."}
@@ -866,7 +916,7 @@ export function InboxList() {
             </div>
           ) : (
             <div role="list" aria-label={`${selectedCategoryLabel} emails`}>
-              {filteredEmails.map((email) => {
+              {visibleEmails.map((email) => {
                 const selected =
                   selectedEmailId === email.id &&
                   (!selectedMessageAccountId ||
@@ -874,7 +924,7 @@ export function InboxList() {
                 const checked = selectedIds.has(emailKey(email));
                 return (
                   <div
-                    key={email.id}
+                    key={emailKey(email)}
                     role="listitem"
                     className={cn(
                       "group relative flex min-h-[68px] cursor-pointer items-start gap-2 border-b border-border/80 px-3 py-2 transition-colors sm:px-4",
@@ -916,18 +966,14 @@ export function InboxList() {
                         aria-label={`Select email from ${email.from.name}`}
                       />
                     </div>
-                    <span
-                      className="mt-4 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor: accountColor(email.accountId || ""),
-                      }}
-                      title={
-                        email.accountEmail ||
-                        accounts.find(({ id }) => id === email.accountId)
-                          ?.email ||
-                        "Connected account"
-                      }
-                    />
+                    <span className="mt-4 h-1.5 w-1.5 shrink-0">
+                      {!email.read && (
+                        <span
+                          className="block h-1.5 w-1.5 rounded-full bg-brand"
+                          title="Unread"
+                        />
+                      )}
+                    </span>
                     <Avatar className="mt-0.5 h-9 w-9 shrink-0 border border-border">
                       <AvatarImage src={email.from.avatar} alt="" />
                       <AvatarFallback className="text-[11px] font-medium">

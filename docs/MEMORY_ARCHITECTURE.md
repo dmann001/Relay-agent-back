@@ -9,15 +9,21 @@ Make Relay feel like the user's email agent:
 - Remember explicit preferences and important working context.
 - Learn from drafts the user edits and sends.
 - Retrieve relevant past emails when answering or drafting.
+- Understand what is happening across the user's inbox: work, personal life,
+  bills, receipts, commitments, relationships, and repeated patterns.
+- Help the user track trusted facts from email without silently turning every
+  message into permanent memory.
 
-Relay does not need to reproduce Supermemory's graph engine, document platform,
-version chains, or provider architecture. The useful Supermemory ideas are:
+Relay's memory system should become a trusted personal context layer. The useful
+principles are:
 
-1. Keep a short persistent user profile.
-2. Separate stable preferences from recent context.
-3. Retrieve query-specific history instead of putting the whole mailbox in a
+1. Keep stable user profile facts separate from recent activity.
+2. Retrieve query-specific history instead of putting the whole mailbox in a
    prompt.
-4. Let users inspect, correct, and forget what was learned.
+3. Track entities and relationships when they help the user understand their
+   email life.
+4. Confirm sensitive or durable inferences before saving them as memory.
+5. Let users inspect, correct, forget, export, and disable what was learned.
 
 ## Existing Relay Foundation
 
@@ -47,26 +53,27 @@ retrieval remain future work. The eventual personalization service should merge
 account preferences at the highest priority and preserve account boundaries in
 all retrieval and feedback records.
 
-## Minimal Architecture
+## Trusted Personal Memory Architecture
 
 Use Supabase directly. Do not add Supermemory as a runtime dependency for the
 first version.
 
 ```text
-Explicit settings + sent emails + draft edits + recent activity
+Explicit settings + sent emails + draft edits + recent activity + inbox signals
                               |
                               v
-                    Relay personalization profile
+                    Relay personal memory layer
                               |
-               +--------------+--------------+
-               |                             |
-               v                             v
-      Contact-specific context       Relevant email search
-               |                             |
-               +--------------+--------------+
+        +----------+-----------+------------+------------+
+        |                      |                         |
+        v                      v                         v
+ Contact context       Email/thread snapshots     Personal records
+ relationships         semantic retrieval         bills/receipts/habits
+        |                      |                         |
+        +----------+-----------+------------+------------+
                               |
                               v
-                 Draft / command / priority prompt
+          Draft / command / priority / tracking prompt
 ```
 
 Add one server-side service:
@@ -128,6 +135,96 @@ Use the existing JSON field instead of adding a new table:
 }
 ```
 
+### Add `personal_records`
+
+Use this for user-facing personal trackers extracted from email. These are not
+raw memories; they are structured records the user can view, correct, archive,
+or delete.
+
+Examples:
+
+- Bills.
+- Receipts.
+- Subscriptions.
+- Travel bookings.
+- Appointments.
+- Warranties.
+- Deliveries.
+- Financial account notices.
+
+Suggested shape:
+
+```sql
+create table public.personal_records (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  account_id uuid references public.email_accounts(id) on delete cascade,
+  email_id uuid references public.emails(id) on delete set null,
+  thread_id text,
+  type text not null,
+  status text not null default 'active',
+  title text not null,
+  merchant_or_org text,
+  amount numeric,
+  currency text,
+  due_at timestamptz,
+  purchased_at timestamptz,
+  category text,
+  folder text,
+  confidence numeric not null default 0,
+  requires_confirmation boolean not null default true,
+  confirmed_at timestamptz,
+  metadata jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+Folders are product labels, not filesystem folders. Initial folders:
+
+- `Bills`
+- `Receipts`
+- `Subscriptions`
+- `Travel`
+- `Appointments`
+- `Work`
+- `Personal`
+
+### Add `memory_entities` and `memory_edges`
+
+Use a lightweight relationship graph when the user benefits from connected
+context. This should be practical and inspectable, not a hidden reasoning
+database.
+
+Entities:
+
+- People.
+- Organizations.
+- Projects.
+- Merchants.
+- Accounts or services.
+- Trips.
+- Bills and subscriptions.
+- Email threads.
+
+Edges:
+
+- `emailed`
+- `works_with`
+- `works_at`
+- `belongs_to_project`
+- `paid`
+- `billed_by`
+- `subscribed_to`
+- `mentioned_in`
+- `related_to_thread`
+- `introduced_by`
+
+Every edge needs source ids, confidence, timestamps, and review state. Sensitive
+edges, such as financial behavior, family relationships, health, legal matters,
+or intimate personal relationships, must require user confirmation before they
+become durable memory.
+
 ### Add `draft_feedback`
 
 This is the only new table required for the first useful version.
@@ -175,6 +272,20 @@ interface PersonalizationContext {
     subject: string
     excerpt: string
   }>
+  personalRecords?: Array<{
+    id: string
+    type: "bill" | "receipt" | "subscription" | "travel" | "appointment" | "other"
+    title: string
+    amount?: number
+    dueAt?: string
+    folder?: string
+    status: string
+  }>
+  relationshipContext?: Array<{
+    entity: string
+    relationship: string
+    source: string
+  }>
 }
 ```
 
@@ -197,7 +308,8 @@ Context priority:
 2. Contact-specific preferences.
 3. Learned writing style.
 4. Current thread and recent context.
-5. Up to five semantically relevant emails.
+5. Confirmed personal records and relationship context relevant to the request.
+6. Up to five semantically relevant emails.
 
 Keep the assembled context small and label facts as preferences, not
 instructions. Email content must never override the system prompt.
@@ -241,9 +353,57 @@ Update `contacts.metadata` from:
 - User-set VIP status or notes.
 - Typical tone and reply length in sent mail to that contact.
 - Repeated thread topics.
+- Confirmed relationship facts.
+- Shared projects, organizations, or recurring commitments.
 
-Do not infer sensitive relationships or personal attributes. Contact learning
-should remain communication-focused.
+Sensitive relationships or personal attributes must stay pending until the user
+confirms them. Contact learning should distinguish communication preferences
+from durable personal facts.
+
+### Personal Records Learning
+
+When emails look like bills, receipts, subscriptions, travel bookings,
+appointments, or account notices:
+
+1. Extract a structured candidate record.
+2. Attach source email, thread, account, provider ids, and confidence.
+3. Put it in the right folder, such as `Bills` or `Receipts`.
+4. Ask for confirmation before saving sensitive or durable facts.
+5. After confirmation, use the record for reminders, summaries, search, and
+   future AI answers.
+
+Examples:
+
+- A utility bill email becomes a pending `Bills` record with amount and due date.
+- A card receipt becomes a pending `Receipts` record with merchant, amount, and
+  category.
+- Repeated receipts from the same merchant can become a confirmed spending habit
+  only after the user approves the interpretation.
+- A recurring charge can become a `Subscriptions` record with renewal cadence.
+
+Spending habits should be learned as high-level patterns, not raw card data.
+Never store full card numbers, CVV, bank login details, OTPs, reset links, or
+authentication tokens.
+
+### Work and Personal Classification
+
+Every email, thread, snapshot, and personal record should support a lightweight
+classification:
+
+- `work`
+- `personal`
+- `finance`
+- `shopping`
+- `travel`
+- `health`
+- `education`
+- `legal`
+- `system`
+- `unknown`
+
+Classification should be editable. Sensitive categories should not drive
+visible actions or durable memories until confidence is high or the user
+confirms the category.
 
 ### Recent Context
 
@@ -253,6 +413,9 @@ Store only active items useful for email work:
 - Upcoming deadlines.
 - Unresolved commitments.
 - Recent decisions.
+- Bills or subscriptions due soon.
+- Recent purchases or bookings the user may ask about.
+- Work/personal boundaries that affect triage.
 
 Each inferred item needs an expiry date. Tasks and reminders remain the
 canonical records; `recent_context` is only a compact prompt summary.
@@ -262,18 +425,59 @@ canonical records; `recent_context` is only a compact prompt summary.
 Use the existing `email_embedding_chunks` table rather than building a memory
 graph.
 
+Relay's local email cache may be incomplete. Treat local embeddings and
+snapshots as an index, not the source of truth. When a high-confidence snapshot
+or chunk points to a thread or message, fetch the canonical email/thread record
+before answering or drafting from it.
+
+### Thread and Email Snapshots
+
+Maintain lightweight searchable snapshots for threads and important messages:
+
+- `user_id`, `account_id`, `message_id`, `thread_id`, and provider ids.
+- Subject, participants, timestamps, labels, and sent/received direction.
+- Short summary, key topics, entities, and optional commitments.
+- Work/personal classification and record candidates.
+- Embedding, source timestamp, and snapshot version.
+
+The AI flow should search snapshots first because they are fast and cheap. A
+snapshot match is only a pointer. The answer should be grounded by fetching the
+full local thread/message when available, or the provider thread/message when
+the local cache is missing or stale.
+
+### Hybrid Provider Fallback
+
+If local snapshot and chunk retrieval is weak, stale, or empty, fall back to the
+connected provider:
+
+1. Translate the user request into provider search filters when possible
+   (contact, subject, date range, account, thread id, labels).
+2. Search Gmail or Outlook for candidate messages/threads.
+3. Fetch the exact candidates, persist them locally, and update snapshots and
+   embeddings.
+4. Build AI context from the fetched source content, not from the snapshot alone.
+5. Return context sources that identify the snapshot and the fetched
+   thread/message.
+
+This keeps Relay useful before a full mailbox sync exists, while avoiding
+silent ingestion of every historical message as memory.
+
 For a draft:
 
 1. Search the current thread first.
 2. Search prior sent emails to the same contact.
-3. Search semantically similar emails for the user.
-4. Return at most five short excerpts.
+3. Search local snapshots and semantically similar emails for the user.
+4. Fetch the exact thread/message for strong candidates.
+5. Return at most five short grounded excerpts.
 
 For an agent command:
 
 1. Search by command text.
 2. Apply structured filters for contact, date, account, or thread when known.
-3. Include the user profile and recent context.
+3. Search local snapshots and chunks.
+4. Fall back to Gmail or Outlook search when local coverage is insufficient.
+5. Fetch exact thread/message content for the final context.
+6. Include the user profile and recent context.
 
 All vector search must require the authenticated user ID. Remove the legacy
 behavior where `match_embeddings` can search without a user filter.
@@ -310,6 +514,23 @@ Replace the current `memorySummary` and manually selected `topEmails` payload in
 
 The browser should send the command, not the user's profile or API key.
 
+For broad mailbox questions, commands should use the hybrid retrieval path:
+search local snapshots and chunks first, then provider search when Relay has not
+synced enough local mail. The AI should answer only after fetching the relevant
+thread or message content.
+
+Agent commands should also be able to create pending personal-record candidates:
+
+- "Track my bills from email."
+- "Show my receipts from this month."
+- "What subscriptions am I paying for?"
+- "Which emails are work related?"
+- "Remember that this person is my accountant."
+
+The agent should explain what it found, ask for confirmation when the
+information is sensitive or durable, and then save structured records or memory
+edges after approval.
+
 ### Priority
 
 Keep priority simple:
@@ -327,8 +548,16 @@ signals.
 - All profile, feedback, contacts, and vector rows are scoped by `user_id`.
 - Use server-side OpenAI credentials; do not pass user keys through browser
   requests.
-- Learn from sent mail and opened threads by default, not the entire mailbox.
-- Never learn passwords, OTPs, financial identifiers, or authentication links.
+- Learn durable user preferences from sent mail and opened threads by default,
+  not the entire mailbox.
+- Provider fallback may fetch missing threads for a user request, but fetched
+  email content is retrieval context. It should not become durable memory unless
+  it passes the explicit memory learning and review flow.
+- Never store passwords, OTPs, full card numbers, CVV values, bank login
+  details, financial account credentials, reset links, or authentication tokens.
+- Bills, receipts, spending categories, and subscriptions may be tracked, but
+  sensitive financial interpretations require confirmation and clear source
+  links.
 - Provide "View what Relay knows", edit, reset, and disable-learning controls.
 - Deleting an account must delete its profile, feedback, and embeddings.
 
@@ -365,6 +594,35 @@ recipient.
 Result: drafting, triage, and commands share one consistent understanding of
 the user.
 
+### Phase 4: Hybrid Mailbox Retrieval
+
+- Add thread/email snapshots as the first retrieval index.
+- Fetch full local thread/message content after snapshot matches.
+- Add Gmail and Outlook provider fallback when local sync is incomplete.
+- Persist fetched candidates and refresh snapshots/embeddings.
+- Expose context sources that show snapshot, provider, thread, and message ids.
+
+Result: broad AI chat can answer mailbox questions even before Relay has synced
+or embedded every relevant email.
+
+### Phase 5: Personal Records and Relationship Memory
+
+- Add `personal_records` for bills, receipts, subscriptions, travel,
+  appointments, deliveries, and warranties.
+- Add lightweight `memory_entities` and `memory_edges` for inspectable
+  relationships between people, organizations, projects, merchants, threads, and
+  records.
+- Add classifiers for work, personal, finance, shopping, travel, health,
+  education, legal, system, and unknown.
+- Build review UI for pending records and relationship facts.
+- Add source-backed confirmation flows before saving sensitive financial,
+  health, legal, family, or personal relationship inferences.
+- Add folders/views such as Bills, Receipts, Subscriptions, Work, and Personal.
+- Use confirmed records in reminders, summaries, AI chat, drafting, and priority.
+
+Result: Relay tracks what is happening in the user's email life, not just how to
+write emails.
+
 ## Success Measures
 
 - Percentage of generated drafts sent.
@@ -372,21 +630,20 @@ the user.
 - User-rated tone accuracy.
 - Correct use of contact-specific tone.
 - Precision of retrieved email context.
+- Accuracy of bill, receipt, subscription, and spending-category extraction.
+- Percentage of sensitive inferences confirmed before use.
+- User correction rate for personal records and relationship edges.
+- Work/personal classification precision.
 - Priority accuracy for emails the user responds to.
 - Cross-user data leakage: zero.
 
-## What We Are Deliberately Not Building
+## Build Direction
 
-- A general knowledge graph.
-- `updates`, `extends`, and `derives` relationships.
-- Memory version chains.
-- A separate documents platform.
-- A generic memory provider abstraction.
-- Automatic ingestion of every mailbox message.
-- Supermemory hosted or local infrastructure.
-
-Those can be reconsidered only if the compact Relay-native system cannot meet
-measured personalization quality.
+Relay is building a trusted personal memory system for the user. The system can
+grow into relationship graphs, personal records, inbox classifiers, and
+source-backed trackers as long as it remains inspectable, scoped, correctable,
+and consent-aware. The boundary is not "do not build memory"; the boundary is
+"do not silently save sensitive or unverified facts as durable truth."
 
 ## Research Reference
 

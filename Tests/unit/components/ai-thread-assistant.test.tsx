@@ -7,15 +7,18 @@ import { emailApi } from "@/lib/email-api"
 
 jest.mock("@/lib/email-api", () => ({
   EmailApiError: class EmailApiError extends Error { code?: string },
+  WIRED_AI_TOOLS: ["webSearch", "codeInterpreter", "computerUse"],
   emailApi: {
     runThreadAi: jest.fn(),
     getAiModelSettings: jest.fn(),
     getAiChatSession: jest.fn(),
+    listCalendarConnections: jest.fn(),
   },
 }))
 
 const runThreadAi = emailApi.runThreadAi as jest.Mock
 const getAiModelSettings = emailApi.getAiModelSettings as jest.Mock
+const listCalendarConnections = emailApi.listCalendarConnections as jest.Mock
 
 describe("AiThreadAssistant", () => {
   beforeEach(() => {
@@ -35,6 +38,7 @@ describe("AiThreadAssistant", () => {
       },
       models: [{ id: "gpt-test", label: "GPT Test", description: "Test model" }],
     })
+    listCalendarConnections.mockResolvedValue([])
   })
 
   it("shows account context and inserts an AI draft without sending", async () => {

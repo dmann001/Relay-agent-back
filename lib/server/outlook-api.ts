@@ -41,7 +41,7 @@ export async function graphRequest<T>(account: EmailAccountRow, path: string, in
 type Recipient = { emailAddress?: { name?: string; address?: string } };
 export interface OutlookMessage {
   id: string; conversationId?: string; internetMessageId?: string; subject?: string; bodyPreview?: string;
-  body?: { contentType?: string; content?: string }; from?: Recipient; toRecipients?: Recipient[]; ccRecipients?: Recipient[];
+  body?: { contentType?: string; content?: string }; from?: Recipient; sender?: Recipient; toRecipients?: Recipient[]; ccRecipients?: Recipient[];
   receivedDateTime?: string; sentDateTime?: string; isRead?: boolean; isDraft?: boolean; hasAttachments?: boolean;
   parentFolderId?: string; flag?: { flagStatus?: string }; categories?: string[];
 }
@@ -52,7 +52,7 @@ export function outlookMessageToEmail(message: OutlookMessage, accountId?: strin
   const plain = html ? html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : message.body?.content || message.bodyPreview || '';
   return {
     id: message.id, threadId: message.conversationId || message.id, messageId: message.internetMessageId?.replace(/[<>]/g, ''),
-    from: { ...addr(message.from), avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(addr(message.from).name)}&background=random` },
+    from: { ...addr(message.from || message.sender), avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(addr(message.from || message.sender).name)}&background=random` },
     to: (message.toRecipients || []).map(addr), cc: (message.ccRecipients || []).map(addr),
     subject: message.subject || '(No Subject)', body: html || plain, bodyPlain: plain,
     snippet: message.bodyPreview || plain.slice(0, 160), date: message.receivedDateTime || message.sentDateTime || new Date().toISOString(),
@@ -61,9 +61,21 @@ export function outlookMessageToEmail(message: OutlookMessage, accountId?: strin
   };
 }
 
-const messageFields = 'id,conversationId,internetMessageId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,isDraft,hasAttachments,parentFolderId,flag,categories';
+const messageFields = 'id,conversationId,internetMessageId,subject,bodyPreview,body,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,isRead,isDraft,hasAttachments,parentFolderId,flag,categories';
 export const getOutlookMessage = (account: EmailAccountRow, id: string) =>
   graphRequest<OutlookMessage>(account, `/me/messages/${encodeURIComponent(id)}?$select=${messageFields}`);
+
+export async function searchOutlookMessages(account: EmailAccountRow, query: string, limit = 25): Promise<OutlookMessage[]> {
+  const search = query.replace(/["\\]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!search) return [];
+  const params = new URLSearchParams({
+    '$search': `"${search}"`,
+    '$select': messageFields,
+    '$top': String(Math.min(Math.max(limit, 1), 50)),
+  });
+  const data = await graphRequest<{ value: OutlookMessage[] }>(account, `/me/messages?${params.toString()}`);
+  return (data.value || []).filter((message) => !message.isDraft);
+}
 
 export async function getOutlookThread(account: EmailAccountRow, message: OutlookMessage): Promise<Email[]> {
   if (!message.conversationId) return [outlookMessageToEmail(message, account.id)];

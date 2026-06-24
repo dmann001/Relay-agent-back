@@ -2,7 +2,8 @@
 // The DB stores metadata only; bodies are fetched via /api/emails/[id].
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
-import { EMAIL_ROW_COLUMNS, inboxHasMorePages, rowToEmail, type EmailRow, type GmailCategory } from '@/lib/server/email-sync';
+import { EMAIL_ROW_COLUMNS, mailboxHasMorePages, rowToEmail, type EmailRow, type GmailCategory } from '@/lib/server/email-sync';
+import { decodeEmailListCursor, encodeEmailListCursor } from '@/lib/server/email-pagination';
 import { handleApiError } from '@/lib/server/api-utils';
 
 type ListMailbox = 'inbox' | 'sent' | 'archive' | 'trash';
@@ -19,7 +20,13 @@ export async function GET(request: NextRequest) {
       ? requestedCategory
       : null;
     const limit = Math.min(parseInt(params.get('limit') || '50', 10) || 50, 200);
-    const offset = Math.max(parseInt(params.get('offset') || '0', 10) || 0, 0);
+    const offsetParam = params.get('offset');
+    const offset = Math.max(parseInt(offsetParam || '0', 10) || 0, 0);
+    const cursorParam = params.get('cursor');
+    const cursor = decodeEmailListCursor(cursorParam);
+    if (cursorParam && !cursor) {
+      return NextResponse.json({ error: 'Invalid email cursor', code: 'INVALID_CURSOR' }, { status: 400 });
+    }
     let selectedProvider: 'gmail' | 'outlook' | null = null;
 
     let query = getSupabaseAdmin()
@@ -27,7 +34,13 @@ export async function GET(request: NextRequest) {
       .select(EMAIL_ROW_COLUMNS, { count: 'exact' })
       .eq('user_id', userId)
       .order('received_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('provider_message_id', { ascending: false });
+
+    if (cursor) {
+      query = query.or(
+        `received_at.lt.${cursor.receivedAt},and(received_at.eq.${cursor.receivedAt},provider_message_id.lt.${cursor.providerMessageId})`
+      );
+    }
 
     if (accountId) {
       const { data: ownedAccount, error: accountError } = await getSupabaseAdmin()
@@ -71,12 +84,30 @@ export async function GET(request: NextRequest) {
       query = applyInboxCategory(query);
     }
 
+    query = offsetParam && !cursor
+      ? query.range(offset, offset + limit)
+      : query.limit(limit + 1);
+
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const hasMore = mailbox === 'inbox'
-      ? await inboxHasMorePages(userId, category as GmailCategory | undefined, accountId || undefined)
-      : false;
+    const rows = ((data || []) as unknown as EmailRow[]);
+    const pageRows = rows.slice(0, limit);
+    const cacheHasMore = rows.length > limit;
+    const providerHasMore = await mailboxHasMorePages(
+      userId,
+      mailbox,
+      mailbox === 'inbox' ? category as GmailCategory | undefined : undefined,
+      accountId || undefined
+    );
+    const hasMore = cacheHasMore || providerHasMore;
+    const lastRow = pageRows[pageRows.length - 1];
+    const nextCursor = lastRow && hasMore
+      ? encodeEmailListCursor({
+        receivedAt: lastRow.received_at || new Date(0).toISOString(),
+        providerMessageId: lastRow.provider_message_id,
+      })
+      : null;
     let unreadTotal: number | undefined;
     if (mailbox === 'inbox') {
       let unreadQuery = getSupabaseAdmin().from('emails').select('id', { count: 'exact', head: true })
@@ -88,7 +119,7 @@ export async function GET(request: NextRequest) {
       unreadTotal = unreadCount || 0;
     }
 
-    const accountIds = [...new Set(((data || []) as unknown as EmailRow[]).map((row) => row.account_id))];
+    const accountIds = [...new Set(pageRows.map((row) => row.account_id))];
     const { data: accountRows, error: accountsError } = accountIds.length
       ? await getSupabaseAdmin().from('email_accounts').select('id, email').eq('user_id', userId).in('id', accountIds)
       : { data: [], error: null };
@@ -96,11 +127,14 @@ export async function GET(request: NextRequest) {
     const accountEmails = new Map((accountRows || []).map((account) => [account.id, account.email]));
 
     return NextResponse.json({
-      emails: ((data || []) as unknown as EmailRow[]).map((row) => ({ ...rowToEmail(row), accountEmail: accountEmails.get(row.account_id) })),
+      emails: pageRows.map((row) => ({ ...rowToEmail(row), accountEmail: accountEmails.get(row.account_id) })),
       total: count ?? 0,
       unreadTotal,
       mailbox,
       hasMore,
+      cacheHasMore,
+      providerHasMore,
+      nextCursor,
     });
   } catch (error) {
     return handleApiError(error);

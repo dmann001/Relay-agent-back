@@ -33,6 +33,15 @@ describe("Supabase schema security contract", () => {
     );
   });
 
+  it("indexes mailbox list views for cursor pagination", () => {
+    expect(schema).toContain("emails_user_inbox_cursor_idx");
+    expect(schema).toContain("emails_user_inbox_category_cursor_idx");
+    expect(schema).toContain("emails_user_account_inbox_cursor_idx");
+    expect(schema).toContain("emails_user_sent_cursor_idx");
+    expect(schema).toContain("emails_user_archive_cursor_idx");
+    expect(schema).toContain("emails_user_trash_cursor_idx");
+  });
+
   it("restricts provider and Gmail category values", () => {
     expect(schema).toContain("provider in ('gmail', 'outlook')");
     expect(schema).toContain(
@@ -48,6 +57,25 @@ describe("Supabase schema security contract", () => {
     expect(schema).toContain("'partially_completed'");
     expect(schema).toContain("and (account_id is null or public.current_user_owns_email_account(account_id))");
     expect(schema).toContain("where agent_runs.id = agent_run_id and agent_runs.user_id = auth.uid()");
+  });
+
+  it("defines confirmed personalization memory and draft feedback", () => {
+    expect(schema).toContain("writing_profile jsonb not null default");
+    expect(schema).toContain("create table if not exists public.memory_items");
+    expect(schema).toContain("create table if not exists public.draft_feedback");
+    expect(schema).toContain("status in ('pending', 'accepted', 'rejected', 'archived')");
+    expect(schema).toContain("memory_items_user_status_idx");
+    expect(schema).toContain("draft_feedback_user_created_idx");
+    expect(schema).toContain("alter table public.memory_items enable row level security");
+    expect(schema).toContain("alter table public.draft_feedback enable row level security");
+  });
+
+  it("requires user-scoped vector search for memory retrieval", () => {
+    expect(schema).toContain("create or replace function public.match_email_embedding_chunks");
+    expect(schema).toContain("target_account_id uuid default null");
+    expect(schema).toContain("where target_user_id is not null and chunks.user_id = target_user_id");
+    expect(schema).toContain("where target_user_id is not null and embeddings.embedding is not null");
+    expect(schema).not.toContain("target_user_id is null or embeddings.user_id = target_user_id");
   });
 
   it("defines provider-neutral email commitments", () => {

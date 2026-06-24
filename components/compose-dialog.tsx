@@ -23,13 +23,22 @@ interface ComposeDialogProps {
   }
   draft?: RemoteDraft
   defaultAccountId?: string
+  initialDraft?: {
+    accountId?: string
+    to?: string[]
+    cc?: string[]
+    subject?: string
+    body?: string
+    generatedDraft?: string
+    generatedDraftId?: string
+  }
 }
 
 type DraftStatus = "idle" | "saving" | "saved" | "failed"
 
 const AUTOSAVE_DELAY_MS = 2500
 
-export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccountId }: ComposeDialogProps) {
+export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccountId, initialDraft }: ComposeDialogProps) {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [accountId, setAccountId] = useState("")
   const [to, setTo] = useState("")
@@ -43,6 +52,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
   const [aiAnswer, setAiAnswer] = useState("")
   const [aiSubject, setAiSubject] = useState("")
   const [aiBody, setAiBody] = useState("")
+  const [generatedDraft, setGeneratedDraft] = useState<{ body: string; id?: string } | null>(null)
   const [showCc, setShowCc] = useState(false)
   const [attachments, setAttachments] = useState<Array<{ filename: string; mimeType: string; data: string; size: number }>>([])
 
@@ -62,13 +72,22 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
     void emailApi.listAccounts().then((loaded) => {
       if (cancelled) return
       setAccounts(loaded)
-      const requested = draft?.accountId || replyTo?.accountId || defaultAccountId
+      const requested = draft?.accountId || initialDraft?.accountId || replyTo?.accountId || defaultAccountId
       setAccountId(requested && loaded.some(({ id }) => id === requested) ? requested : loaded[0]?.id || "")
     }).catch(() => setAccounts([]))
 
     skipNextAutosave.current = true
     setDraftStatus(draft ? "saved" : "idle")
     setDraftId(draft?.id || null)
+
+    const resetAiState = () => {
+      setIsAiOpen(false)
+      setAiPrompt("")
+      setAiAnswer("")
+      setAiSubject("")
+      setAiBody("")
+      setGeneratedDraft(null)
+    }
 
     if (draft) {
       setTo(draft.to.join(", "))
@@ -77,11 +96,20 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
       setBody(draft.body || draft.snippet || "")
       setShowCc(Boolean(draft.cc?.length))
       setAttachments([])
-      setIsAiOpen(false)
-      setAiPrompt("")
-      setAiAnswer("")
-      setAiSubject("")
-      setAiBody("")
+      resetAiState()
+      setGeneratedDraft(null)
+      return
+    }
+
+    if (initialDraft) {
+      setTo((initialDraft.to || []).join(", "))
+      setCc((initialDraft.cc || []).join(", "))
+      setSubject(initialDraft.subject || "")
+      setBody(initialDraft.body || "")
+      setShowCc(Boolean(initialDraft.cc?.length))
+      setAttachments([])
+      resetAiState()
+      setGeneratedDraft(initialDraft.generatedDraft ? { body: initialDraft.generatedDraft, id: initialDraft.generatedDraftId } : null)
       return
     }
 
@@ -92,11 +120,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
       setBody("")
       setShowCc(false)
       setAttachments([])
-      setIsAiOpen(false)
-      setAiPrompt("")
-      setAiAnswer("")
-      setAiSubject("")
-      setAiBody("")
+      resetAiState()
+      setGeneratedDraft(null)
       return
     }
 
@@ -106,13 +131,10 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
     setBody("")
     setShowCc(false)
     setAttachments([])
-    setIsAiOpen(false)
-    setAiPrompt("")
-    setAiAnswer("")
-    setAiSubject("")
-    setAiBody("")
+    resetAiState()
+    setGeneratedDraft(null)
     return () => { cancelled = true }
-  }, [open, draft, replyTo, defaultAccountId])
+  }, [open, draft, replyTo, defaultAccountId, initialDraft])
 
   const parseRecipients = (value: string) =>
     value.split(",").map((e) => e.trim()).filter(Boolean)
@@ -217,6 +239,7 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
         cc,
         subject,
         body,
+        contactEmail: parseRecipients(to)[0],
       })
       setAiAnswer(response.result.answer)
       setAiSubject(response.result.subject)
@@ -272,6 +295,8 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
         })),
         // Sending a saved draft removes it from Gmail Drafts + the Relay DB.
         draftId: draftId || undefined,
+        generatedDraft: generatedDraft?.body,
+        generatedDraftId: generatedDraft?.id,
       })
 
       toast({ title: "Email sent!", description: `Your email to ${to} has been sent successfully.` })
@@ -525,7 +550,10 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
                         </Button>
                       )}
                       {aiBody && (
-                        <Button type="button" variant="outline" size="sm" onClick={() => setBody(aiBody)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => {
+                          setBody(aiBody)
+                          setGeneratedDraft({ body: aiBody })
+                        }}>
                           Use body
                         </Button>
                       )}
@@ -535,7 +563,10 @@ export function ComposeDialog({ open, onOpenChange, replyTo, draft, defaultAccou
                           size="sm"
                           onClick={() => {
                             if (aiSubject) setSubject(aiSubject)
-                            if (aiBody) setBody(aiBody)
+                            if (aiBody) {
+                              setBody(aiBody)
+                              setGeneratedDraft({ body: aiBody })
+                            }
                           }}
                         >
                           Insert draft

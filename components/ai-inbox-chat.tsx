@@ -1,20 +1,23 @@
 "use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import {
   Bot,
   Box,
+  CalendarDays,
   History,
   Maximize2,
   Minimize2,
   Search,
   Sparkles,
-  WandSparkles,
   X,
   Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ComposeDialog } from "@/components/compose-dialog"
 import { AiChatComposer, AiChatContextAttachments, AiChatMessages, useAiChat } from "@/components/ai-chat-shared"
+import type { AiChatDraft } from "@/components/ai-chat-shared"
 import { cn } from "@/lib/utils"
 
 interface AiInboxChatProps {
@@ -32,9 +35,9 @@ interface AiInboxChatProps {
 
 const starterPrompts = [
   { label: "Create a draft", prompt: "Draft a concise reply to the current email.", icon: Box },
+  { label: "Schedule a meeting", prompt: "Schedule a 30 minute meeting from this email context.", icon: CalendarDays },
   { label: "Research a topic", prompt: "Research this topic and summarize what matters.", icon: Search },
   { label: "Summarize inbox", prompt: "Summarize what needs attention in my inbox.", icon: Zap },
-  { label: "Polish text", prompt: "Polish this draft while keeping my voice.", icon: WandSparkles },
 ]
 
 export function AiInboxChat({
@@ -49,6 +52,7 @@ export function AiInboxChat({
   onToggleMaximize,
   onSessionChange,
 }: AiInboxChatProps) {
+  const [composeDraft, setComposeDraft] = useState<AiChatDraft | null>(null)
   const chat = useAiChat({
     accountId,
     messageId,
@@ -62,6 +66,22 @@ export function AiInboxChat({
       variant === "split" && (edge === "end" ? "border-l border-border" : "border-r border-border"),
       variant === "floating" && "rounded-xl border border-border shadow-2xl",
     )}>
+      <ComposeDialog
+        open={Boolean(composeDraft)}
+        onOpenChange={(open) => {
+          if (!open) setComposeDraft(null)
+        }}
+        defaultAccountId={composeDraft?.accountId || accountId}
+        initialDraft={composeDraft ? {
+          accountId: composeDraft.accountId || accountId,
+          to: composeDraft.to,
+          cc: composeDraft.cc,
+          subject: composeDraft.subject,
+          body: composeDraft.body,
+          generatedDraft: composeDraft.generatedDraft,
+          generatedDraftId: composeDraft.generatedDraftId,
+        } : undefined}
+      />
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold text-foreground">New chat</h1>
@@ -149,8 +169,13 @@ export function AiInboxChat({
           emptyDescription=""
           error={chat.error}
           onCopyMessage={(content) => void chat.copyMessage(content)}
+          onUpdateDraft={(index, draft) => chat.updateDraftAt(index, draft)}
           onSaveDraft={(index) => void chat.saveDraftFromChat(index)}
           onSendDraft={(index) => void chat.sendDraftFromChat(index)}
+          onOpenDraftInCompose={setComposeDraft}
+          onUpdateCalendarDraft={(index, draft) => chat.updateCalendarDraftAt(index, draft)}
+          onCreateCalendarDraft={(index) => void chat.createCalendarDraftFromChat(index)}
+          calendarConnections={chat.calendarConnections}
         />
       )}
 

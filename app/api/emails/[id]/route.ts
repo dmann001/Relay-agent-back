@@ -7,6 +7,7 @@ import { getOutlookMessage, listOutlookAttachments, outlookMessageToEmail } from
 import { findAccountForMessage, refreshCachedMessage } from '@/lib/server/email-sync';
 import { fetchFullMessage } from '@/lib/server/gmail-api';
 import { handleApiError } from '@/lib/server/api-utils';
+import { storeEmailEmbeddingChunk } from '@/lib/server/personalization';
 
 export async function GET(
   request: NextRequest,
@@ -33,6 +34,15 @@ export async function GET(
       const message = await getOutlookMessage(account, messageId);
       const email = outlookMessageToEmail(message, account.id);
       if (message.hasAttachments) email.attachments = await listOutlookAttachments(account, messageId);
+      void storeEmailEmbeddingChunk({
+        userId,
+        accountId: account.id,
+        providerMessageId: email.id,
+        subject: email.subject,
+        content: email.bodyPlain || email.body || email.snippet || '',
+        source: 'opened_thread',
+        contactEmail: email.from?.email,
+      }).catch((error) => console.error('[Email] Failed to embed opened Outlook email (non-fatal):', error));
       return NextResponse.json({ email: { ...email, accountEmail: account.email }, accountId: account.id });
     }
     const client = await getAuthorizedClient(account as any);
@@ -46,6 +56,16 @@ export async function GET(
       id: messageId,
       labelIds: result.labelIds,
     }).catch(() => {});
+
+    void storeEmailEmbeddingChunk({
+      userId,
+      accountId: account.id,
+      providerMessageId: result.email.id,
+      subject: result.email.subject,
+      content: result.email.bodyPlain || result.email.body || result.email.snippet || '',
+      source: 'opened_thread',
+      contactEmail: result.email.from?.email,
+    }).catch((error) => console.error('[Email] Failed to embed opened Gmail email (non-fatal):', error));
 
     return NextResponse.json({
       email: { ...result.email, accountId: account.id, accountEmail: account.email },
