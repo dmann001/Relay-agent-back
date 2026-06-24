@@ -22,7 +22,6 @@ import {
   ProductMockup,
   type MockupScene,
 } from "@/components/landing-mockups"
-import { ThemeToggleIcon } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
 import cathedralLight from "@/asset_images/2.png"
 import cosmicPhilosophers from "@/asset_images/4.png"
@@ -147,35 +146,79 @@ function Reveal({
   )
 }
 
+function Cross({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={cn("landing-cross", className)} aria-hidden>
+      <line x1="6" y1="0" x2="6" y2="12" />
+      <line x1="0" y1="6" x2="12" y2="6" />
+    </svg>
+  )
+}
+
+function CrosshairCorners({ className }: { className?: string }) {
+  return (
+    <>
+      <Cross className={cn("absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2", className)} />
+      <Cross className={cn("absolute right-0 top-0 translate-x-1/2 -translate-y-1/2", className)} />
+      <Cross className={cn("absolute bottom-0 left-0 -translate-x-1/2 translate-y-1/2", className)} />
+      <Cross className={cn("absolute bottom-0 right-0 translate-x-1/2 translate-y-1/2", className)} />
+    </>
+  )
+}
+
 function FigFlow({ className }: { className?: string }) {
   const { ref, isVisible } = useInView<SVGSVGElement>()
+
+  const layer = (
+    topY: number,
+    label: string,
+    delay: string,
+    detailLines: [number, number][],
+  ) => (
+    <g key={label}>
+      <polygon
+        className={cn("landing-fig-fill landing-fig-stroke", delay)}
+        points={`44,${topY + 18} 100,${topY} 156,${topY + 18} 100,${topY + 36}`}
+      />
+      {detailLines.map(([x1, x2], index) => (
+        <line
+          key={`${label}-${index}`}
+          className="landing-fig-detail"
+          x1={x1}
+          y1={topY + 18}
+          x2={x2}
+          y2={topY + 18}
+        />
+      ))}
+      <text className="landing-fig-label" x="100" y={topY + 22} textAnchor="middle">
+        {label}
+      </text>
+    </g>
+  )
 
   return (
     <svg
       ref={ref}
-      viewBox="0 0 200 140"
+      viewBox="0 0 200 132"
       className={cn("landing-fig mx-auto h-32 w-full max-w-[220px]", isVisible && "is-visible", className)}
       aria-hidden
     >
-      <g className="landing-fig-idle">
-        {/* base platform */}
-        <polygon className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-1" points="24,88 100,48 176,88 100,128" />
-        <polygon className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-2" points="36,78 100,44 164,78 100,112" />
-        <polygon className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-3" points="48,68 100,40 152,68 100,96" />
-        <polygon className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-4" points="60,58 100,36 140,58 100,80" />
-        {/* top disc with horizon lines */}
-        <polygon className="landing-fig-fill landing-fig-accent landing-fig-stroke landing-fig-stroke-delay-5" points="72,48 100,34 128,48 100,62" />
-        <ellipse className="landing-fig-detail" cx="100" cy="48" rx="18" ry="8" />
-        <line className="landing-fig-detail" x1="86" y1="48" x2="114" y2="48" />
-        <line className="landing-fig-detail" x1="88" y1="44" x2="112" y2="44" />
-        <line className="landing-fig-detail" x1="90" y1="52" x2="110" y2="52" />
-        {/* spine + node */}
-        <line className="landing-fig-stroke landing-fig-stroke-delay-5" x1="100" y1="34" x2="100" y2="14" />
-        <circle className="landing-fig-node" cx="100" cy="12" r="3.5" />
-        {/* inner grid on layers */}
-        <line className="landing-fig-detail" x1="60" y1="78" x2="140" y2="78" />
-        <line className="landing-fig-detail" x1="72" y1="68" x2="128" y2="68" />
-        <line className="landing-fig-scan" x1="40" y1="72" x2="160" y2="72" />
+      <defs>
+        <clipPath id="fig-flow-clip">
+          <rect x="0" y="0" width="200" height="128" />
+        </clipPath>
+      </defs>
+      <g className="landing-fig-idle" clipPath="url(#fig-flow-clip)">
+        {layer(78, "Mail", "landing-fig-stroke-delay-1", [[58, 142]])}
+        {layer(62, "Draft", "landing-fig-stroke-delay-2", [[64, 136]])}
+        {layer(46, "Brief", "landing-fig-stroke-delay-3", [[70, 130]])}
+        {layer(30, "Task", "landing-fig-stroke-delay-4", [[76, 124]])}
+        <line className="landing-fig-stroke landing-fig-stroke-delay-5" x1="100" y1="30" x2="100" y2="10" />
+        <circle className="landing-fig-node" cx="100" cy="8" r="3.5" />
+        <line className="landing-fig-link landing-fig-stroke landing-fig-stroke-delay-5" x1="100" y1="66" x2="100" y2="34" />
+        <circle className="landing-fig-flow-dot" cx="100" cy="72" r="2" />
+        <circle className="landing-fig-flow-dot landing-fig-flow-dot-delay" cx="100" cy="78" r="1.5" />
+        <line className="landing-fig-scan" x1="48" y1="58" x2="152" y2="58" />
       </g>
     </svg>
   )
@@ -184,34 +227,49 @@ function FigFlow({ className }: { className?: string }) {
 function FigContext({ className }: { className?: string }) {
   const { ref, isVisible } = useInView<SVGSVGElement>()
 
-  const cube = (cx: number, cy: number, delay: string) => (
-    <g key={`${cx}-${cy}`}>
-      <polygon className={cn("landing-fig-fill landing-fig-stroke", delay)} points={`${cx - 16},${cy + 8} ${cx},${cy} ${cx + 16},${cy + 8} ${cx},${cy + 16}`} />
-      <polygon className={cn("landing-fig-fill landing-fig-stroke", delay)} points={`${cx},${cy + 16} ${cx + 16},${cy + 8} ${cx + 16},${cy + 24} ${cx},${cy + 32}`} />
-      <polygon className={cn("landing-fig-fill landing-fig-stroke", delay)} points={`${cx - 16},${cy + 8} ${cx},${cy + 16} ${cx},${cy + 32} ${cx - 16},${cy + 24}`} />
-      <circle className="landing-fig-node" cx={cx} cy={cy + 4} r="2" />
+  const card = (x: number, y: number, w: number, h: number, delay: string, label: string) => (
+    <g key={label}>
+      <rect className={cn("landing-fig-fill landing-fig-stroke", delay)} x={x} y={y} width={w} height={h} rx="2" />
+      <line className="landing-fig-detail" x1={x + 8} y1={y + 10} x2={x + w - 8} y2={y + 10} />
+      <line className="landing-fig-detail" x1={x + 8} y1={y + 18} x2={x + w - 16} y2={y + 18} />
+      <line className="landing-fig-detail" x1={x + 8} y1={y + 26} x2={x + w - 24} y2={y + 26} />
+      <text className="landing-fig-label" x={x + 8} y={y + h - 6}>
+        {label}
+      </text>
+      <circle className="landing-fig-node" cx={x + w - 10} cy={y + 10} r="2" />
     </g>
   )
 
   return (
     <svg
       ref={ref}
-      viewBox="0 0 200 140"
+      viewBox="0 0 200 132"
       className={cn("landing-fig mx-auto h-32 w-full max-w-[220px]", isVisible && "is-visible", className)}
       aria-hidden
     >
       <g className="landing-fig-idle">
-        {cube(52, 52, "landing-fig-stroke-delay-1")}
-        {cube(100, 36, "landing-fig-stroke-delay-2")}
-        {cube(148, 52, "landing-fig-stroke-delay-3")}
-        {cube(76, 78, "landing-fig-stroke-delay-4")}
-        {cube(124, 78, "landing-fig-stroke-delay-5")}
-        {/* connection graph */}
-        <polyline className="landing-fig-detail landing-fig-stroke-delay-3" points="68,60 100,44 132,60" />
-        <polyline className="landing-fig-detail landing-fig-stroke-delay-4" points="60,68 88,86 124,86 148,68" />
-        <line className="landing-fig-detail" x1="100" y1="44" x2="88" y2="86" />
-        <line className="landing-fig-detail" x1="100" y1="44" x2="124" y2="86" />
-        <line className="landing-fig-scan" x1="44" y1="96" x2="156" y2="96" />
+        {card(24, 34, 48, 40, "landing-fig-stroke-delay-1", "Email")}
+        {card(128, 34, 48, 40, "landing-fig-stroke-delay-2", "Page")}
+        <rect className="landing-fig-fill landing-fig-accent landing-fig-stroke landing-fig-stroke-delay-3" x="72" y="18" width="56" height="34" rx="3" />
+        <line className="landing-fig-detail" x1="80" y1="28" x2="120" y2="28" />
+        <line className="landing-fig-detail" x1="80" y1="36" x2="112" y2="36" />
+        <line className="landing-fig-detail" x1="80" y1="44" x2="116" y2="44" />
+        <text className="landing-fig-label" x="100" y="58" textAnchor="middle">
+          Chat
+        </text>
+        <circle className="landing-fig-node" cx="100" cy="24" r="2.5" />
+        <line className="landing-fig-link landing-fig-stroke landing-fig-stroke-delay-4" x1="72" y1="52" x2="48" y2="54" />
+        <line className="landing-fig-link landing-fig-stroke landing-fig-stroke-delay-4" x1="128" y1="52" x2="152" y2="54" />
+        <line className="landing-fig-link landing-fig-stroke landing-fig-stroke-delay-5" x1="100" y1="52" x2="100" y2="78" />
+        <rect className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-5" x="68" y="78" width="64" height="28" rx="2" />
+        <line className="landing-fig-detail" x1="76" y1="88" x2="124" y2="88" />
+        <line className="landing-fig-detail" x1="76" y1="96" x2="116" y2="96" />
+        <text className="landing-fig-label" x="100" y="112" textAnchor="middle">
+          Context
+        </text>
+        <circle className="landing-fig-flow-dot" cx="86" cy="52" r="1.75" />
+        <circle className="landing-fig-flow-dot landing-fig-flow-dot-delay" cx="114" cy="52" r="1.75" />
+        <line className="landing-fig-scan" x1="44" y1="68" x2="156" y2="68" />
       </g>
     </svg>
   )
@@ -220,33 +278,48 @@ function FigContext({ className }: { className?: string }) {
 function FigControl({ className }: { className?: string }) {
   const { ref, isVisible } = useInView<SVGSVGElement>()
 
-  const slab = (x: number, y: number, w: number, h: number, delay: string) => (
-    <g key={`${x}-${y}`}>
-      <polygon className={cn("landing-fig-fill landing-fig-stroke", delay)} points={`${x},${y + h} ${x + w},${y + h} ${x + w + 10},${y + h - 8} ${x + 10},${y + h - 8}`} />
-      <polygon className={cn("landing-fig-fill landing-fig-stroke", delay)} points={`${x},${y} ${x + w},${y} ${x + w},${y + h} ${x},${y + h}`} />
-      <polygon className={cn("landing-fig-fill landing-fig-accent landing-fig-stroke", delay)} points={`${x + w},${y} ${x + w + 10},${y - 8} ${x + w + 10},${y + h - 8} ${x + w},${y + h}`} />
+  const step = (x: number, y: number, h: number, delay: string, label: string) => (
+    <g key={label}>
+      <rect className={cn("landing-fig-fill landing-fig-stroke", delay)} x={x} y={y} width="18" height={h} rx="1" />
+      <polygon
+        className={cn("landing-fig-fill landing-fig-stroke", delay)}
+        points={`${x + 18},${y} ${x + 26},${y - 6} ${x + 26},${y + h - 6} ${x + 18},${y + h}`}
+      />
+      <text className="landing-fig-label" x={x + 9} y={y + h + 12} textAnchor="middle">
+        {label}
+      </text>
     </g>
   )
 
   return (
     <svg
       ref={ref}
-      viewBox="0 0 200 140"
+      viewBox="0 0 200 132"
       className={cn("landing-fig mx-auto h-32 w-full max-w-[220px]", isVisible && "is-visible", className)}
       aria-hidden
     >
-      <g className="landing-fig-idle">
-        {slab(28, 92, 22, 28, "landing-fig-stroke-delay-1")}
-        {slab(54, 76, 22, 44, "landing-fig-stroke-delay-2")}
-        {slab(80, 58, 22, 62, "landing-fig-stroke-delay-3")}
-        {slab(106, 38, 22, 82, "landing-fig-stroke-delay-4")}
-        {slab(132, 22, 22, 98, "landing-fig-stroke-delay-5")}
-        {/* back panel */}
-        <rect className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-1" x="22" y="18" width="156" height="8" rx="1" />
-        <line className="landing-fig-detail" x1="22" y1="118" x2="178" y2="118" />
-        <line className="landing-fig-detail" x1="22" y1="118" x2="22" y2="18" />
-        <circle className="landing-fig-node" cx="143" cy="26" r="2.5" />
-        <line className="landing-fig-scan" x1="30" y1="30" x2="170" y2="30" />
+      <defs>
+        <clipPath id="fig-control-clip">
+          <rect x="0" y="0" width="200" height="124" />
+        </clipPath>
+      </defs>
+      <g className="landing-fig-idle" clipPath="url(#fig-control-clip)">
+        <rect className="landing-fig-fill landing-fig-stroke landing-fig-stroke-delay-1" x="22" y="16" width="156" height="10" rx="1" />
+        <line className="landing-fig-detail" x1="30" y1="21" x2="170" y2="21" />
+        {step(34, 88, 22, "landing-fig-stroke-delay-1", "Read")}
+        {step(58, 76, 34, "landing-fig-stroke-delay-2", "Draft")}
+        {step(82, 62, 48, "landing-fig-stroke-delay-3", "Prep")}
+        <rect className="landing-fig-fill landing-fig-accent landing-fig-gate landing-fig-stroke landing-fig-stroke-delay-4" x="108" y="44" width="24" height="66" rx="2" />
+        <line className="landing-fig-stroke landing-fig-stroke-delay-4" x1="114" y1="54" x2="126" y2="66" />
+        <line className="landing-fig-stroke landing-fig-stroke-delay-4" x1="126" y1="54" x2="114" y2="66" />
+        <text className="landing-fig-label" x="120" y="118" textAnchor="middle">
+          Approve
+        </text>
+        {step(140, 52, 58, "landing-fig-stroke-delay-5", "Send")}
+        <circle className="landing-fig-node" cx="120" cy="60" r="2.5" />
+        <line className="landing-fig-link landing-fig-stroke landing-fig-stroke-delay-3" x1="52" y1="99" x2="108" y2="77" />
+        <line className="landing-fig-link landing-fig-stroke landing-fig-stroke-delay-4" x1="132" y1="77" x2="140" y2="81" />
+        <line className="landing-fig-scan" x1="30" y1="36" x2="170" y2="36" />
       </g>
     </svg>
   )
@@ -279,7 +352,6 @@ function Nav() {
             <Link href="#features" className="transition-colors hover:text-white">Features</Link>
             <Link href="#faq" className="transition-colors hover:text-white">FAQ</Link>
             <span className="h-5 w-px bg-white/10" />
-            <ThemeToggleIcon inverted />
             <Link href="/login" className="transition-colors hover:text-white">Log in</Link>
             <Button asChild className="h-9 rounded-full bg-white px-5 text-neutral-950 hover:bg-neutral-200">
               <Link href="/login?tab=signup">Sign up</Link>
@@ -347,12 +419,18 @@ function PrincipleGrid() {
         </h2>
       </Reveal>
 
-      <div className="mt-20 grid gap-px overflow-hidden border-y landing-hairline bg-white/10 md:grid-cols-3">
+      <div className="relative mt-20 grid overflow-hidden border-y landing-hairline md:grid-cols-3 md:divide-x md:divide-white/[0.06]">
+        <CrosshairCorners />
         {items.map(({ fig, title, text, Figure }, index) => (
-          <Reveal key={title} delayClass={index === 1 ? "landing-reveal-delay-1" : index === 2 ? "landing-reveal-delay-2" : undefined}>
-            <div className="min-h-[340px] bg-[#080808] p-8">
-              <div className="landing-label">{fig}</div>
-              <div className="mt-12 flex h-36 items-center justify-center">
+          <Reveal
+            key={title}
+            className="h-full"
+            delayClass={index === 1 ? "landing-reveal-delay-1" : index === 2 ? "landing-reveal-delay-2" : undefined}
+          >
+            <div className="landing-principle-cell h-full min-h-[340px] bg-black p-8">
+              <div className="landing-mono-label">{fig}</div>
+              <div className="landing-fig-stage relative mt-12 flex h-36 items-center justify-center">
+                <div className="landing-fig-vignette" aria-hidden />
                 <Figure />
               </div>
               <h3 className="mt-14 text-base font-semibold text-white">{title}</h3>
@@ -369,12 +447,13 @@ function FeatureShowcase({ feature }: { feature: (typeof features)[number] }) {
   const { ref, isVisible } = useInView<HTMLElement>()
 
   return (
-    <section ref={ref} className="border-t landing-hairline px-6 py-20 md:py-28">
+    <section ref={ref} className="relative border-t landing-hairline px-6 py-20 md:py-28">
+      <Cross className="absolute left-6 top-0 -translate-x-1/2 -translate-y-1/2" />
       <div className="mx-auto max-w-7xl">
         <div className={cn("landing-reveal", isVisible && "is-visible")}>
           <Link
             href="#features"
-            className="group mb-10 inline-flex items-center gap-2 text-sm text-neutral-500 transition-colors hover:text-white"
+            className="group mb-10 inline-flex items-center gap-2 landing-mono-label transition-colors hover:text-white"
           >
             <span>{feature.eyebrow}</span>
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -400,6 +479,90 @@ function FeatureShowcase({ feature }: { feature: (typeof features)[number] }) {
           >
             <ProductMockup variant="feature" scene={feature.scene} />
           </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function RecentlyShipped() {
+  const { ref, isVisible } = useInView<HTMLElement>()
+
+  const cards = [
+    {
+      title: "Page-aware chat",
+      description:
+        "Relay chat reads the active page and selected email before answering, so every reply starts with the right context.",
+      visual: (
+        <div className="relative flex h-40 items-center justify-center overflow-hidden rounded-lg border landing-hairline landing-dotgrid">
+          <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent" />
+          <div className="relative rounded-lg border landing-hairline bg-black/80 px-4 py-3 text-left shadow-[0_0_40px_rgb(255_255_255/0.04)]">
+            <p className="landing-mono-label mb-2">Context</p>
+            <p className="text-sm text-white">@ Selected thread</p>
+            <p className="mt-2 text-xs text-neutral-500">Ask about this email...</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: "Supervised agents",
+      description:
+        "Background agents classify, draft, and prepare work — then wait for explicit approval before anything sends.",
+      visual: (
+        <div className="relative flex h-40 flex-col justify-center gap-3 overflow-hidden rounded-lg border landing-hairline bg-black/40 px-5">
+          {[
+            { label: "classify()", ms: "120ms", width: "38%" },
+            { label: "draft()", ms: "240ms", width: "62%" },
+            { label: "approve()", ms: "80ms", width: "28%" },
+          ].map(({ label, ms, width }, index) => (
+            <div key={label} className="space-y-1.5">
+              <div className="flex items-center justify-between landing-mono-label text-[10px]">
+                <span>{label}</span>
+                <span>{ms}</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                <div
+                  className={cn(
+                    "landing-bar h-full rounded-full",
+                    index === 1 && "landing-bar-delay-1",
+                    index === 2 && "landing-bar-delay-2",
+                  )}
+                  style={{ width }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <section ref={ref} className="border-t landing-hairline px-6 py-24 md:py-32">
+      <div className="mx-auto max-w-7xl">
+        <Reveal>
+          <p className="landing-mono-label mb-6">What&apos;s new</p>
+          <h2 className="landing-section-title max-w-2xl">Recently shipped</h2>
+        </Reveal>
+
+        <div
+          className={cn(
+            "relative mt-14 grid gap-px overflow-hidden border landing-hairline bg-white/[0.06] md:grid-cols-2",
+            isVisible && "landing-animate-active",
+          )}
+        >
+          <CrosshairCorners />
+          {cards.map(({ title, description, visual }, index) => (
+            <Reveal
+              key={title}
+              delayClass={index === 1 ? "landing-reveal-delay-1" : undefined}
+              className="bg-black p-8 md:p-10"
+            >
+              {visual}
+              <h3 className="mt-8 text-base font-semibold text-white">{title}</h3>
+              <p className="landing-body mt-3 max-w-md text-sm">{description}</p>
+            </Reveal>
+          ))}
         </div>
       </div>
     </section>
@@ -433,7 +596,7 @@ export function LandingPage() {
                 <h1 className="landing-hero-title max-w-5xl">
                   The inbox system for teams and agents
                 </h1>
-                <p className="landing-body mt-8 max-w-2xl">
+                <p className="landing-body mt-8 max-w-xl">
                   Relay unifies Gmail and Outlook with contextual AI for briefs, drafts, commitments, meeting prep, and supervised agent work.
                 </p>
               </div>
@@ -446,12 +609,18 @@ export function LandingPage() {
                 <Button asChild className="h-11 rounded-full bg-white px-5 text-neutral-950 hover:bg-neutral-200">
                   <Link href="/login?tab=signup">Start with Relay</Link>
                 </Button>
+                <div className="mt-2 hidden text-right leading-relaxed lg:block">
+                  <p className="landing-mono-label">Unified Gmail + Outlook</p>
+                  <p className="landing-mono-label mt-1">Contextual AI briefs</p>
+                  <p className="landing-mono-label mt-1">Supervised agent work</p>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className={cn("mt-16 transition-all delay-150 duration-700", loaded ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0")}>
-            <div className="overflow-hidden rounded-xl landing-panel p-3 md:p-4">
+          <div className={cn("relative mt-16 transition-all delay-200 duration-700", loaded ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0")}>
+            <div className="landing-hero-bloom" aria-hidden />
+            <div className="relative overflow-hidden rounded-xl landing-panel p-3 md:p-4">
               <ProductMockup variant="hero" scene="inbox" />
             </div>
           </div>
@@ -465,12 +634,12 @@ export function LandingPage() {
             alt=""
             fill
             sizes="100vw"
-            className="object-cover object-[32%_42%] opacity-55"
+            className="object-cover object-[32%_42%] opacity-40"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#080808] via-[#080808]/88 to-[#080808]/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/90 to-black/40" />
           <div className="relative mx-auto flex min-h-[420px] max-w-7xl items-center px-6 py-20">
             <Reveal className="max-w-2xl">
-              <p className="landing-label mb-6">0.4 Philosophy</p>
+              <p className="landing-mono-label mb-6">0.4 Philosophy</p>
               <h2 className="landing-section-title">
                 Quiet intelligence for a loud inbox.
               </h2>
@@ -487,38 +656,43 @@ export function LandingPage() {
           ))}
         </div>
 
+        <RecentlyShipped />
+
         <section id="faq" className="border-t landing-hairline px-6 py-24 md:py-32">
-          <div className="mx-auto max-w-4xl">
-            <Reveal>
-              <p className="landing-label mb-6 text-center">Support</p>
-              <h2 className="landing-section-title text-center">FAQ</h2>
-            </Reveal>
-            <Accordion type="single" collapsible className="mt-14 space-y-3">
-              {faqs.map((faq, index) => (
-                <AccordionItem
-                  key={faq.question}
-                  value={`item-${index}`}
-                  className="overflow-hidden rounded-xl landing-panel px-5 border-b-0"
-                >
-                  <AccordionTrigger className="group gap-4 py-5 text-left hover:no-underline [&>svg.lucide-chevron-down]:hidden">
-                    <span className="flex-1 text-base font-medium text-white md:text-lg">{faq.question}</span>
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border landing-hairline bg-white/[0.03] text-neutral-400">
-                      <Plus className="h-4 w-4 group-data-[state=open]:hidden" />
-                      <Minus className="hidden h-4 w-4 group-data-[state=open]:block" />
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent className="landing-body text-sm md:text-base">
-                    <div className="pb-5">{faq.answer}</div>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
+          <div className="mx-auto max-w-7xl">
+            <div className="grid gap-12 md:grid-cols-[1fr_1.4fr] md:gap-16">
+              <Reveal className="md:sticky md:top-28 md:self-start">
+                <p className="landing-mono-label mb-6">Support</p>
+                <h2 className="landing-section-title">Frequently asked questions</h2>
+              </Reveal>
+              <Accordion type="single" collapsible className="border-t landing-hairline">
+                {faqs.map((faq, index) => (
+                  <AccordionItem
+                    key={faq.question}
+                    value={`item-${index}`}
+                    className="border-b landing-hairline px-0"
+                  >
+                    <AccordionTrigger className="group gap-4 py-5 text-left hover:no-underline [&>svg.lucide-chevron-down]:hidden">
+                      <span className="flex-1 text-base font-medium text-white md:text-lg">{faq.question}</span>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border landing-hairline bg-white/[0.03] text-neutral-400">
+                        <Plus className="h-4 w-4 group-data-[state=open]:hidden" />
+                        <Minus className="hidden h-4 w-4 group-data-[state=open]:block" />
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="landing-body text-sm md:text-base">
+                      <div className="pb-5">{faq.answer}</div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
           </div>
         </section>
 
         <section className="px-6 pb-16">
           <Reveal>
             <div className="relative mx-auto min-h-[360px] max-w-7xl overflow-hidden rounded-xl landing-panel">
+              <CrosshairCorners />
               <Image
                 src={cosmicPhilosophers}
                 alt=""
@@ -526,9 +700,9 @@ export function LandingPage() {
                 sizes="(max-width: 768px) 100vw, 1280px"
                 className="object-cover object-[center_36%] opacity-70"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#080808]/90 via-[#080808]/55 to-[#080808]/35" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/75 to-black/35" />
               <div className="relative flex min-h-[360px] flex-col items-center justify-center px-6 py-16 text-center">
-                <p className="landing-label mb-6">7.0 Start</p>
+                <p className="landing-mono-label mb-6">7.0 Start</p>
                 <h2 className="landing-section-title max-w-3xl">
                   Browse mail with intelligence
                 </h2>
@@ -547,9 +721,10 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="relative z-10 border-t landing-hairline px-6 py-12">
+      <footer className="relative z-10 border-t landing-hairline px-6 py-16">
+        <Cross className="absolute left-6 top-0 -translate-x-1/2 -translate-y-1/2" />
         <div className="mx-auto max-w-7xl">
-          <div className="grid gap-10 md:grid-cols-[1.2fr_repeat(3,1fr)]">
+          <div className="grid gap-12 md:grid-cols-[1.2fr_repeat(3,1fr)]">
             <div>
               <div className="flex items-center gap-2 text-white">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-neutral-950">
@@ -557,28 +732,33 @@ export function LandingPage() {
                 </div>
                 Relay
               </div>
-              <p className="landing-body mt-4 max-w-xs text-sm">
+              <p className="landing-body mt-5 max-w-xs text-sm">
                 The inbox system for teams and agents.
               </p>
             </div>
             <div>
-              <p className="text-sm font-medium text-white">Product</p>
-              <div className="mt-4 flex flex-col gap-3 text-sm text-neutral-500">
+              <p className="landing-mono-label">Product</p>
+              <div className="mt-5 flex flex-col gap-3.5 text-sm text-neutral-500">
                 <Link href="#product" className="hover:text-white">Overview</Link>
-                <Link href="#features" className="hover:text-white">Features</Link>
+                <Link href="#features" className="inline-flex items-center gap-2 hover:text-white">
+                  Features
+                  <span className="rounded border landing-hairline px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-neutral-400">
+                    New
+                  </span>
+                </Link>
                 <Link href="#faq" className="hover:text-white">FAQ</Link>
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-white">Account</p>
-              <div className="mt-4 flex flex-col gap-3 text-sm text-neutral-500">
+              <p className="landing-mono-label">Account</p>
+              <div className="mt-5 flex flex-col gap-3.5 text-sm text-neutral-500">
                 <Link href="/login" className="hover:text-white">Log in</Link>
                 <Link href="/login?tab=signup" className="hover:text-white">Sign up</Link>
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-white">Connect</p>
-              <div className="mt-4 flex flex-col gap-3 text-sm text-neutral-500">
+              <p className="landing-mono-label">Connect</p>
+              <div className="mt-5 flex flex-col gap-3.5 text-sm text-neutral-500">
                 <span>Gmail</span>
                 <span>Outlook</span>
               </div>

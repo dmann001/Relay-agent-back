@@ -1,18 +1,32 @@
 "use client"
 
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react"
+import { createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import {
+  AlertCircle,
+  Archive,
   Bot,
+  Box,
   CalendarDays,
   Check,
   CheckSquare,
+  ChevronRight,
+  Clock,
+  History,
   Inbox,
+  Link2,
   Mail,
+  Maximize2,
+  MessageSquare,
   NotebookTabs,
+  Plus,
   RefreshCw,
   Search,
   Send,
   Sparkles,
+  Trash2,
+  Users,
+  X,
+  Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -233,7 +247,18 @@ function useAnimatedCursor(
     for (const [key, ref] of Object.entries(targetRefs)) {
       next[key] = measureTarget(container, ref.current, 0.4, 0.5)
     }
-    setPositions(next)
+
+    setPositions((prev) => {
+      const keys = Object.keys(next)
+      if (
+        keys.every(
+          (key) => prev[key]?.x === next[key]?.x && prev[key]?.y === next[key]?.y,
+        )
+      ) {
+        return prev
+      }
+      return next
+    })
   }, [containerRef, fallback, targetRefs])
 
   useEffect(() => {
@@ -261,7 +286,7 @@ function useAnimatedCursor(
 
   const cursorPos = positions[current.target] ?? fallback.start
 
-  return { visible, cursorPos, clicking: current.clicking ?? false }
+  return { visible, cursorPos, clicking: current.clicking ?? false, step }
 }
 
 function measureTarget(
@@ -297,7 +322,7 @@ function MockupFrame({
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden",
+        "landing-mockup-frame relative w-full overflow-hidden",
         variant === "hero"
           ? "aspect-[16/9] min-h-[320px] rounded-xl sm:min-h-[380px] md:min-h-[440px]"
           : "h-full min-h-[280px] rounded-xl md:min-h-[300px]",
@@ -719,9 +744,15 @@ const HeroEmailRow = forwardRef<
   )
 })
 
-function DarkMiniSidebar({ compact }: { compact?: boolean }) {
+function DarkMiniSidebar({
+  compact,
+  activeLabel = "Inbox",
+}: {
+  compact?: boolean
+  activeLabel?: string
+}) {
   const items = [
-    { icon: Inbox, label: "Inbox", active: true, badge: "12" },
+    { icon: Inbox, label: "Inbox", badge: "12" },
     { icon: Mail, label: "Sent" },
     { icon: CheckSquare, label: "Tasks" },
     { icon: NotebookTabs, label: "Briefs" },
@@ -745,28 +776,31 @@ function DarkMiniSidebar({ compact }: { compact?: boolean }) {
         )}
       </div>
       <div className="space-y-1">
-        {items.map(({ icon: Icon, label, active, badge }) => (
-          <div
-            key={label}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md",
-              mock.sidebar.navPad,
-              active ? "bg-white/10 text-white" : "text-neutral-500",
-            )}
-          >
-            <Icon className={cn("shrink-0", mock.sidebar.navIcon)} />
-            {!compact && (
-              <>
-                <span className={cn("truncate", mock.sidebar.nav)}>{label}</span>
-                {badge && (
-                  <span className={cn("ml-auto rounded-md bg-white text-neutral-950", mock.sidebar.badge, active && "landing-badge-pulse")}>
-                    {badge}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+        {items.map(({ icon: Icon, label, badge }) => {
+          const active = label === activeLabel
+          return (
+            <div
+              key={label}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md",
+                mock.sidebar.navPad,
+                active ? "bg-white/10 text-white" : "text-neutral-500",
+              )}
+            >
+              <Icon className={cn("shrink-0", mock.sidebar.navIcon)} />
+              {!compact && (
+                <>
+                  <span className={cn("truncate", mock.sidebar.nav)}>{label}</span>
+                  {badge && (
+                    <span className={cn("ml-auto rounded-md bg-white text-neutral-950", mock.sidebar.badge, active && "landing-badge-pulse")}>
+                      {badge}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })}
       </div>
     </aside>
   )
@@ -774,35 +808,202 @@ function DarkMiniSidebar({ compact }: { compact?: boolean }) {
 
 const HERO_CURSOR_SEQUENCE = [
   { delay: 900, target: "start" },
-  { delay: 1100, target: "email" },
+  { delay: 1000, target: "email" },
   { delay: 280, target: "email", clicking: true },
-  { delay: 1200, target: "brief" },
-  { delay: 280, target: "brief", clicking: true },
-  { delay: 1000, target: "ask" },
-  { delay: 280, target: "ask", clicking: true },
-  { delay: 1800, target: "start" },
+  { delay: 900, target: "summarize" },
+  { delay: 280, target: "summarize", clicking: true },
+  { delay: 700, target: "input" },
+  { delay: 900, target: "input", clicking: true },
+  { delay: 1200, target: "start" },
+  { delay: 1400, target: "start" },
+  { delay: 1600, target: "start" },
 ]
+
+function HeroRelayChatPanel({
+  step,
+  summarizeRef,
+  inputRef,
+}: {
+  step: number
+  summarizeRef: RefObject<HTMLButtonElement | null>
+  inputRef: RefObject<HTMLDivElement | null>
+}) {
+  const phase = step % HERO_CURSOR_SEQUENCE.length
+  const showUserMessage = phase >= 6
+  const showTyping = phase === 7
+  const showAiResponse = phase >= 8
+
+  const starterPrompts = [
+    { label: "Create a draft", icon: Box },
+    { label: "Schedule a meeting", icon: CalendarDays },
+    { label: "Research a topic", icon: Search },
+    { label: "Summarize inbox", icon: Zap },
+  ]
+
+  return (
+    <section className="relative hidden min-w-0 flex-1 flex-col border-l border-white/10 bg-[#111111] lg:flex">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_0%,rgba(255,255,255,0.06),transparent_55%)]" />
+      <header className="relative flex h-12 shrink-0 items-center gap-2 border-b border-white/10 bg-[#111111] px-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-xs font-semibold text-neutral-100">New chat</h2>
+          <p className="truncate text-[10px] text-neutral-500">
+            Inbox page · Help triage unread mail, summarize inbox...
+          </p>
+        </div>
+        <div className="flex items-center gap-0.5 text-neutral-500">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md"><History className="h-3.5 w-3.5" /></span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-md"><Plus className="h-3.5 w-3.5" /></span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-md"><Maximize2 className="h-3.5 w-3.5" /></span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-md"><X className="h-3.5 w-3.5" /></span>
+        </div>
+      </header>
+
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {!showUserMessage ? (
+          <div className="flex h-full flex-col items-center justify-center px-4 py-5 text-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]">
+              <Bot className="h-4 w-4 text-neutral-400" />
+            </div>
+            <h3 className="mt-3 text-sm font-medium text-neutral-100">Welcome to Relay</h3>
+            <p className="mt-1.5 max-w-xs text-[11px] leading-5 text-neutral-500">
+              Ask anything or tell Relay what you need.
+            </p>
+            <div className="mt-4 grid w-full max-w-sm grid-cols-2 gap-1.5">
+              {starterPrompts.map(({ label, icon: Icon }) => (
+                <button
+                  key={label}
+                  ref={label === "Summarize inbox" ? summarizeRef : undefined}
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2 text-[10px] text-neutral-400 transition-colors",
+                    label === "Summarize inbox" && phase >= 3 && phase <= 4 && "landing-feature-glow-dark border-white/20 bg-white/[0.08] text-neutral-100",
+                  )}
+                >
+                  <Icon className="h-3 w-3" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 space-y-1.5 text-[10px] text-neutral-500">
+              <div>
+                <kbd className="rounded border border-white/10 bg-white/[0.03] px-1 py-0.5 text-[9px] text-neutral-300">@</kbd>
+                {" "}to mention any issue, email, or document
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full flex-col gap-3 overflow-hidden px-3 py-3">
+            <div className="ml-auto max-w-[88%] rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-left">
+              <p className="text-[11px] leading-5 text-neutral-100">
+                Summarize what needs attention in my inbox.
+              </p>
+            </div>
+
+            {showTyping && (
+              <div className="flex max-w-[88%] items-start gap-2">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]">
+                  <Bot className="h-3 w-3 text-neutral-400" />
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <div className="flex gap-1">
+                    <span className="landing-typing-dot h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                    <span className="landing-typing-dot h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                    <span className="landing-typing-dot h-1.5 w-1.5 rounded-full bg-neutral-400" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showAiResponse && (
+              <div className="flex max-w-[92%] items-start gap-2 landing-feature-stagger-1">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]">
+                  <Bot className="h-3 w-3 text-neutral-400" />
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left">
+                  <p className="text-[11px] font-medium text-neutral-100">Today at a glance</p>
+                  <ul className="mt-2 space-y-1.5 text-[10px] leading-4 text-neutral-400">
+                    <li className="landing-feature-reveal-line flex gap-1.5">
+                      <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-white/70" />
+                      <span><span className="text-neutral-200">3 threads</span> need replies — budget review is highest priority</span>
+                    </li>
+                    <li className="landing-feature-reveal-line flex gap-1.5">
+                      <CalendarDays className="mt-0.5 h-3 w-3 shrink-0 text-white/70" />
+                      <span><span className="text-neutral-200">1 deadline</span> today on the lint fix thread</span>
+                    </li>
+                    <li className="landing-feature-reveal-line flex gap-1.5">
+                      <CheckSquare className="mt-0.5 h-3 w-3 shrink-0 text-white/70" />
+                      <span><span className="text-neutral-200">2 follow-ups</span> waiting on Stripe invoice and kickoff notes</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div
+        ref={inputRef}
+        className="relative shrink-0 border-t border-white/10 bg-[#111111] p-3"
+      >
+        <div className="rounded-xl border border-white/10 bg-[#0d0d0d] px-3 py-2.5">
+          <div className="mb-2 flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] text-neutral-300">
+              @ Inbox
+            </span>
+          </div>
+          <div className="flex items-end gap-2">
+            <button type="button" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-500">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <div className="min-h-[20px] flex-1 text-[11px] text-neutral-500">
+              {showUserMessage ? "Summarize what needs attention..." : "Ask Relay..."}
+            </div>
+            <button
+              type="button"
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+                showUserMessage ? "bg-white text-neutral-950" : "text-neutral-500",
+              )}
+            >
+              <Send className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
 
 function HeroInboxDashboard() {
   const containerRef = useRef<HTMLDivElement>(null)
   const emailRef = useRef<HTMLDivElement>(null)
   const briefRef = useRef<HTMLButtonElement>(null)
-  const askRef = useRef<HTMLButtonElement>(null)
+  const summarizeRef = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
 
-  const targetRefs = useRef({
-    email: emailRef,
-    brief: briefRef,
-    ask: askRef,
-  }).current
+  const targetRefs = useMemo(
+    () => ({
+      email: emailRef,
+      brief: briefRef,
+      summarize: summarizeRef,
+      input: inputRef,
+    }),
+    [],
+  )
 
-  const fallback = useRef({
-    start: { x: 72, y: 14 },
-    email: { x: 48, y: 42 },
-    brief: { x: 52, y: 22 },
-    ask: { x: 82, y: 78 },
-  }).current
+  const fallback = useMemo(
+    () => ({
+      start: { x: 72, y: 14 },
+      email: { x: 38, y: 42 },
+      brief: { x: 52, y: 22 },
+      summarize: { x: 78, y: 38 },
+      input: { x: 82, y: 88 },
+    }),
+    [],
+  )
 
-  const { visible, cursorPos, clicking } = useAnimatedCursor(
+  const { visible, cursorPos, clicking, step } = useAnimatedCursor(
     containerRef,
     HERO_CURSOR_SEQUENCE,
     targetRefs,
@@ -820,7 +1021,7 @@ function HeroInboxDashboard() {
   return (
     <div
       ref={containerRef}
-      className="landing-hero-product relative aspect-[16/9] min-h-[420px] overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0c] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_28px_90px_-40px_rgba(0,0,0,0.9)] landing-animate-active"
+      className="landing-hero-product landing-mockup-frame relative aspect-[16/9] min-h-[420px] overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0c] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_40px_120px_-50px_rgba(0,0,0,0.95)] landing-animate-active"
     >
       <div className="landing-hero-glow landing-hero-glow-top" />
       <div className="landing-hero-glow landing-hero-glow-right" />
@@ -829,69 +1030,94 @@ function HeroInboxDashboard() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_50%,rgba(255,255,255,0.04),transparent_50%)]" />
 
       <div className="relative flex h-full min-h-0">
-        <aside className="hidden w-[17%] min-w-[180px] border-r border-white/10 bg-[#090909] p-4 text-neutral-400 md:block">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[11px] font-bold text-neutral-950">DH</div>
+        <aside className="hidden w-[15%] min-w-[168px] border-r border-white/10 bg-[#090909] p-3 text-neutral-400 md:block">
+          <div className="flex items-center gap-2 text-xs font-semibold text-white">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-[10px] font-bold text-neutral-950">DH</div>
             Dhruv Mann
           </div>
-          <div className="mt-6 space-y-1.5 text-sm">
+          <div className="mt-4 flex items-center gap-1 text-neutral-500">
+            <span className="flex h-7 flex-1 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 text-[10px]">
+              <Search className="h-3 w-3" />
+              Search
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/[0.03]">
+              <Mail className="h-3 w-3" />
+            </span>
+          </div>
+          <div className="mt-4 space-y-1 text-[11px]">
             {[
               { label: "Inbox", count: "83", icon: Inbox, active: true },
               { label: "Sent", count: "52", icon: Send },
               { label: "Drafts", count: "45", icon: Mail },
             ].map(({ label, count, icon: Icon, active }) => (
-              <div key={label} className={cn("flex items-center gap-2 rounded-md px-2 py-2", active ? "bg-white/10 text-white" : "text-neutral-400")}>
-                <Icon className="h-4 w-4" />
+              <div key={label} className={cn("flex items-center gap-2 rounded-md px-2 py-1.5", active ? "bg-white/10 text-white" : "text-neutral-400")}>
+                <Icon className="h-3.5 w-3.5" />
                 <span>{label}</span>
-                <span className="ml-auto text-xs text-neutral-500">{count}</span>
+                <span className="ml-auto text-[10px] text-neutral-500">{count}</span>
               </div>
             ))}
           </div>
-          <div className="mt-8 text-xs text-neutral-500">Workspace</div>
-          <div className="mt-2 space-y-1.5 text-sm">
+          <div className="mt-5 text-[10px] uppercase tracking-wider text-neutral-600">Workspace</div>
+          <div className="mt-1.5 space-y-1 text-[11px]">
             {[
               { label: "Calendar", icon: CalendarDays },
               { label: "Commitments", icon: CheckSquare },
               { label: "Meeting briefs", icon: NotebookTabs },
               { label: "Activity", icon: Bot },
             ].map(({ label, icon: Icon }) => (
-              <div key={label} className="flex items-center gap-2 rounded-md px-2 py-2 text-neutral-400">
-                <Icon className="h-4 w-4" />
+              <div key={label} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-neutral-400">
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 text-[10px] uppercase tracking-wider text-neutral-600">Library</div>
+          <div className="mt-1.5 space-y-1 text-[11px]">
+            {[
+              { label: "AI chat", icon: MessageSquare, active: true },
+              { label: "Archives", icon: Archive },
+              { label: "Trash", icon: Trash2 },
+            ].map(({ label, icon: Icon, active }) => (
+              <div key={label} className={cn("flex items-center gap-2 rounded-md px-2 py-1.5", active ? "bg-white/10 text-white" : "text-neutral-400")}>
+                <Icon className="h-3.5 w-3.5" />
                 {label}
               </div>
             ))}
           </div>
         </aside>
 
-        <section className="flex w-[38%] min-w-[330px] flex-col border-r border-white/10 bg-[#101010]">
-          <div className="border-b border-white/10 p-4">
+        <section className="flex w-[34%] min-w-[280px] flex-col border-r border-white/10 bg-[#101010]">
+          <div className="border-b border-white/10 p-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-10 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm text-neutral-500">
-                <Search className="h-4 w-4" />
+              <div className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 text-[11px] text-neutral-500">
+                <Search className="h-3.5 w-3.5" />
                 Search emails...
               </div>
-              <button className="flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium text-neutral-950">
-                <Mail className="h-4 w-4" />
+              <button type="button" className="flex h-8 items-center gap-1.5 rounded-lg bg-white px-3 text-[11px] font-medium text-neutral-950">
+                <Mail className="h-3.5 w-3.5" />
                 Compose
               </button>
             </div>
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-3 flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold text-white">All accounts</div>
-                <div className="text-xs text-neutral-500">83 unread · 370 total</div>
+                <div className="text-xs font-semibold text-white">All accounts</div>
+                <div className="text-[10px] text-neutral-500">83 unread · 370 total</div>
               </div>
-              <div className="flex items-center gap-3 text-neutral-400">
-                <button ref={briefRef} type="button" className="landing-feature-glow-dark flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1">
-                  <Sparkles className="h-4 w-4 text-white" />
-                  <span className="text-xs font-medium text-white">Brief</span>
+              <div className="flex items-center gap-2 text-neutral-400">
+                <button ref={briefRef} type="button" className="landing-feature-glow-dark flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1">
+                  <Sparkles className="h-3 w-3 text-white" />
+                  <span className="text-[10px] font-medium text-white">Brief</span>
                 </button>
-                <Bot className="h-4 w-4" />
-                <RefreshCw className="h-4 w-4 landing-spin-slow" />
+                <button type="button" className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1">
+                  <Sparkles className="h-3 w-3" />
+                  <span className="text-[10px] font-medium text-neutral-300">AI</span>
+                </button>
+                <RefreshCw className="h-3.5 w-3.5 landing-spin-slow" />
               </div>
             </div>
-            <div className="mt-4 flex gap-1 text-xs font-medium text-neutral-500">
-              {["All", "Primary", "Updates", "Promotions"].map((tab) => (
-                <span key={tab} className={cn("rounded-md px-3 py-1.5", tab === "All" ? "bg-white/10 text-white" : "")}>{tab}</span>
+            <div className="mt-3 flex gap-1 text-[10px] font-medium text-neutral-500">
+              {["All", "Primary", "Updates", "Promotions", "Social"].map((tab) => (
+                <span key={tab} className={cn("rounded-md px-2 py-1", tab === "All" ? "bg-white/10 text-white" : "")}>{tab}</span>
               ))}
             </div>
           </div>
@@ -901,46 +1127,36 @@ function HeroInboxDashboard() {
                 key={message.subject}
                 ref={index === 0 ? emailRef : undefined}
                 className={cn(
-                  "flex gap-3 border-b border-white/10 px-4 py-3 transition-colors",
+                  "flex gap-2.5 border-b border-white/10 px-3 py-2.5 transition-colors",
                   message.active ? "landing-feature-row-pulse-dark bg-white/[0.06]" : "bg-transparent",
                 )}
               >
-                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-neutral-950", message.tone)}>{message.initials}</div>
+                <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-neutral-950", message.tone)}>{message.initials}</div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-white">{message.from}</span>
-                    <span className="ml-auto shrink-0 text-xs text-neutral-500">{message.time}</span>
+                    <span className="truncate text-[11px] font-semibold text-white">{message.from}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-neutral-500">{message.time}</span>
                   </div>
-                  <div className="truncate text-sm font-medium text-white">{message.subject}</div>
-                  <div className="truncate text-xs text-neutral-500">{message.snippet}</div>
+                  <div className="truncate text-[11px] font-medium text-white">{message.subject}</div>
+                  <div className="truncate text-[10px] text-neutral-500">{message.snippet}</div>
                 </div>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="relative hidden min-w-0 flex-1 flex-col bg-[#080808] lg:flex">
-          <div className="flex h-full items-center justify-center p-8 text-center">
-            <div>
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03]">
-                <Mail className="h-8 w-8 text-white" />
-              </div>
-              <h3 className="mt-5 text-xl font-semibold text-white">Select an email to read</h3>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-neutral-500">Your inbox stays in place while you move through messages.</p>
-            </div>
-          </div>
-          <div className="absolute bottom-5 right-5">
-            <button ref={askRef} type="button" className="flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium text-neutral-950 shadow-lg shadow-black/40">
-              <Send className="h-4 w-4" />
-              Ask Relay
-            </button>
-          </div>
-        </section>
+        <HeroRelayChatPanel step={step} summarizeRef={summarizeRef} inputRef={inputRef} />
       </div>
 
       <MacCursor x={cursorPos.x} y={cursorPos.y} clicking={clicking} visible={visible} />
     </div>
   )
+}
+
+const FeatureSceneStepContext = createContext(0)
+
+function useFeatureSceneStep() {
+  return useContext(FeatureSceneStepContext)
 }
 
 function FeatureSceneShell({
@@ -951,11 +1167,11 @@ function FeatureSceneShell({
 }: {
   children: React.ReactNode
   sequence: Array<{ delay: number; target: string; clicking?: boolean }>
-  targetRefs: Record<string, React.RefObject<HTMLElement | null>>
+  targetRefs: Record<string, RefObject<HTMLElement | null>>
   fallback: Record<string, CursorPoint>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { visible, cursorPos, clicking } = useAnimatedCursor(
+  const { visible, cursorPos, clicking, step } = useAnimatedCursor(
     containerRef,
     sequence,
     targetRefs,
@@ -963,214 +1179,505 @@ function FeatureSceneShell({
   )
 
   return (
-    <div ref={containerRef} className="relative flex min-h-0 min-w-0 flex-1 landing-animate-active">
-      {children}
-      <MacCursor x={cursorPos.x} y={cursorPos.y} clicking={clicking} visible={visible} />
+    <FeatureSceneStepContext.Provider value={step}>
+      <div ref={containerRef} className="relative flex min-h-0 min-w-0 flex-1 landing-animate-active">
+        {children}
+        <MacCursor x={cursorPos.x} y={cursorPos.y} clicking={clicking} visible={visible} />
+      </div>
+    </FeatureSceneStepContext.Provider>
+  )
+}
+
+function FeatureEmailRow({
+  initials,
+  from,
+  subject,
+  snippet,
+  time,
+  tone,
+  active,
+  label,
+  dimmed,
+  innerRef,
+}: {
+  initials: string
+  from: string
+  subject: string
+  snippet: string
+  time: string
+  tone: string
+  active?: boolean
+  label?: string
+  dimmed?: boolean
+  innerRef?: RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <div
+      ref={innerRef}
+      className={cn(
+        "flex gap-2 border-b border-white/10 px-2.5 py-2 transition-colors",
+        active ? "landing-feature-row-pulse-dark bg-white/[0.06]" : "bg-transparent",
+        dimmed && "opacity-45",
+      )}
+    >
+      <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-neutral-950", tone)}>
+        {initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className={cn("truncate font-semibold text-white", mock.t.sm)}>{from}</span>
+          {label && (
+            <span className="rounded bg-white/10 px-1 py-0.5 text-[8px] uppercase tracking-wide text-neutral-400">
+              {label}
+            </span>
+          )}
+          <span className={cn("ml-auto shrink-0 text-neutral-500", mock.t.xs)}>{time}</span>
+        </div>
+        <p className={cn("truncate font-medium text-white", mock.t.sm)}>{subject}</p>
+        <p className={cn("truncate text-neutral-500", mock.t.xs)}>{snippet}</p>
+      </div>
     </div>
+  )
+}
+
+function InboxSceneContent({
+  compact,
+  emailRef,
+  actionRef,
+}: {
+  compact?: boolean
+  emailRef: RefObject<HTMLDivElement | null>
+  actionRef: RefObject<HTMLButtonElement | null>
+}) {
+  const step = useFeatureSceneStep()
+  const phase = step % 8
+  const showReadingPane = phase >= 2
+  const showSuggestion = phase >= 4
+
+  return (
+    <>
+      <DarkMiniSidebar compact={compact} />
+      <div className="flex min-w-0 flex-[2] flex-col border-r border-white/10 bg-[#101010]">
+        <div className={cn("border-b border-white/10", mock.pad.header)}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={cn("font-semibold text-white", mock.t.sm)}>All accounts</p>
+              <p className={cn("text-neutral-500", mock.t.xs)}>Gmail · Outlook · 83 unread</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={cn("flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-neutral-300", mock.t.xs)}>
+                <Sparkles className="h-3 w-3" />
+                Brief
+              </span>
+              <RefreshCw className="h-3.5 w-3.5 text-neutral-500 landing-spin-slow" />
+            </div>
+          </div>
+          <div className="mt-2 flex gap-1">
+            {["All", "Primary", "Updates", "Promotions"].map((tab) => (
+              <span key={tab} className={cn("rounded px-2 py-0.5 text-[10px]", tab === "Primary" ? "bg-white/10 text-white" : "text-neutral-500")}>
+                {tab}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <FeatureEmailRow
+            innerRef={emailRef}
+            initials="SC"
+            from="Sarah Chen"
+            subject="Q2 budget review"
+            snippet="Can you send updated figures by Friday?"
+            time="9:14 AM"
+            tone="bg-amber-400"
+            active={showReadingPane}
+            label="Reply"
+          />
+          <FeatureEmailRow
+            initials="ST"
+            from="Stripe"
+            subject="Invoice #2041"
+            snippet="Your receipt for June billing"
+            time="8:02 AM"
+            tone="bg-neutral-500"
+            label="Updates"
+          />
+          <FeatureEmailRow
+            initials="AR"
+            from="Alex Rivera"
+            subject="Project kickoff notes"
+            snippet="Timeline PDF attached for review"
+            time="Yesterday"
+            tone="bg-cyan-400"
+            label="Primary"
+          />
+          <FeatureEmailRow
+            initials="NL"
+            from="Newsletter"
+            subject="Weekly digest"
+            snippet="Top stories from this week"
+            time="Yesterday"
+            tone="bg-orange-400"
+            label="Promotions"
+            dimmed
+          />
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-[3] flex-col bg-[#0d0d0d]">
+        {showReadingPane ? (
+          <>
+            <div className={cn("border-b border-white/10", mock.pad.header)}>
+              <p className={cn("font-semibold text-white", mock.t.sm)}>Q2 budget review</p>
+              <p className={cn("text-neutral-500", mock.t.xs)}>Sarah Chen · sarah@acme.co</p>
+              {showSuggestion && (
+                <button
+                  ref={actionRef}
+                  type="button"
+                  className="landing-feature-glow-dark mt-2 inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-2 py-1"
+                >
+                  <Sparkles className="h-3 w-3 text-white" />
+                  <span className={cn("text-neutral-200", mock.t.xs)}>Suggest reply with Q2 figures</span>
+                  <ChevronRight className="h-3 w-3 text-neutral-500" />
+                </button>
+              )}
+            </div>
+            <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
+              <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+                <p className={cn("font-medium text-neutral-400", mock.t.xs)}>Sarah Chen · Tue 9:14 AM</p>
+                <p className={cn("mt-1.5 leading-relaxed text-neutral-300", mock.t.xs)}>
+                  Hi — can you send the updated Q2 budget figures before our board sync on Friday? Legal still needs the vendor line items.
+                </p>
+              </div>
+              {!compact && (
+                <div className={cn("rounded-md border border-dashed border-white/10 bg-white/[0.02] px-3 py-2", mock.t.xs)}>
+                  <span className="text-neutral-500">Reading pane stays open while you triage the next thread.</span>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]">
+              <Inbox className="h-5 w-5 text-neutral-500" />
+            </div>
+            <p className={cn("mt-3 font-medium text-white", mock.t.sm)}>Unified inbox</p>
+            <p className={cn("mt-1 max-w-xs text-neutral-500", mock.t.xs)}>
+              Gmail and Outlook in one queue — classify, read, and act without switching tabs.
+            </p>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
 function InboxScene({ compact }: { compact?: boolean }) {
   const emailRef = useRef<HTMLDivElement>(null)
-  const briefRef = useRef<HTMLButtonElement>(null)
-  const targetRefs = useRef({ email: emailRef, brief: briefRef }).current
-  const fallback = useRef({
-    start: { x: 68, y: 18 },
-    email: { x: 52, y: 38 },
-    brief: { x: 78, y: 14 },
-  }).current
+  const actionRef = useRef<HTMLButtonElement>(null)
+  const targetRefs = useMemo(() => ({ email: emailRef, action: actionRef }), [])
+  const fallback = useMemo(
+    () => ({
+      start: { x: 68, y: 18 },
+      email: { x: 42, y: 36 },
+      action: { x: 72, y: 28 },
+    }),
+    [],
+  )
   const sequence = [
     { delay: 800, target: "start" },
     { delay: 1000, target: "email" },
     { delay: 260, target: "email", clicking: true },
-    { delay: 900, target: "brief" },
-    { delay: 260, target: "brief", clicking: true },
-    { delay: 1400, target: "start" },
+    { delay: 900, target: "action" },
+    { delay: 260, target: "action", clicking: true },
+    { delay: 1200, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
   ]
 
   return (
     <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
-      <DarkMiniSidebar compact={compact} />
+      <InboxSceneContent compact={compact} emailRef={emailRef} actionRef={actionRef} />
+    </FeatureSceneShell>
+  )
+}
+
+function BriefSceneContent({
+  compact,
+  priorityRef,
+}: {
+  compact?: boolean
+  priorityRef: RefObject<HTMLDivElement | null>
+}) {
+  const step = useFeatureSceneStep()
+  const phase = step % 8
+  const showSections = phase >= 2
+  const showFullBrief = phase >= 4
+
+  return (
+    <>
+      <DarkMiniSidebar compact={compact} activeLabel="Briefs" />
       <div className="flex min-w-0 flex-1 flex-col bg-[#101010]">
-        <div className={cn("flex items-center justify-between border-b border-white/10", mock.pad.header)}>
-          <span className={cn("font-medium text-white", mock.t.base)}>Inbox</span>
-          <button ref={briefRef} type="button" className={cn("landing-feature-glow-dark flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04]", mock.pad.btn)}>
-            <Sparkles className={cn("text-white", mock.icon.sm)} />
-            <span className={cn("text-neutral-300", mock.t.xs)}>Brief</span>
-          </button>
+        <div className={cn("flex items-center gap-2 border-b border-white/10", mock.pad.header)}>
+          <Sparkles className={cn("text-white", mock.icon.md)} />
+          <div className="min-w-0 flex-1">
+            <p className={cn("font-semibold text-white", mock.t.sm)}>Inbox brief</p>
+            <p className={cn("text-neutral-500", mock.t.xs)}>Condensed from 83 unread · 370 total</p>
+          </div>
+          <span className={cn("rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300", mock.t.xs)}>Live</span>
         </div>
-        <div className="flex-1 space-y-0.5 overflow-hidden p-2">
-          <div ref={emailRef} className={cn("landing-feature-row-pulse-dark rounded-md border border-white/10 bg-white/[0.06]", mock.pad.row)}>
-            <div className="flex items-start gap-2">
-              <div className={cn("mt-0.5 flex items-center justify-center rounded-full bg-amber-400 font-medium text-neutral-950", mock.icon.avatar, mock.icon.avatarText)}>SC</div>
-              <div className="min-w-0 flex-1">
-                <div className="flex justify-between gap-2">
-                  <span className={cn("font-semibold text-white", mock.t.sm)}>Sarah Chen</span>
-                  <span className={cn("text-neutral-500", mock.t.xs)}>9:14 AM</span>
-                </div>
-                <p className={cn("font-medium text-white", mock.t.sm)}>Q2 budget review</p>
-                <p className={cn("truncate text-neutral-500", mock.t.xs)}>Can you send updated figures by Friday?</p>
-              </div>
+        <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
+          <div className={cn("landing-feature-glow-dark rounded-lg border border-white/10 bg-white/[0.04]", mock.pad.section)}>
+            <p className={cn("font-semibold text-white", mock.t.sm)}>Today at a glance</p>
+            <p className={cn("mt-1 text-neutral-400", mock.t.xs)}>3 threads need replies · 1 deadline today · 2 meetings</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[
+                { label: "Reply", count: "3" },
+                { label: "Deadline", count: "1" },
+                { label: "Meeting", count: "2" },
+              ].map(({ label, count }) => (
+                <span key={label} className={cn("rounded-md bg-white/10 px-1.5 py-0.5 text-neutral-300", mock.t.micro)}>
+                  {label} · {count}
+                </span>
+              ))}
             </div>
           </div>
-          {[
-            { from: "Stripe", subject: "Invoice #2041", time: "8:02 AM", tone: "bg-neutral-500" },
-            { from: "Alex Rivera", subject: "Project kickoff notes", time: "Yesterday", tone: "bg-cyan-400" },
-          ].map((row) => (
-            <div key={row.subject} className={cn("rounded-md border border-transparent bg-white/[0.03]", mock.pad.row)}>
-              <div className="flex items-start gap-2">
-                <div className={cn("mt-0.5 rounded-full", mock.icon.avatar, row.tone)} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex justify-between gap-2">
-                    <span className={cn("text-neutral-400", mock.t.sm)}>{row.from}</span>
-                    <span className={cn("text-neutral-600", mock.t.xs)}>{row.time}</span>
+
+          {showSections && (
+            <div ref={priorityRef} className="landing-feature-stagger-1 space-y-1.5">
+              <p className={cn("font-semibold uppercase tracking-wide text-neutral-500", mock.t.micro)}>Needs a reply</p>
+              {[
+                { title: "Q2 budget review", meta: "Sarah Chen · figures due Friday", urgent: true },
+                { title: "Contract redlines", meta: "Legal · waiting on vendor terms" },
+              ].map(({ title, meta, urgent }) => (
+                <div key={title} className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className={cn("font-medium text-white", mock.t.sm)}>{title}</p>
+                      <p className={cn("text-neutral-500", mock.t.xs)}>{meta}</p>
+                    </div>
+                    {urgent && <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />}
                   </div>
-                  <p className={cn("text-neutral-300", mock.t.sm)}>{row.subject}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showFullBrief && !compact && (
+            <>
+              <div className="landing-feature-stagger-2 space-y-1.5">
+                <p className={cn("font-semibold uppercase tracking-wide text-neutral-500", mock.t.micro)}>Deadlines</p>
+                <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3.5 w-3.5 text-amber-400" />
+                    <div>
+                      <p className={cn("text-neutral-200", mock.t.sm)}>Board deck review</p>
+                      <p className={cn("text-amber-400/90", mock.t.xs)}>Due today, 5:00 PM</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+              <div className="space-y-1.5">
+                <p className={cn("font-semibold uppercase tracking-wide text-neutral-500", mock.t.micro)}>Meetings</p>
+                <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+                  <p className={cn("text-neutral-200", mock.t.sm)}>Board sync · 2:00 PM</p>
+                  <p className={cn("text-neutral-500", mock.t.xs)}>Budget + vendor blockers on agenda</p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </FeatureSceneShell>
+    </>
   )
 }
 
 function BriefScene({ compact }: { compact?: boolean }) {
-  const cardRef = useRef<HTMLDivElement>(null)
-  const targetRefs = useRef({ card: cardRef }).current
-  const fallback = useRef({ start: { x: 62, y: 20 }, card: { x: 48, y: 42 } }).current
+  const priorityRef = useRef<HTMLDivElement>(null)
+  const targetRefs = useMemo(() => ({ priority: priorityRef }), [])
+  const fallback = useMemo(
+    () => ({ start: { x: 62, y: 20 }, priority: { x: 48, y: 48 } }),
+    [],
+  )
   const sequence = [
     { delay: 800, target: "start" },
-    { delay: 1100, target: "card" },
-    { delay: 280, target: "card", clicking: true },
-    { delay: 1600, target: "start" },
+    { delay: 1000, target: "start" },
+    { delay: 900, target: "priority" },
+    { delay: 280, target: "priority", clicking: true },
+    { delay: 1200, target: "priority" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
   ]
 
   return (
     <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
-      <DarkMiniSidebar compact={compact} />
-      <div className="flex min-w-0 flex-1 flex-col bg-[#101010]">
-        <div className={cn("flex items-center gap-1.5 border-b border-white/10", mock.pad.header)}>
-          <Sparkles className={cn("text-white", mock.icon.md)} />
-          <span className={cn("font-semibold text-white", mock.t.base)}>Inbox brief</span>
-          <span className={cn("ml-auto rounded-full bg-white/10 px-2 py-0.5 text-neutral-400", mock.t.xs)}>Live</span>
+      <BriefSceneContent compact={compact} priorityRef={priorityRef} />
+    </FeatureSceneShell>
+  )
+}
+
+function ThreadSceneContent({
+  draftRef,
+}: {
+  draftRef: RefObject<HTMLButtonElement | null>
+}) {
+  const step = useFeatureSceneStep()
+  const phase = step % 8
+  const showDraft = phase >= 4
+  const showTyping = phase >= 2 && phase < 4
+
+  return (
+    <div className="flex min-w-0 flex-1">
+      <div className="flex min-w-0 flex-[2] flex-col border-r border-white/10 bg-[#0d0d0d]">
+        <div className={cn("border-b border-white/10", mock.pad.header)}>
+          <p className={cn("truncate font-medium text-white", mock.t.sm)}>Re: Q2 budget review</p>
+          <p className={cn("text-neutral-500", mock.t.xs)}>Sarah Chen · 4 messages · @ thread context</p>
         </div>
         <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
-          <div ref={cardRef} className={cn("landing-feature-glow-dark rounded-lg border border-white/10 bg-white/[0.04]", mock.pad.section)}>
-            <p className={cn("font-semibold text-white", mock.t.sm)}>Today at a glance</p>
-            <p className={cn("mt-1 leading-relaxed text-neutral-400", mock.t.xs)}>3 threads need replies · 1 deadline today · 2 meetings</p>
-            <div className="mt-2 flex gap-2">
-              {["Reply", "Deadline", "Meeting"].map((tag) => (
-                <span key={tag} className={cn("rounded-md bg-white/10 px-1.5 py-0.5 text-neutral-300", mock.t.micro)}>{tag}</span>
-              ))}
-            </div>
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+            <p className={cn("font-medium text-neutral-400", mock.t.xs)}>Sarah Chen · Mon</p>
+            <p className={cn("mt-1 leading-relaxed text-neutral-300", mock.t.xs)}>
+              Can you confirm the vendor line items before legal signs off?
+            </p>
           </div>
-          <div className="landing-feature-stagger-1">
-            <p className={cn("mb-1 font-semibold text-neutral-400", mock.t.xs)}>Needs a reply</p>
-            <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
-              <p className={cn("font-medium text-white", mock.t.sm)}>Q2 budget review</p>
-              <p className={cn("text-neutral-500", mock.t.xs)}>Sarah asked for updated figures</p>
-            </div>
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+            <p className={cn("font-medium text-neutral-400", mock.t.xs)}>Sarah Chen · Tue 9:14 AM</p>
+            <p className={cn("mt-1 leading-relaxed text-neutral-300", mock.t.xs)}>
+              Can you send the updated Q2 budget figures before our board sync on Friday?
+            </p>
           </div>
-          {!compact && (
-            <div className="landing-feature-stagger-2">
-              <p className={cn("mb-1 font-semibold text-neutral-400", mock.t.xs)}>Deadlines</p>
-              <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
-                <p className={cn("text-neutral-200", mock.t.sm)}>Board deck review</p>
-                <p className={cn("text-amber-400/90", mock.t.xs)}>Due today, 5:00 PM</p>
-              </div>
+          {showDraft && (
+            <div className={cn("landing-feature-slide-in rounded-md border border-white/15 bg-white/[0.06]", mock.pad.card)}>
+              <p className={cn("font-medium text-neutral-400", mock.t.xs)}>Draft reply</p>
+              <p className={cn("mt-1 leading-relaxed text-neutral-200", mock.t.xs)}>
+                Hi Sarah — attached are the updated Q2 figures with vendor line items. Legal can review today; happy to walk through before Friday.
+              </p>
             </div>
           )}
         </div>
       </div>
-    </FeatureSceneShell>
-  )
-}
-
-function ThreadScene({ compact }: { compact?: boolean }) {
-  const draftRef = useRef<HTMLButtonElement>(null)
-  const targetRefs = useRef({ draft: draftRef }).current
-  const fallback = useRef({ start: { x: 70, y: 22 }, draft: { x: 78, y: 72 } }).current
-  const sequence = [
-    { delay: 800, target: "start" },
-    { delay: 1100, target: "draft" },
-    { delay: 280, target: "draft", clicking: true },
-    { delay: 1600, target: "start" },
-  ]
-
-  return (
-    <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
-      <div className="flex min-w-0 flex-1">
-        <div className="flex min-w-0 flex-[3] flex-col border-r border-white/10 bg-[#0d0d0d]">
-          <div className={cn("border-b border-white/10", mock.pad.header)}>
-            <p className={cn("truncate font-medium text-white", mock.t.sm)}>Re: Q2 budget review</p>
-            <p className={cn("text-neutral-500", mock.t.xs)}>Sarah Chen · 3 messages</p>
+      <div className="flex min-w-0 flex-[2] flex-col bg-[#101010]">
+        <div className={cn("flex items-center gap-1.5 border-b border-white/10", mock.pad.header)}>
+          <div className={cn("flex items-center justify-center rounded-full bg-white", mock.icon.ai)}>
+            <Sparkles className={cn("text-neutral-950", mock.icon.aiInner)} />
           </div>
-          <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
-            <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
-              <p className={cn("font-medium text-neutral-300", mock.t.xs)}>Sarah Chen</p>
-              <p className={cn("mt-1 leading-relaxed text-neutral-500", mock.t.xs)}>Can you send the updated Q2 figures by end of week?</p>
-            </div>
-            <div className={cn("rounded-md border border-white/10 bg-white/[0.02] opacity-70", mock.pad.card)}>
-              <p className={cn("font-medium text-neutral-400", mock.t.xs)}>You</p>
-              <p className={cn("mt-1 text-neutral-600", mock.t.xs)}>Reviewing numbers now…</p>
-            </div>
+          <div>
+            <p className={cn("font-semibold text-white", mock.t.sm)}>Relay Assistant</p>
+            <p className={cn("text-neutral-500", mock.t.xs)}>Thread · Q2 budget review</p>
           </div>
         </div>
-        <div className="flex min-w-0 flex-[2] flex-col bg-[#101010]">
-          <div className={cn("flex items-center gap-1.5 border-b border-white/10", mock.pad.header)}>
-            <div className={cn("flex items-center justify-center rounded-full bg-white", mock.icon.ai)}>
-              <Sparkles className={cn("text-neutral-950", mock.icon.aiInner)} />
-            </div>
-            <span className={cn("font-semibold text-white", mock.t.sm)}>Relay AI</span>
+        <div className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-hidden", mock.pad.section)}>
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.04]", mock.pad.card)}>
+            <p className={cn("text-neutral-300", mock.t.xs)}>
+              Sarah needs Q2 figures with vendor line items before Friday. Want me to draft a reply?
+            </p>
           </div>
-          <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", mock.pad.card)}>
-            <div className={cn("landing-feature-slide-in rounded-md border border-white/10 bg-white/[0.04]", mock.pad.card)}>
-              <p className={cn("text-neutral-300", mock.t.xs)}>Sarah needs Q2 figures by Friday. Want me to draft a reply?</p>
-            </div>
-            <div className="landing-feature-typing flex items-center gap-1 px-2 py-1.5">
+          {showTyping && (
+            <div className="flex items-center gap-1 px-1">
               <span className={cn("landing-typing-dot rounded-full bg-neutral-500", mock.icon.xs)} />
               <span className={cn("landing-typing-dot rounded-full bg-neutral-500", mock.icon.xs)} />
               <span className={cn("landing-typing-dot rounded-full bg-neutral-500", mock.icon.xs)} />
             </div>
-            {!compact && (
-              <div className="mt-auto shrink-0 pt-2">
-                <button ref={draftRef} type="button" className={cn("landing-hero-btn-glow flex w-full items-center justify-center rounded-md border border-white bg-white text-center", mock.pad.btn)}>
-                  <span className={cn("font-medium text-neutral-950", mock.t.xs)}>Insert draft</span>
-                </button>
-              </div>
-            )}
+          )}
+          {showDraft && (
+            <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+              <p className={cn("text-neutral-500", mock.t.micro)}>Generated draft</p>
+              <p className={cn("mt-1 text-neutral-300", mock.t.xs)}>Polite confirmation with attachment callout and Friday deadline.</p>
+            </div>
+          )}
+          <div className="mt-auto shrink-0 pt-1">
+            <button
+              ref={draftRef}
+              type="button"
+              className={cn(
+                "flex w-full items-center justify-center rounded-md border text-center transition-colors",
+                mock.pad.btn,
+                showDraft ? "landing-hero-btn-glow border-white bg-white" : "border-white/10 bg-white/[0.04]",
+              )}
+            >
+              <span className={cn("font-medium", mock.t.xs, showDraft ? "text-neutral-950" : "text-neutral-300")}>
+                {showDraft ? "Insert draft into thread" : "Draft reply"}
+              </span>
+            </button>
           </div>
         </div>
       </div>
-    </FeatureSceneShell>
+    </div>
   )
 }
 
-function CommitmentsScene({ compact }: { compact?: boolean }) {
-  const checkRef = useRef<HTMLDivElement>(null)
-  const targetRefs = useRef({ check: checkRef }).current
-  const fallback = useRef({ start: { x: 58, y: 24 }, check: { x: 42, y: 46 } }).current
+function ThreadScene({ compact: _compact }: { compact?: boolean }) {
+  const draftRef = useRef<HTMLButtonElement>(null)
+  const targetRefs = useMemo(() => ({ draft: draftRef }), [])
+  const fallback = useMemo(
+    () => ({ start: { x: 70, y: 22 }, draft: { x: 78, y: 78 } }),
+    [],
+  )
   const sequence = [
     { delay: 800, target: "start" },
-    { delay: 1000, target: "check" },
-    { delay: 280, target: "check", clicking: true },
-    { delay: 1600, target: "start" },
-  ]
-
-  const items = [
-    { title: "Send Q2 budget to Sarah", due: "Fri, Jun 20" },
-    { title: "Follow up on contract redlines", due: "Mon, Jun 23" },
-    { title: "Waiting for Alex — timeline PDF", due: "No due date" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "draft" },
+    { delay: 280, target: "draft", clicking: true },
+    { delay: 1200, target: "draft" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
   ]
 
   return (
     <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
-      <DarkMiniSidebar compact={compact} />
-      <div className="flex min-w-0 flex-1 flex-col bg-[#101010]">
+      <ThreadSceneContent draftRef={draftRef} />
+    </FeatureSceneShell>
+  )
+}
+
+function CommitmentsSceneContent({
+  compact,
+  checkRef,
+}: {
+  compact?: boolean
+  checkRef: RefObject<HTMLDivElement | null>
+}) {
+  const step = useFeatureSceneStep()
+  const phase = step % 8
+  const showExtracted = phase >= 2
+  const showCompleted = phase >= 4
+
+  const items = [
+    { title: "Send Q2 budget to Sarah", due: "Fri, Jun 20", source: "Sarah Chen thread", done: showCompleted },
+    { title: "Follow up on contract redlines", due: "Mon, Jun 23", source: "Legal thread" },
+    { title: "Waiting for Alex — timeline PDF", due: "No due date", source: "Project kickoff" },
+  ]
+
+  return (
+    <>
+      <DarkMiniSidebar compact={compact} activeLabel="Tasks" />
+      <div className="flex min-w-0 flex-[2] flex-col border-r border-white/10 bg-[#0d0d0d]">
+        <div className={cn("border-b border-white/10", mock.pad.header)}>
+          <p className={cn("font-semibold text-white", mock.t.sm)}>Source email</p>
+          <p className={cn("text-neutral-500", mock.t.xs)}>Relay extracts promises automatically</p>
+        </div>
+        <div className={cn("flex-1", mock.pad.section)}>
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+            <p className={cn("font-medium text-neutral-400", mock.t.xs)}>Sarah Chen</p>
+            <p className={cn("mt-1 leading-relaxed text-neutral-300", mock.t.xs)}>
+              …can you send the updated Q2 budget figures before our board sync on{" "}
+              <span className={showExtracted ? "rounded bg-amber-500/20 px-0.5 text-amber-200" : "text-neutral-300"}>
+                Friday
+              </span>
+              ?
+            </p>
+          </div>
+          {showExtracted && (
+            <div className="landing-feature-slide-in mt-2 flex items-center gap-2 rounded-md border border-dashed border-white/15 bg-white/[0.02] px-2 py-1.5">
+              <Link2 className="h-3 w-3 text-neutral-500" />
+              <span className={cn("text-neutral-400", mock.t.xs)}>Extracted commitment · linked to calendar</span>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-[3] flex-col bg-[#101010]">
         <div className={cn("flex items-center justify-between border-b border-white/10", mock.pad.header)}>
-          <span className={cn("font-semibold text-white", mock.t.base)}>Commitments</span>
+          <span className={cn("font-semibold text-white", mock.t.sm)}>Commitments</span>
           <span className={cn("rounded-full bg-white/10 text-neutral-400", mock.t.xs, "px-2 py-0.5")}>3 open</span>
         </div>
         <div className={cn("flex-1 space-y-1.5 overflow-hidden", mock.pad.section)}>
@@ -1179,110 +1686,271 @@ function CommitmentsScene({ compact }: { compact?: boolean }) {
               <div
                 ref={index === 0 ? checkRef : undefined}
                 className={cn(
-                  "mt-0.5 flex shrink-0 items-center justify-center rounded border border-white/20 bg-transparent",
+                  "mt-0.5 flex shrink-0 items-center justify-center rounded border",
                   mock.icon.sm,
-                  index === 0 && "landing-feature-check",
+                  item.done
+                    ? "landing-feature-check border-white bg-white"
+                    : "border-white/20 bg-transparent",
                 )}
               >
-                {index === 0 && (
-                  <CheckSquare className={cn("text-neutral-950 opacity-0 landing-feature-check-icon", mock.icon.xs)} />
-                )}
+                {item.done && <Check className={cn("text-neutral-950 landing-feature-check-icon", mock.icon.xs)} />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className={cn("truncate font-medium text-white", mock.t.sm, index === 0 && "landing-feature-check-text")}>{item.title}</p>
-                {!compact && <span className={cn("text-neutral-500", mock.t.xs)}>{item.due}</span>}
+                <p className={cn("truncate font-medium text-white", mock.t.sm, item.done && "landing-feature-check-text text-neutral-500")}>
+                  {item.title}
+                </p>
+                {!compact && (
+                  <>
+                    <p className={cn("text-neutral-500", mock.t.xs)}>{item.due}</p>
+                    <p className={cn("text-neutral-600", mock.t.micro)}>{item.source}</p>
+                  </>
+                )}
               </div>
             </div>
           ))}
         </div>
       </div>
+    </>
+  )
+}
+
+function CommitmentsScene({ compact }: { compact?: boolean }) {
+  const checkRef = useRef<HTMLDivElement>(null)
+  const targetRefs = useMemo(() => ({ check: checkRef }), [])
+  const fallback = useMemo(
+    () => ({ start: { x: 58, y: 24 }, check: { x: 72, y: 42 } }),
+    [],
+  )
+  const sequence = [
+    { delay: 800, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "check" },
+    { delay: 280, target: "check", clicking: true },
+    { delay: 1200, target: "check" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
+  ]
+
+  return (
+    <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
+      <CommitmentsSceneContent compact={compact} checkRef={checkRef} />
     </FeatureSceneShell>
+  )
+}
+
+function MeetingsSceneContent({
+  compact,
+  briefRef,
+}: {
+  compact?: boolean
+  briefRef: RefObject<HTMLDivElement | null>
+}) {
+  const step = useFeatureSceneStep()
+  const phase = step % 8
+  const showBrief = phase >= 2
+  const showAgenda = phase >= 4
+
+  return (
+    <>
+      <DarkMiniSidebar compact={compact} activeLabel="Briefs" />
+      <div className="flex min-w-0 flex-1 flex-col bg-[#101010]">
+        <div className={cn("flex items-center gap-2 border-b border-white/10", mock.pad.header)}>
+          <NotebookTabs className={cn("text-white", mock.icon.md)} />
+          <div>
+            <p className={cn("font-semibold text-white", mock.t.sm)}>Meeting brief</p>
+            <p className={cn("text-neutral-500", mock.t.xs)}>Generated from related mail</p>
+          </div>
+        </div>
+        <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.04]", mock.pad.card)}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className={cn("font-semibold text-white", mock.t.sm)}>Board sync</p>
+                <p className={cn("text-neutral-500", mock.t.xs)}>Today 2:00 PM · 45 min · Zoom</p>
+              </div>
+              <Users className="h-4 w-4 shrink-0 text-neutral-500" />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {["Sarah Chen", "Legal", "Finance"].map((name) => (
+                <span key={name} className={cn("rounded bg-white/10 px-1.5 py-0.5 text-neutral-400", mock.t.micro)}>
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
+            <p className={cn("font-medium text-neutral-400", mock.t.micro)}>Related threads</p>
+            <div className="mt-1.5 space-y-1">
+              {["Q2 budget review", "Contract redlines", "Vendor timeline"].map((thread) => (
+                <div key={thread} className="flex items-center gap-1.5">
+                  <Mail className="h-3 w-3 text-neutral-600" />
+                  <span className={cn("text-neutral-300", mock.t.xs)}>{thread}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {showBrief && (
+            <div
+              ref={briefRef}
+              className={cn("landing-feature-glow-dark rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}
+            >
+              <p className={cn("font-medium text-neutral-300", mock.t.xs)}>Prepared agenda</p>
+              {showAgenda ? (
+                <ul className="mt-2 space-y-1.5">
+                  {[
+                    "Open with Q2 budget timeline — figures due before meeting",
+                    "Flag vendor blocker from legal review",
+                    "Confirm board deck delivery by 5:00 PM",
+                  ].map((line) => (
+                    <li key={line} className={cn("landing-feature-reveal-line flex gap-1.5 text-neutral-300", mock.t.xs)}>
+                      <span className="text-neutral-500">•</span>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="mt-2 flex items-center gap-1">
+                  <span className={cn("landing-typing-dot rounded-full bg-neutral-500", mock.icon.xs)} />
+                  <span className={cn("landing-typing-dot rounded-full bg-neutral-500", mock.icon.xs)} />
+                  <span className={cn("landing-typing-dot rounded-full bg-neutral-500", mock.t.xs)}>Building brief…</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 
 function MeetingsScene({ compact }: { compact?: boolean }) {
   const briefRef = useRef<HTMLDivElement>(null)
-  const targetRefs = useRef({ brief: briefRef }).current
-  const fallback = useRef({ start: { x: 60, y: 20 }, brief: { x: 50, y: 55 } }).current
+  const targetRefs = useMemo(() => ({ brief: briefRef }), [])
+  const fallback = useMemo(
+    () => ({ start: { x: 60, y: 20 }, brief: { x: 50, y: 62 } }),
+    [],
+  )
   const sequence = [
     { delay: 800, target: "start" },
-    { delay: 1100, target: "brief" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "brief" },
     { delay: 280, target: "brief", clicking: true },
-    { delay: 1600, target: "start" },
+    { delay: 1200, target: "brief" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
   ]
 
   return (
     <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
-      <DarkMiniSidebar compact={compact} />
+      <MeetingsSceneContent compact={compact} briefRef={briefRef} />
+    </FeatureSceneShell>
+  )
+}
+
+function ActivitySceneContent({
+  compact,
+  approveRef,
+}: {
+  compact?: boolean
+  approveRef: RefObject<HTMLButtonElement | null>
+}) {
+  const step = useFeatureSceneStep()
+  const phase = step % 8
+  const showApproved = phase >= 4
+
+  return (
+    <>
+      <DarkMiniSidebar compact={compact} activeLabel="Activity" />
       <div className="flex min-w-0 flex-1 flex-col bg-[#101010]">
-        <div className={cn("flex items-center gap-1.5 border-b border-white/10", mock.pad.header)}>
-          <NotebookTabs className={cn("text-white", mock.icon.md)} />
-          <span className={cn("font-semibold text-white", mock.t.base)}>Meeting brief</span>
+        <div className={cn("flex items-center gap-2 border-b border-white/10", mock.pad.header)}>
+          <Bot className={cn("text-white", mock.icon.md)} />
+          <div>
+            <p className={cn("font-semibold text-white", mock.t.sm)}>Agent activity</p>
+            <p className={cn("text-neutral-500", mock.t.xs)}>Supervised background work</p>
+          </div>
         </div>
         <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
-          <div className={cn("rounded-md border border-white/10 bg-white/[0.04]", mock.pad.card)}>
-            <p className={cn("font-semibold text-white", mock.t.sm)}>Board sync — Today 2:00 PM</p>
-            <p className={cn("text-neutral-500", mock.t.xs)}>4 attendees · 45 min · Zoom</p>
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.02]", mock.pad.card)}>
+            <div className="flex items-center gap-2">
+              <span className={cn("rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300", mock.t.micro)}>Done</span>
+              <span className={cn("text-neutral-500", mock.t.xs)}>2m ago · classify()</span>
+            </div>
+            <p className={cn("mt-1 text-neutral-300", mock.t.xs)}>Archived 12 promotional newsletters</p>
           </div>
-          <div ref={briefRef} className={cn("landing-feature-reveal space-y-1 rounded-md border border-white/10 bg-white/[0.03]", mock.pad.card)}>
-            <p className={cn("text-neutral-300 landing-feature-reveal-line", mock.t.xs)}>• Q2 budget figures due before meeting</p>
-            <p className={cn("text-neutral-300 landing-feature-reveal-line", mock.t.xs)}>• Contract redlines pending legal review</p>
+
+          <div className={cn("rounded-md border border-white/10 bg-white/[0.02]", mock.pad.card)}>
+            <div className="flex items-center gap-2">
+              <span className={cn("rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300", mock.t.micro)}>Done</span>
+              <span className={cn("text-neutral-500", mock.t.xs)}>4m ago · extract()</span>
+            </div>
+            <p className={cn("mt-1 text-neutral-300", mock.t.xs)}>Extracted commitment: Send Q2 budget to Sarah</p>
+          </div>
+
+          <div
+            className={cn(
+              "rounded-md border bg-amber-500/[0.06]",
+              mock.pad.card,
+              showApproved ? "border-emerald-500/25" : "landing-feature-approval border-amber-500/30",
+            )}
+          >
+            <div className="flex items-center gap-1.5">
+              {!showApproved && <div className={cn("animate-pulse rounded-full bg-amber-400", mock.icon.xs)} />}
+              <span className={cn(showApproved ? "text-emerald-300" : "text-amber-300/90", mock.t.xs)}>
+                {showApproved ? "Approved · draft()" : "Awaiting approval · draft()"}
+              </span>
+            </div>
+            <p className={cn("mt-1 text-neutral-200", mock.t.xs)}>Draft reply to Sarah — Q2 budget review</p>
             {!compact && (
-              <p className={cn("text-neutral-500 landing-feature-reveal-line", mock.t.xs)}>Open with budget timeline, flag vendor blocker.</p>
+              <p className={cn("mt-1 text-neutral-500", mock.t.micro)}>
+                Agent prepared a reply using thread context. Nothing sends until you approve.
+              </p>
+            )}
+            {!showApproved ? (
+              <div className="mt-2 flex gap-1">
+                <button ref={approveRef} type="button" className={cn("landing-feature-approve-btn flex-1 rounded-md bg-white text-center", mock.pad.btn)}>
+                  <span className={cn("font-medium text-neutral-950", mock.t.xs)}>Approve</span>
+                </button>
+                <div className={cn("flex-1 rounded-md border border-white/10 bg-white/[0.03] text-center", mock.pad.btn)}>
+                  <span className={cn("text-neutral-400", mock.t.xs)}>Edit</span>
+                </div>
+              </div>
+            ) : (
+              <div className={cn("mt-2 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1.5 text-emerald-200", mock.t.xs)}>
+                Reply queued — will send after final review
+              </div>
             )}
           </div>
         </div>
       </div>
-    </FeatureSceneShell>
+    </>
   )
 }
 
 function ActivityScene({ compact }: { compact?: boolean }) {
   const approveRef = useRef<HTMLButtonElement>(null)
-  const targetRefs = useRef({ approve: approveRef }).current
-  const fallback = useRef({ start: { x: 64, y: 18 }, approve: { x: 52, y: 62 } }).current
+  const targetRefs = useMemo(() => ({ approve: approveRef }), [])
+  const fallback = useMemo(
+    () => ({ start: { x: 64, y: 18 }, approve: { x: 68, y: 58 } }),
+    [],
+  )
   const sequence = [
     { delay: 800, target: "start" },
-    { delay: 1100, target: "approve" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "approve" },
     { delay: 280, target: "approve", clicking: true },
-    { delay: 1600, target: "start" },
+    { delay: 1200, target: "approve" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
+    { delay: 900, target: "start" },
   ]
 
   return (
     <FeatureSceneShell sequence={sequence} targetRefs={targetRefs} fallback={fallback}>
-      <DarkMiniSidebar compact={compact} />
-      <div className="flex min-w-0 flex-1 flex-col bg-[#101010]">
-        <div className={cn("flex items-center gap-1.5 border-b border-white/10", mock.pad.header)}>
-          <Bot className={cn("text-white", mock.icon.md)} />
-          <span className={cn("font-semibold text-white", mock.t.base)}>Agent activity</span>
-        </div>
-        <div className={cn("flex-1 space-y-2 overflow-hidden", mock.pad.section)}>
-          <div className={cn("rounded-md border border-white/10 bg-white/[0.02] opacity-70", mock.pad.card)}>
-            <p className={cn("text-neutral-500", mock.t.xs)}>Completed · 2m ago</p>
-            <p className={cn("text-neutral-300", mock.t.xs)}>Archived 12 promotional newsletters</p>
-          </div>
-          <div className={cn("landing-feature-approval rounded-md border border-amber-500/30 bg-amber-500/[0.06]", mock.pad.card)}>
-            <div className="flex items-center gap-1.5">
-              <div className={cn("animate-pulse rounded-full bg-amber-400", mock.icon.xs)} />
-              <span className={cn("text-amber-300/90", mock.t.xs)}>Awaiting approval</span>
-            </div>
-            <p className={cn("mt-1 text-neutral-200", mock.t.xs)}>Draft reply to Sarah — Q2 budget review</p>
-            <div className="mt-2 flex gap-1">
-              <button ref={approveRef} type="button" className={cn("landing-feature-approve-btn flex-1 rounded-md bg-white text-center", mock.pad.btn)}>
-                <span className={cn("font-medium text-neutral-950", mock.t.xs)}>Approve</span>
-              </button>
-              <div className={cn("flex-1 rounded-md border border-white/10 bg-white/[0.03] text-center", mock.pad.btn)}>
-                <span className={cn("text-neutral-400", mock.t.xs)}>Edit</span>
-              </div>
-            </div>
-          </div>
-          {!compact && (
-            <div className={cn("rounded-md border border-white/10 bg-white/[0.02] opacity-50", mock.pad.card)}>
-              <p className={cn("text-neutral-500", mock.t.xs)}>Extracted task: Send Q2 budget to Sarah</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <ActivitySceneContent compact={compact} approveRef={approveRef} />
     </FeatureSceneShell>
   )
 }
