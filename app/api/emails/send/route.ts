@@ -12,6 +12,13 @@ import { GmailMessageMetadata } from '@/lib/server/gmail-api';
 import { upsertEmailRows } from '@/lib/server/email-sync';
 import { recordDraftFeedback } from '@/lib/server/personalization';
 
+function isProviderNotFound(error: any) {
+  return error?.code === 404
+    || error?.status === 404
+    || error?.response?.status === 404
+    || /requested entity was not found/i.test(error?.message || '');
+}
+
 export async function POST(request: NextRequest) {
   try {
     const userId = await requireUser(request);
@@ -69,34 +76,54 @@ export async function POST(request: NextRequest) {
     let sent: { id?: string | null; threadId?: string | null };
     if (account.provider === 'outlook') {
       if (providerDraftId) {
-        await updateOutlookDraft(account, providerDraftId, { to, cc, subject, body: emailBody, threadId, inReplyToMessageId, attachments });
-        sent = await sendOutlookDraft(account, providerDraftId);
+        try {
+          await updateOutlookDraft(account, providerDraftId, { to, cc, subject, body: emailBody, threadId, inReplyToMessageId, attachments });
+          sent = await sendOutlookDraft(account, providerDraftId);
+        } catch (error) {
+          if (!isProviderNotFound(error)) throw error;
+          console.warn('[Send] Cached Outlook draft was missing; sending as a new message instead.');
+          sent = await sendOutlookMessage(account, { to, cc, subject, body: emailBody, threadId, inReplyToMessageId, attachments });
+        }
       } else {
         sent = await sendOutlookMessage(account, { to, cc, subject, body: emailBody, threadId, inReplyToMessageId, attachments });
       }
     } else {
       const client = await getAuthorizedClient(account as any);
       if (providerDraftId) {
-      await updateDraft(client, providerDraftId, {
-        to,
-        cc,
-        subject,
-        body: emailBody,
-        threadId,
-        inReplyToMessageId,
-        attachments,
-      });
-      sent = await sendDraft(client, providerDraftId);
+        try {
+          await updateDraft(client, providerDraftId, {
+            to,
+            cc,
+            subject,
+            body: emailBody,
+            threadId,
+            inReplyToMessageId,
+            attachments,
+          });
+          sent = await sendDraft(client, providerDraftId);
+        } catch (error) {
+          if (!isProviderNotFound(error)) throw error;
+          console.warn('[Send] Cached Gmail draft was missing; sending as a new message instead.');
+          sent = await sendMessage(client, {
+            to,
+            cc,
+            subject,
+            body: emailBody,
+            threadId,
+            inReplyToMessageId,
+            attachments,
+          });
+        }
       } else {
-      sent = await sendMessage(client, {
-        to,
-        cc,
-        subject,
-        body: emailBody,
-        threadId,
-        inReplyToMessageId,
-        attachments,
-      });
+        sent = await sendMessage(client, {
+          to,
+          cc,
+          subject,
+          body: emailBody,
+          threadId,
+          inReplyToMessageId,
+          attachments,
+        });
       }
     }
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { handleApiError } from '@/lib/server/api-utils';
+import { runMemoryMaintenance } from '@/lib/server/memory-maintenance';
+import { memoryFingerprint, type MemoryType } from '@/lib/server/memory-quality';
 import { getSupabaseAdmin, requireUser } from '@/lib/server/supabase-admin';
 
 const patchSchema = z.object({
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest) {
     const [memoryResult, profileResult] = await Promise.all([
       getSupabaseAdmin()
         .from('memory_items')
-        .select('id, type, scope, status, text, source, confidence, metadata, expires_at, accepted_at, created_at, updated_at')
+        .select('id, type, scope, status, text, source, confidence, fingerprint, occurrence_count, last_seen_at, superseded_by, metadata, expires_at, accepted_at, created_at, updated_at')
         .eq('user_id', userId)
         .in('status', ['pending', 'accepted'])
         .order('updated_at', { ascending: false })
@@ -73,6 +75,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (!parsed.data.id) return NextResponse.json({ error: 'Memory id is required' }, { status: 400 });
+    if (parsed.data.action === 'update' && !parsed.data.text) {
+      return NextResponse.json({ error: 'Memory text is required' }, { status: 400 });
+    }
 
     const updates: Record<string, unknown> = {};
     if (parsed.data.action === 'accept') {
@@ -86,19 +91,32 @@ export async function PATCH(request: NextRequest) {
       updates.text = parsed.data.text;
     }
 
+    if (parsed.data.action === 'update' && parsed.data.text) {
+      const { data: current, error: currentError } = await getSupabaseAdmin()
+        .from('memory_items')
+        .select('type')
+        .eq('user_id', userId)
+        .eq('id', parsed.data.id)
+        .maybeSingle();
+      if (currentError) throw currentError;
+      if (!current) return NextResponse.json({ error: 'Memory not found' }, { status: 404 });
+      updates.fingerprint = memoryFingerprint({ type: current.type as MemoryType, text: parsed.data.text });
+      updates.last_seen_at = new Date().toISOString();
+    }
+
     const { data, error } = await getSupabaseAdmin()
       .from('memory_items')
       .update(updates)
       .eq('user_id', userId)
       .eq('id', parsed.data.id)
-      .select('id, type, scope, status, text, source, confidence, metadata, expires_at, accepted_at, created_at, updated_at')
+      .select('id, type, scope, status, text, source, confidence, fingerprint, occurrence_count, last_seen_at, superseded_by, metadata, expires_at, accepted_at, created_at, updated_at')
       .maybeSingle();
     if (error) throw error;
     if (!data) return NextResponse.json({ error: 'Memory not found' }, { status: 404 });
 
-    if (parsed.data.action === 'accept' && ['style', 'preference'].includes(data.type)) {
-      await appendWritingProfileNote(userId, data.text).catch((profileError) => {
-        console.error('[Memory] Could not compact accepted memory into profile:', profileError);
+    if (['accept', 'archive', 'update'].includes(parsed.data.action)) {
+      await runMemoryMaintenance(userId).catch((profileError) => {
+        console.error('[Memory] Could not maintain memory profile:', profileError);
       });
     }
 
@@ -106,34 +124,6 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     return handleApiError(error);
   }
-}
-
-async function appendWritingProfileNote(userId: string, text: string) {
-  const supabase = getSupabaseAdmin();
-  const { data: current, error: readError } = await supabase
-    .from('agent_memory')
-    .select('writing_profile')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (readError && readError.code !== '42P01') throw readError;
-
-  const profile = current?.writing_profile && typeof current.writing_profile === 'object'
-    ? current.writing_profile as Record<string, unknown>
-    : {};
-  const existing = Array.isArray(profile.learnedStyleNotes)
-    ? profile.learnedStyleNotes.map((item: unknown) => String(item))
-    : [];
-  const learnedStyleNotes = [text, ...existing.filter((item) => item !== text)].slice(0, 12);
-
-  const { error } = await supabase.from('agent_memory').upsert({
-    user_id: userId,
-    writing_profile: {
-      ...profile,
-      learnedStyleNotes,
-    },
-    profile_version: Number(profile.profileVersion || 1) + 1,
-  }, { onConflict: 'user_id' });
-  if (error) throw error;
 }
 
 export async function DELETE(request: NextRequest) {
@@ -148,6 +138,9 @@ export async function DELETE(request: NextRequest) {
       .eq('user_id', userId)
       .eq('id', id);
     if (error) throw error;
+    await runMemoryMaintenance(userId).catch((profileError) => {
+      console.error('[Memory] Could not maintain memory profile:', profileError);
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

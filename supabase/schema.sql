@@ -363,6 +363,10 @@ create table if not exists public.memory_items (
   text text not null,
   source text not null default 'inferred',
   confidence real check (confidence is null or confidence between 0 and 1),
+  fingerprint text,
+  occurrence_count int not null default 1 check (occurrence_count > 0),
+  last_seen_at timestamptz,
+  superseded_by uuid references public.memory_items(id) on delete set null,
   metadata jsonb not null default '{}'::jsonb,
   expires_at timestamptz,
   accepted_at timestamptz,
@@ -751,6 +755,17 @@ create index if not exists memory_items_user_account_idx on public.memory_items(
 create index if not exists memory_items_user_contact_idx on public.memory_items(user_id, contact_id, status, updated_at desc);
 create index if not exists memory_items_user_expiry_idx on public.memory_items(user_id, expires_at)
   where expires_at is not null;
+create index if not exists memory_items_user_fingerprint_idx on public.memory_items(user_id, fingerprint)
+  where fingerprint is not null;
+create unique index if not exists memory_items_active_fingerprint_uidx
+  on public.memory_items(
+    user_id,
+    coalesce(account_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    coalesce(contact_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    type,
+    fingerprint
+  )
+  where status in ('pending', 'accepted') and fingerprint is not null;
 create index if not exists draft_feedback_user_created_idx on public.draft_feedback(user_id, created_at desc);
 create index if not exists draft_feedback_user_account_idx on public.draft_feedback(user_id, account_id, created_at desc);
 create index if not exists tasks_user_completed_deadline_idx on public.tasks(user_id, completed, deadline);

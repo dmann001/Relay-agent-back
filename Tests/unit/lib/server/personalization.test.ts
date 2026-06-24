@@ -1,10 +1,10 @@
 import {
-  containsSensitiveMemoryText,
   firstEmailFromList,
   normalizeEmailAddress,
   personalizationContextText,
   type PersonalizationContext,
 } from "@/lib/server/personalization";
+import { containsSensitiveMemoryText } from "@/lib/server/memory-quality";
 
 describe("personalization helpers", () => {
   it("normalizes recipient strings for contact lookup", () => {
@@ -40,7 +40,7 @@ describe("personalization helpers", () => {
         displayName: "Ada",
         notes: ["Discusses capstone"],
       },
-      memories: [{ id: "memory-1", type: "style", text: "User prefers short replies.", source: "confirmed" }],
+      memories: [{ id: "memory-1", type: "style", scope: "account", text: "User prefers short replies.", source: "confirmed", confidence: 0.8 }],
       relevantEmails: [{ id: "email-1", subject: "Demo", excerpt: "Latest demo details", source: "semantic" }],
       sources: [],
     };

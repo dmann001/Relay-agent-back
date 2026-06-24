@@ -8,7 +8,7 @@ import { AiChatMarkdown } from "@/components/ai-chat-markdown"
 import { useAiChatAttachmentsOptional, type AiChatFileAttachment } from "@/components/ai-chat-attachments-provider"
 import { AiChatEmailPickerDialog } from "@/components/ai-chat-email-picker-dialog"
 import { AI_CHAT_MAX_FILE_BYTES, AI_CHAT_MAX_FILES, formatFileSize, isAllowedChatFile, readFileAsBase64 } from "@/lib/ai-chat-files"
-import { emailApi, EmailApiError, type AiGeneratedImage, type AiModelOption, type AiModelSettings, type AiToolKey, type CalendarConnection, type CalendarMeetingDraft, type ContactSuggestion, WIRED_AI_TOOLS } from "@/lib/email-api"
+import { emailApi, EmailApiError, type AiContextSource, type AiGeneratedImage, type AiModelOption, type AiModelSettings, type AiToolKey, type CalendarConnection, type CalendarMeetingDraft, type ContactSuggestion, WIRED_AI_TOOLS } from "@/lib/email-api"
 import { cn } from "@/lib/utils"
 
 export interface AiChatMessage {
@@ -17,6 +17,7 @@ export interface AiChatMessage {
   draft?: AiChatDraft
   calendarDraft?: AiChatCalendarDraft
   images?: AiGeneratedImage[]
+  contextSources?: AiContextSource[]
   computerUse?: {
     driver: string
     stepCount: number
@@ -148,10 +149,47 @@ function imagesToAttachments(images: AiGeneratedImage[] = []): AiChatDraftAttach
   }))
 }
 
-function parseRelayMessage(rawContent: string): Pick<AiChatMessage, "content" | "draft" | "images" | "computerUse"> {
+function sourceKindLabel(kind: AiContextSource["kind"]) {
+  return {
+    preference: "Preference",
+    profile: "Profile",
+    memory: "Memory",
+    contact: "Contact",
+    recent_context: "Recent",
+    email: "Email",
+  }[kind] || "Source"
+}
+
+function ContextSourcesDisclosure({ sources }: { sources?: AiContextSource[] }) {
+  const visibleSources = (sources || []).filter((source) => source.label).slice(0, 12)
+  if (!visibleSources.length) return null
+
+  return (
+    <details className="mt-3 rounded-lg border border-border bg-surface-subtle px-3 py-2 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none font-medium text-foreground">
+        Context used ({visibleSources.length})
+      </summary>
+      <div className="mt-2 grid gap-1.5">
+        {visibleSources.map((source, sourceIndex) => (
+          <div key={`${source.kind}:${source.id || source.label}:${sourceIndex}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground">
+              {sourceKindLabel(source.kind)}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{source.label}</span>
+            {source.scope ? <span>{source.scope}</span> : null}
+            {typeof source.confidence === "number" ? <span>{Math.round(source.confidence * 100)}%</span> : null}
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function parseRelayMessage(rawContent: string): Pick<AiChatMessage, "content" | "draft" | "images" | "contextSources" | "computerUse"> {
   let content = rawContent
   let draft: AiChatDraft | undefined
   let images: AiGeneratedImage[] = []
+  let contextSources: AiContextSource[] = []
   let computerUse: AiChatMessage["computerUse"]
   const marker = content.match(relayMetadataPattern)
   if (marker) {
@@ -159,6 +197,18 @@ function parseRelayMessage(rawContent: string): Pick<AiChatMessage, "content" | 
     try {
       const metadata = JSON.parse(atob(marker[1].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(marker[1].length / 4) * 4, "=")))
       if (Array.isArray(metadata?.images)) images = metadata.images
+      if (Array.isArray(metadata?.contextSources)) {
+        contextSources = metadata.contextSources
+          .map((source: any) => ({
+            kind: source.kind,
+            id: typeof source.id === "string" ? source.id : undefined,
+            label: String(source.label || "").slice(0, 160),
+            scope: source.scope,
+            confidence: typeof source.confidence === "number" ? source.confidence : undefined,
+            reason: typeof source.reason === "string" ? source.reason : undefined,
+          }))
+          .filter((source: AiContextSource) => source.label)
+      }
       if (metadata?.computerUse && typeof metadata.computerUse === "object") {
         computerUse = {
           driver: String(metadata.computerUse.driver || "unknown"),
@@ -191,7 +241,7 @@ function parseRelayMessage(rawContent: string): Pick<AiChatMessage, "content" | 
   }).trim()
   if (legacyImages.length) images = [...images, ...legacyImages]
 
-  return { content, draft, images, computerUse }
+  return { content, draft, images, contextSources, computerUse }
 }
 
 function historyContent(message: AiChatMessage) {
@@ -201,11 +251,12 @@ function historyContent(message: AiChatMessage) {
 interface UseAiChatOptions {
   accountId?: string
   messageId?: string
+  pageContext?: string
   initialSessionId?: string
   onSessionId?: (sessionId: string) => void
 }
 
-export function useAiChat({ accountId, messageId, initialSessionId, onSessionId }: UseAiChatOptions) {
+export function useAiChat({ accountId, messageId, pageContext, initialSessionId, onSessionId }: UseAiChatOptions) {
   const attachmentsContext = useAiChatAttachmentsOptional()
   const attachments = attachmentsContext?.attachments
   const chatAttachments = useMemo(() => attachments ?? [], [attachments])
@@ -362,6 +413,7 @@ export function useAiChat({ accountId, messageId, initialSessionId, onSessionId 
       const sharedPayload = {
         accountId,
         prompt: question,
+        pageContext,
         model: selectedModel || undefined,
         tools: selectedTools,
         history,
@@ -404,6 +456,7 @@ export function useAiChat({ accountId, messageId, initialSessionId, onSessionId 
           role: "assistant",
           content: answer,
           images: response.images || [],
+          contextSources: response.contextSources || [],
           computerUse: response.computerUse ? {
             driver: response.computerUse.driver,
             stepCount: response.computerUse.stepCount,
@@ -433,6 +486,7 @@ export function useAiChat({ accountId, messageId, initialSessionId, onSessionId 
           role: "assistant",
           content: answer,
           images: response.images || [],
+          contextSources: response.contextSources || [],
           computerUse: response.computerUse ? {
             driver: response.computerUse.driver,
             stepCount: response.computerUse.stepCount,
@@ -492,6 +546,7 @@ export function useAiChat({ accountId, messageId, initialSessionId, onSessionId 
     messageId,
     messages,
     onSessionId,
+    pageContext,
     prompt,
     selectedModel,
     selectedTools,
@@ -502,7 +557,11 @@ export function useAiChat({ accountId, messageId, initialSessionId, onSessionId 
 
   const handlePromptKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return
-  }, [])
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
+      void send()
+    }
+  }, [send])
 
   const startNewChat = useCallback(() => {
     activeChatRef.current += 1
@@ -798,6 +857,7 @@ export function AiChatComposer({
   const [isDragOver, setIsDragOver] = useState(false)
   const [contactSuggestions, setContactSuggestions] = useState<ContactSuggestion[]>([])
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false)
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const selectedModelLabel = models.find((model) => model.id === selectedModel)?.label
   const canSend = Boolean(prompt.trim()) || fileAttachmentCount > 0
 
@@ -895,20 +955,45 @@ export function AiChatComposer({
       )}
       {models.length > 0 && (
         <div className="mx-auto mb-2 flex w-full max-w-3xl items-center justify-end px-2">
-          <label className="flex items-center gap-1.5 rounded-full border border-border bg-surface-subtle px-2.5 py-1 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Model</span>
-            <select
-              value={selectedModel}
-              onChange={(event) => onModelChange(event.target.value)}
-              className="max-w-[9rem] cursor-pointer appearance-none bg-transparent pr-4 text-xs font-medium text-foreground outline-none"
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsModelMenuOpen((open) => !open)}
+              className="flex h-8 items-center gap-2 rounded-full border border-border bg-surface-subtle px-3 text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
               aria-label="OpenAI model"
+              aria-expanded={isModelMenuOpen}
             >
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>{model.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none -ml-3 h-3 w-3 shrink-0" aria-hidden="true" />
-          </label>
+              <span className="font-medium text-foreground">Model</span>
+              <span className="max-w-[9rem] truncate font-semibold text-foreground">
+                {selectedModelLabel || selectedModel || "Choose"}
+              </span>
+              <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", isModelMenuOpen && "rotate-180")} aria-hidden="true" />
+            </button>
+            {isModelMenuOpen && (
+              <div className="absolute right-0 bottom-full z-30 mb-2 w-64 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl">
+                <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Select model
+                </div>
+                {models.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => {
+                      onModelChange(model.id)
+                      setIsModelMenuOpen(false)
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-surface-hover",
+                      selectedModel === model.id && "bg-surface-subtle",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium text-foreground">{model.label}</span>
+                    {selectedModel === model.id && <Check className="h-3.5 w-3.5 text-foreground" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {selectedModelLabel && (
             <span className="sr-only">Selected model: {selectedModelLabel}</span>
           )}
@@ -1182,6 +1267,7 @@ export function AiChatMessages({
                           {message.computerUse.truncated ? " · step limit reached" : ""}
                         </div>
                       ) : null}
+                      <ContextSourcesDisclosure sources={message.contextSources} />
                       {message.images?.length ? (
                         <div className="mt-3 grid gap-3">
                           {message.images.map((image, imageIndex) => (

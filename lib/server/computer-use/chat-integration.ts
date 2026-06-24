@@ -1,8 +1,9 @@
 import type { ChatTurn } from '@/lib/server/openai';
 import { runComputerUseAgent, type ComputerUseRunResult } from '@/lib/server/computer-use';
 
-export function withComputerUseMetadata(content: string, run: ComputerUseRunResult) {
+export function withComputerUseMetadata(content: string, run: ComputerUseRunResult, metadata: Record<string, unknown> = {}) {
   const encoded = Buffer.from(JSON.stringify({
+    ...metadata,
     computerUse: {
       driver: run.driver,
       startUrl: run.startUrl,

@@ -105,6 +105,10 @@ export interface MemoryItem {
   text: string;
   source: string;
   confidence: number | null;
+  fingerprint?: string | null;
+  occurrence_count?: number | null;
+  last_seen_at?: string | null;
+  superseded_by?: string | null;
   metadata: Record<string, unknown>;
   expires_at: string | null;
   accepted_at: string | null;
@@ -148,6 +152,9 @@ export interface AiContextSource {
   kind: "preference" | "profile" | "memory" | "contact" | "recent_context" | "email";
   id?: string;
   label: string;
+  scope?: "global" | "account" | "contact";
+  confidence?: number;
+  reason?: string;
 }
 
 export interface AiChatSessionSummary {
@@ -904,6 +911,7 @@ export const emailApi = {
     action: "summary" | "draft" | "tasks" | "ask";
     accountId?: string;
     prompt?: string;
+    pageContext?: string;
     model?: string;
     tools?: AiToolKey[];
     history?: AiChatTurn[];
@@ -924,6 +932,7 @@ export const emailApi = {
   async runComposeAi(payload: {
     accountId?: string;
     prompt: string;
+    pageContext?: string;
     to?: string;
     cc?: string;
     subject?: string;
@@ -1043,6 +1052,15 @@ export const emailApi = {
     return request(`/api/memory?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
+  },
+
+  async runMemoryMaintenance(): Promise<{
+    ok: boolean;
+    compacted: boolean;
+    archived: number;
+    profileVersion: number;
+  }> {
+    return request("/api/memory/maintenance", { method: "POST" });
   },
 
   async getAiModelSettings(): Promise<{

@@ -1,5 +1,6 @@
-import { getAccountPreference, type AiAccountPreference } from '@/lib/server/ai-context';
+import { DEFAULT_WRITING_STYLE, getAccountPreference, type AiAccountPreference } from '@/lib/server/ai-context';
 import { createEmbeddingOrNull, RELAY_EMBEDDING_MODEL } from '@/lib/server/embeddings';
+import { containsSensitiveMemoryText, createPendingMemorySuggestion } from '@/lib/server/memory-quality';
 import { getSupabaseAdmin } from '@/lib/server/supabase-admin';
 import { createHash } from 'node:crypto';
 
@@ -24,8 +25,10 @@ export interface PersonalizationContext {
   memories: Array<{
     id: string;
     type: string;
+    scope: 'global' | 'account' | 'contact';
     text: string;
     source: string;
+    confidence?: number | null;
   }>;
   relevantEmails: Array<{
     id: string;
@@ -38,6 +41,9 @@ export interface PersonalizationContext {
     kind: 'preference' | 'profile' | 'memory' | 'contact' | 'recent_context' | 'email';
     id?: string;
     label: string;
+    scope?: 'global' | 'account' | 'contact';
+    confidence?: number;
+    reason?: string;
   }>;
 }
 
@@ -56,14 +62,6 @@ export interface PersonalizationRequest {
 const MAX_RECENT_CONTEXT = 8;
 const MAX_MEMORIES = 12;
 const MAX_EMAIL_EXCERPT_CHARS = 700;
-const SENSITIVE_PATTERNS = [
-  /\b(one[-\s]?time password|otp|verification code|auth(?:entication)? code)\b/i,
-  /\bpassword\b/i,
-  /\breset link\b/i,
-  /\bhttps?:\/\/\S*(?:token|code|reset|verify|auth)\S*/i,
-  /\b\d{3}-\d{2}-\d{4}\b/,
-  /\b(?:\d[ -]*?){13,19}\b/,
-];
 
 type SupabaseRow = Record<string, any>;
 type AgentMemoryRow = {
@@ -81,10 +79,6 @@ export function firstEmailFromList(value?: string | string[] | null): string {
   if (Array.isArray(value)) return normalizeEmailAddress(value[0]);
   const first = (value || '').split(/[,\n;]/).map((item) => item.trim()).find(Boolean);
   return normalizeEmailAddress(first);
-}
-
-export function containsSensitiveMemoryText(value: string): boolean {
-  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(value));
 }
 
 function compactText(value?: string | null, limit = MAX_EMAIL_EXCERPT_CHARS) {
@@ -158,7 +152,7 @@ async function getContact(userId: string, contactEmail?: string) {
 async function getAcceptedMemories(userId: string, accountId: string, contactId?: string) {
   const { data, error } = await getSupabaseAdmin()
     .from('memory_items')
-    .select('id, account_id, contact_id, type, text, source, expires_at, updated_at')
+    .select('id, account_id, contact_id, type, scope, text, source, confidence, expires_at, updated_at')
     .eq('user_id', userId)
     .eq('status', 'accepted')
     .order('updated_at', { ascending: false })
@@ -171,8 +165,10 @@ async function getAcceptedMemories(userId: string, accountId: string, contactId?
     .map((row) => ({
       id: row.id,
       type: row.type,
+      scope: row.scope || 'global',
       text: row.text,
       source: row.source || 'memory',
+      confidence: typeof row.confidence === 'number' ? row.confidence : null,
     }));
 }
 
@@ -243,6 +239,17 @@ function dedupeRelevantEmails(rows: PersonalizationContext['relevantEmails'], li
   return deduped;
 }
 
+function preferenceSourceLabel(preference: AiAccountPreference) {
+  const hasCustomPreference = Boolean(
+    preference.signature.trim()
+    || preference.draftInstructions.trim()
+    || preference.writingStyle.trim() !== DEFAULT_WRITING_STYLE,
+  );
+  return hasCustomPreference
+    ? `AI preferences for ${preference.accountEmail}`
+    : `Default writing style for ${preference.accountEmail}`;
+}
+
 export async function getPersonalizationContext(params: PersonalizationRequest): Promise<PersonalizationContext> {
   const [preference, memory, contact] = await Promise.all([
     getAccountPreference(params.userId, params.accountId, params.accountEmail),
@@ -284,11 +291,18 @@ export async function getPersonalizationContext(params: PersonalizationRequest):
     memories,
     relevantEmails,
     sources: [
-      { kind: 'preference', label: `AI preferences for ${preference.accountEmail}` },
+      { kind: 'preference', label: preferenceSourceLabel(preference) },
       ...(Object.keys(writingProfile).length ? [{ kind: 'profile' as const, label: 'Relay writing profile' }] : []),
       ...recentContext.map((_item: string, index: number) => ({ kind: 'recent_context' as const, label: `Recent context ${index + 1}` })),
       ...(contact ? [{ kind: 'contact' as const, id: contact.id, label: contact.displayName || contact.email }] : []),
-      ...memories.map((memoryItem) => ({ kind: 'memory' as const, id: memoryItem.id, label: memoryItem.text.slice(0, 80) })),
+      ...memories.map((memoryItem) => ({
+        kind: 'memory' as const,
+        id: memoryItem.id,
+        label: memoryItem.text.slice(0, 80),
+        scope: memoryItem.scope,
+        confidence: typeof memoryItem.confidence === 'number' ? memoryItem.confidence : undefined,
+        reason: memoryItem.source,
+      })),
       ...relevantEmails.map((email) => ({ kind: 'email' as const, id: email.id, label: email.subject })),
     ],
   };
@@ -458,23 +472,21 @@ export async function recordDraftFeedback(params: {
   const suggestion = draftFeedbackSuggestion(params.generatedBody || '', params.finalBody);
   if (!suggestion) return;
 
-  await getSupabaseAdmin().from('memory_items').insert({
-    user_id: params.userId,
-    account_id: params.accountId,
-    contact_id: contactId,
+  await createPendingMemorySuggestion({
+    userId: params.userId,
+    accountId: params.accountId,
+    contactId,
     type: contactId ? 'contact' : 'style',
     scope: contactId ? 'contact' : 'account',
-    status: 'pending',
     text: suggestion,
     source: 'draft_feedback',
     confidence: 0.55,
     metadata: {
       subject: params.subject,
       generatedDraftId: params.generatedDraftId || null,
-      requiresConfirmation: true,
     },
-  }).then(({ error: memoryError }) => {
-    if (memoryError) console.error('[Personalization] Pending memory suggestion skipped:', memoryError);
+  }).catch((memoryError) => {
+    console.error('[Personalization] Pending memory suggestion skipped:', memoryError);
   });
 }
 

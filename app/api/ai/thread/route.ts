@@ -31,6 +31,7 @@ const requestSchema = z.object({
   accountId: z.string().uuid().optional(),
   action: z.enum(['summary', 'draft', 'tasks', 'ask']),
   prompt: z.string().trim().max(2000).optional(),
+  pageContext: z.string().trim().max(800).optional(),
   model: z.string().trim().min(1).max(80).optional(),
   tools: z.array(aiToolKeySchema).max(8).optional(),
   history: z.array(chatTurnSchema).max(40).optional(),
@@ -162,7 +163,12 @@ export async function POST(request: NextRequest) {
     const isAsk = parsed.data.action === 'ask';
 
     if (computerUse && isAsk && !userContextFiles.length) {
-      const instructions = `${baseInstructions}\n${personalizationContextText(personalization)}\n${actionInstructions(parsed.data.action, personalization.preference, parsed.data.prompt)}`;
+      const instructions = [
+        baseInstructions,
+        personalizationContextText(personalization),
+        parsed.data.pageContext ? `Current Relay view: ${parsed.data.pageContext}` : '',
+        actionInstructions(parsed.data.action, personalization.preference, parsed.data.prompt),
+      ].filter(Boolean).join('\n');
       const computerResult = await runChatComputerUse({
         instructions,
         history,
@@ -172,7 +178,9 @@ export async function POST(request: NextRequest) {
       });
 
       let sessionId = parsed.data.sessionId;
-      const answerText = withComputerUseMetadata(computerResult.answer, computerResult);
+      const answerText = withComputerUseMetadata(computerResult.answer, computerResult, {
+        contextSources: personalization.sources,
+      });
       const resultData = {
         kind: 'answer' as const,
         answer: computerResult.answer,
@@ -221,7 +229,11 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await generateStructuredResponse({
-      instructions: `${baseInstructions}\n${actionInstructions(parsed.data.action, personalization.preference, parsed.data.prompt)}`,
+      instructions: [
+        baseInstructions,
+        parsed.data.pageContext ? `Current Relay view: ${parsed.data.pageContext}` : '',
+        actionInstructions(parsed.data.action, personalization.preference, parsed.data.prompt),
+      ].filter(Boolean).join('\n'),
       input: isAsk
         ? buildChatInput({
             contextPrefix: emailContext,
@@ -242,8 +254,8 @@ export async function POST(request: NextRequest) {
     let sessionId = parsed.data.sessionId;
     if (parsed.data.action === 'ask' && parsed.data.prompt) {
       const answerData = answerSchema.parse(result.data);
-      const answerText = result.images.length
-        ? withRelayMetadata(answerData.answer, { images: result.images })
+      const answerText = result.images.length || personalization.sources.length
+        ? withRelayMetadata(answerData.answer, { images: result.images, contextSources: personalization.sources })
         : answerData.answer;
       if (parsed.data.createSession && !sessionId) {
         const session = await createAiChatSession(userId, {
