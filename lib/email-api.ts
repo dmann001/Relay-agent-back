@@ -85,6 +85,38 @@ export interface ThreadAiResponse {
   images?: AiGeneratedImage[];
   sessionId?: string;
   computerUse?: ComputerUseSummary;
+  contextSources?: AiContextSource[];
+}
+
+export interface ContactSuggestion {
+  id?: string;
+  email: string;
+  displayName?: string;
+  source: "contacts" | "email_metadata";
+  score: number;
+  lastSeenAt?: string | null;
+}
+
+export interface MemoryItem {
+  id: string;
+  type: string;
+  scope: string;
+  status: "pending" | "accepted" | "rejected" | "archived";
+  text: string;
+  source: string;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+  expires_at: string | null;
+  accepted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoryProfile {
+  writing_profile: Record<string, unknown>;
+  recent_context: Array<string | { text?: string; expiresAt?: string; source?: string }>;
+  learning_enabled: boolean;
+  confirmed_learning_only: boolean;
 }
 
 export interface AiGeneratedImage {
@@ -109,6 +141,13 @@ export interface ComposeAiResponse {
   images?: AiGeneratedImage[];
   sessionId?: string;
   computerUse?: ComputerUseSummary;
+  contextSources?: AiContextSource[];
+}
+
+export interface AiContextSource {
+  kind: "preference" | "profile" | "memory" | "contact" | "recent_context" | "email";
+  id?: string;
+  label: string;
 }
 
 export interface AiChatSessionSummary {
@@ -320,6 +359,39 @@ export interface CalendarConnection {
   lastError: string | null;
 }
 
+export interface CalendarAgendaEvent {
+  id: string;
+  accountId: string;
+  accountEmail: string | null;
+  provider: EmailProvider;
+  calendarId: string;
+  title: string;
+  description?: string | null;
+  startsAt: string;
+  endsAt: string;
+  timezone?: string | null;
+  location?: string | null;
+  attendees: string[];
+  htmlLink?: string | null;
+  meetingUrl?: string | null;
+}
+
+export interface CalendarMeetingDraft {
+  title: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  attendees: string[];
+  location: string;
+  createConference: boolean;
+  reminderMinutes: number;
+  accountId?: string;
+  needsAccountSelection: boolean;
+  missing: string[];
+  rationale: string;
+}
+
 export interface CommitmentCalendarEvent {
   id: string;
   accountId: string;
@@ -423,6 +495,7 @@ export const emailApi = {
     options: {
       limit?: number;
       offset?: number;
+      cursor?: string | null;
       category?: Email["gmailCategory"];
       accountId?: string;
     } = {},
@@ -431,15 +504,37 @@ export const emailApi = {
     total: number;
     unreadTotal?: number;
     hasMore?: boolean;
+    cacheHasMore?: boolean;
+    providerHasMore?: boolean;
+    nextCursor?: string | null;
   }> {
     const params = new URLSearchParams({
       mailbox,
       limit: String(options.limit ?? 50),
-      offset: String(options.offset ?? 0),
     });
+    if (options.cursor) params.set("cursor", options.cursor);
+    else if (typeof options.offset === "number") params.set("offset", String(options.offset));
     if (options.category) params.set("category", options.category);
     if (options.accountId) params.set("accountId", options.accountId);
     return request(`/api/emails?${params.toString()}`);
+  },
+
+  async searchEmails(options: {
+    q: string;
+    accountId?: string;
+    limit?: number;
+  }): Promise<{
+    emails: Email[];
+    total: number;
+    hasMore?: boolean;
+    errors?: Array<{ accountId: string; message: string }>;
+  }> {
+    const params = new URLSearchParams({
+      q: options.q,
+      limit: String(options.limit ?? 50),
+    });
+    if (options.accountId) params.set("accountId", options.accountId);
+    return request(`/api/emails/search?${params.toString()}`);
   },
 
   async getCounts(): Promise<{
@@ -502,11 +597,24 @@ export const emailApi = {
     accountId: string;
     accountEmail: string;
     threadId: string;
+    readUpdateError?: string;
+    readUpdatedMessageIds?: string[];
   }> {
     const suffix = accountId
       ? `?accountId=${encodeURIComponent(accountId)}`
       : "";
-    return request(`/api/emails/${messageId}/thread${suffix}`);
+    const result = await request<{
+      messages: Email[];
+      accountId: string;
+      accountEmail: string;
+      threadId: string;
+      readUpdateError?: string;
+      readUpdatedMessageIds?: string[];
+    }>(`/api/emails/${messageId}/thread${suffix}`);
+    for (const updatedId of result.readUpdatedMessageIds || []) {
+      notifyEmailsUpdated({ messageId: updatedId, action: "markRead", accountId: result.accountId });
+    }
+    return result;
   },
 
   async modifyEmail(
@@ -544,6 +652,8 @@ export const emailApi = {
     inReplyToMessageId?: string;
     attachments?: Array<{ filename: string; mimeType: string; data: string }>;
     draftId?: string;
+    generatedDraft?: string;
+    generatedDraftId?: string;
   }): Promise<{ messageId?: string; threadId?: string }> {
     const result = await request<{ messageId?: string; threadId?: string }>(
       "/api/emails/send",
@@ -606,6 +716,20 @@ export const emailApi = {
     return accounts;
   },
 
+  async searchContacts(options: {
+    q?: string;
+    accountId?: string;
+    limit?: number;
+  } = {}): Promise<ContactSuggestion[]> {
+    const params = new URLSearchParams();
+    if (options.q) params.set("q", options.q);
+    if (options.accountId) params.set("accountId", options.accountId);
+    if (options.limit) params.set("limit", String(options.limit));
+    const query = params.size ? `?${params.toString()}` : "";
+    const { contacts } = await request<{ contacts: ContactSuggestion[] }>(`/api/contacts${query}`);
+    return contacts;
+  },
+
   async disconnectAccount(accountId: string): Promise<void> {
     await request(`/api/accounts?id=${encodeURIComponent(accountId)}`, {
       method: "DELETE",
@@ -628,6 +752,89 @@ export const emailApi = {
   async listCalendarConnections(): Promise<CalendarConnection[]> {
     const { connections } = await request<{ connections: CalendarConnection[] }>("/api/calendar/connections");
     return connections;
+  },
+
+  async listCalendarAgenda(options: {
+    accountId?: string;
+    start?: string;
+    end?: string;
+  } = {}): Promise<{ events: CalendarAgendaEvent[]; errors: Array<{ accountId?: string; message: string }> }> {
+    const params = new URLSearchParams();
+    if (options.accountId) params.set("accountId", options.accountId);
+    if (options.start) params.set("start", options.start);
+    if (options.end) params.set("end", options.end);
+    const query = params.size ? `?${params.toString()}` : "";
+    return request(`/api/calendar/agenda${query}`);
+  },
+
+  async createCalendarMeeting(payload: {
+    accountId?: string;
+    title: string;
+    description?: string;
+    startsAt: string;
+    endsAt: string;
+    timezone: string;
+    attendees?: string[];
+    location?: string;
+    reminderMinutes?: number;
+    createConference?: boolean;
+    sourceMessageId?: string;
+  }): Promise<{ event: CalendarAgendaEvent }> {
+    const result = await request<{ event: CalendarAgendaEvent }>("/api/calendar/schedule", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-calendar-updated"));
+    return result;
+  },
+
+  async updateCalendarMeeting(
+    eventId: string,
+    payload: {
+      accountId: string;
+      calendarId: string;
+      title: string;
+      description?: string;
+      startsAt: string;
+      endsAt: string;
+      timezone: string;
+      attendees?: string[];
+      location?: string;
+      reminderMinutes?: number;
+    },
+  ): Promise<{ event: CalendarAgendaEvent }> {
+    const result = await request<{ event: CalendarAgendaEvent }>(
+      `/api/calendar/agenda/${encodeURIComponent(eventId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    );
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-calendar-updated"));
+    return result;
+  },
+
+  async deleteCalendarMeeting(event: Pick<CalendarAgendaEvent, "id" | "accountId" | "calendarId">): Promise<void> {
+    const params = new URLSearchParams({
+      accountId: event.accountId,
+      calendarId: event.calendarId || "primary",
+    });
+    await request(`/api/calendar/agenda/${encodeURIComponent(event.id)}?${params.toString()}`, {
+      method: "DELETE",
+    });
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("relay-calendar-updated"));
+  },
+
+  async draftCalendarMeeting(payload: {
+    prompt: string;
+    accountId?: string;
+    messageId?: string;
+    timezone?: string;
+  }): Promise<{ draft: CalendarMeetingDraft; model: string; responseId?: string }> {
+    return request("/api/ai/meeting", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   async getCalendarConnectUrl(provider: EmailProvider, accountId: string): Promise<string> {
@@ -729,6 +936,7 @@ export const emailApi = {
     contextMessageIds?: AiEmailContextRef[];
     contextFiles?: Array<{ filename: string; mimeType: string; data: string }>;
     generatedAttachments?: Array<{ filename: string; mimeType: string; data: string }>;
+    contactEmail?: string;
     signal?: AbortSignal;
   }): Promise<ComposeAiResponse> {
     const { signal, ...body } = payload;
@@ -813,6 +1021,28 @@ export const emailApi = {
       body: JSON.stringify(preference),
     });
     return updated;
+  },
+
+  async listMemory(): Promise<{ memories: MemoryItem[]; profile: MemoryProfile }> {
+    return request("/api/memory");
+  },
+
+  async updateMemory(payload:
+    | { id: string; action: "accept" | "reject" | "archive" }
+    | { id: string; action: "update"; text: string }
+    | { action: "resetProfile" }
+    | { action: "setLearning"; learningEnabled: boolean },
+  ): Promise<{ ok?: boolean; memory?: MemoryItem }> {
+    return request("/api/memory", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteMemory(id: string): Promise<{ ok: boolean }> {
+    return request(`/api/memory?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
 
   async getAiModelSettings(): Promise<{

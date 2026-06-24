@@ -78,6 +78,7 @@ describe("ComposeDialog account selection", () => {
       cc: "",
       subject: "Plan",
       body: "rough draft",
+      contactEmail: "ada@example.com",
     }))
 
     fireEvent.click(await screen.findByRole("button", { name: "Insert draft" }))

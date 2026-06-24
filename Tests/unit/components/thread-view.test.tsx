@@ -141,4 +141,37 @@ describe("ThreadView attachment previews", () => {
     expect(screen.queryByRole("button", { name: "Preview notes.txt" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Download notes.txt" })).toBeInTheDocument()
   })
+
+  it("notifies the parent when the thread API marks an opened unread email as read", async () => {
+    const onRead = jest.fn()
+    mockThread({ ...baseEmail, read: false })
+
+    render(<ThreadView threadId="message-1" onRead={onRead} />)
+
+    await screen.findByText("Quarterly plan")
+    expect(onRead).toHaveBeenCalledWith("message-1", "account-1")
+    expect(api.modifyEmail).not.toHaveBeenCalled()
+  })
+
+  it("surfaces read update failures without running a second silent mark-read", async () => {
+    const onRead = jest.fn()
+    api.getThread.mockResolvedValue({
+      messages: [{ ...baseEmail, read: false }],
+      accountId: "account-1",
+      accountEmail: "relay@example.com",
+      threadId: "thread-1",
+      readUpdateError: "Request had insufficient authentication scopes.",
+    })
+
+    render(<ThreadView threadId="message-1" onRead={onRead} />)
+
+    await screen.findByText("Quarterly plan")
+    expect(onRead).not.toHaveBeenCalled()
+    expect(api.modifyEmail).not.toHaveBeenCalled()
+    expect(toast).toHaveBeenCalledWith({
+      title: "Could not mark as read",
+      description: "Request had insufficient authentication scopes.",
+      variant: "destructive",
+    })
+  })
 })

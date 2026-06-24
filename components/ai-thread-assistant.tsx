@@ -9,6 +9,8 @@ import { TrackCommitmentDialog, type CommitmentCandidate } from "@/components/tr
 import { ResizeHandle } from "@/components/resize-handle"
 import { useResizablePanel } from "@/hooks/use-resizable-panel"
 import { AiChatComposer, AiChatContextAttachments, AiChatMessages, useAiChat } from "@/components/ai-chat-shared"
+import { ComposeDialog } from "@/components/compose-dialog"
+import type { AiChatDraft } from "@/components/ai-chat-shared"
 
 type AiAction = "summary" | "draft" | "tasks" | "ask"
 
@@ -71,10 +73,25 @@ function ResultContent({ result, response, onInsertDraft }: { result: ThreadAiRe
 }
 
 function AskRelayChat({ messageId, accountId, subject }: { messageId: string; accountId?: string; subject: string }) {
+  const [composeDraft, setComposeDraft] = useState<AiChatDraft | null>(null)
   const chat = useAiChat({ accountId, messageId })
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <ComposeDialog
+        open={Boolean(composeDraft)}
+        onOpenChange={(open) => {
+          if (!open) setComposeDraft(null)
+        }}
+        defaultAccountId={composeDraft?.accountId || accountId}
+        initialDraft={composeDraft ? {
+          accountId: composeDraft.accountId || accountId,
+          to: composeDraft.to,
+          cc: composeDraft.cc,
+          subject: composeDraft.subject,
+          body: composeDraft.body,
+        } : undefined}
+      />
       <AiChatContextAttachments
         attachments={chat.chatAttachments}
         fileAttachments={chat.fileAttachments}
@@ -102,6 +119,13 @@ function AskRelayChat({ messageId, accountId, subject }: { messageId: string; ac
           emptyTitle=""
           emptyDescription=""
           error={chat.error}
+          onUpdateDraft={(index, draft) => chat.updateDraftAt(index, draft)}
+          onSaveDraft={(index) => void chat.saveDraftFromChat(index)}
+          onSendDraft={(index) => void chat.sendDraftFromChat(index)}
+          onOpenDraftInCompose={setComposeDraft}
+          onUpdateCalendarDraft={(index, draft) => chat.updateCalendarDraftAt(index, draft)}
+          onCreateCalendarDraft={(index) => void chat.createCalendarDraftFromChat(index)}
+          calendarConnections={chat.calendarConnections}
         />
       )}
       <AiChatComposer

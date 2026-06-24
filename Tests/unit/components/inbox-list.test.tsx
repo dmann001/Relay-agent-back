@@ -35,6 +35,7 @@ jest.mock("@/lib/email-api", () => ({
   emailApi: {
     listAccounts: jest.fn(),
     listEmails: jest.fn(),
+    searchEmails: jest.fn(),
     sync: jest.fn(),
     modifyEmail: jest.fn(),
   },
@@ -97,6 +98,7 @@ beforeEach(() => {
   replace.mockReset()
   mockedApi.listAccounts.mockResolvedValue([{ id: "account-1", email: "me@example.com", provider: "gmail", connectedAt: "", lastSyncedAt: null }])
   mockedApi.listEmails.mockResolvedValue({ emails: messages, total: messages.length, unreadTotal: 1, hasMore: false })
+  mockedApi.searchEmails.mockResolvedValue({ emails: [], total: 0, hasMore: false })
   mockedApi.sync.mockResolvedValue({ results: [] })
   mockedApi.modifyEmail.mockResolvedValue(undefined)
 })
@@ -110,9 +112,20 @@ describe("InboxList", () => {
     expect(await screen.findByText("Project update")).toBeInTheDocument()
     expect(screen.getByText("Compiler notes")).toBeInTheDocument()
     expect(screen.getByText("2 of 2 loaded")).toBeInTheDocument()
+    expect(screen.getByTitle("Unread")).toBeInTheDocument()
 
     fireEvent.click(screen.getByText("Project update"))
     expect(replace).toHaveBeenCalledWith("/inbox?message=message-1", { scroll: false })
+  })
+
+  it("loads all inbox mail by default instead of scoping to Gmail Primary", async () => {
+    render(<InboxList />)
+
+    await screen.findByText("Project update")
+    expect(mockedApi.listEmails).toHaveBeenCalledWith("inbox", expect.objectContaining({
+      category: undefined,
+    }))
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-current", "page")
   })
 
   it("scopes the unified inbox to a connected account", async () => {
@@ -164,6 +177,79 @@ describe("InboxList", () => {
     expect(screen.queryByRole("navigation", { name: "Inbox categories" })).not.toBeInTheDocument()
   })
 
+  it("loads cached cursor pages before asking the provider for more", async () => {
+    mockedApi.listAccounts.mockResolvedValue([])
+    mockedApi.listEmails
+      .mockResolvedValueOnce({
+        emails: [messages[0]],
+        total: 2,
+        unreadTotal: 1,
+        hasMore: true,
+        cacheHasMore: true,
+        providerHasMore: false,
+        nextCursor: "cursor-1",
+      })
+      .mockResolvedValueOnce({
+        emails: [messages[1]],
+        total: 2,
+        unreadTotal: 1,
+        hasMore: false,
+        cacheHasMore: false,
+        providerHasMore: false,
+        nextCursor: null,
+      })
+
+    render(<InboxList />)
+    await screen.findByText("Project update")
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }))
+
+    await screen.findByText("Compiler notes")
+    expect(mockedApi.sync).not.toHaveBeenCalled()
+    expect(mockedApi.listEmails).toHaveBeenLastCalledWith("inbox", expect.objectContaining({
+      cursor: "cursor-1",
+    }))
+  })
+
+  it("syncs a provider page when the local cursor cache is exhausted", async () => {
+    mockedApi.listAccounts.mockResolvedValue([])
+    mockedApi.listEmails
+      .mockResolvedValueOnce({
+        emails: [messages[0]],
+        total: 2,
+        unreadTotal: 1,
+        hasMore: true,
+        cacheHasMore: false,
+        providerHasMore: true,
+        nextCursor: "cursor-1",
+      })
+      .mockResolvedValueOnce({
+        emails: [messages[1]],
+        total: 2,
+        unreadTotal: 1,
+        hasMore: false,
+        cacheHasMore: false,
+        providerHasMore: false,
+        nextCursor: null,
+      })
+
+    render(<InboxList />)
+    await screen.findByText("Project update")
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }))
+
+    await waitFor(() => expect(mockedApi.sync).toHaveBeenCalledWith("inbox", {
+      loadMore: true,
+      force: true,
+      category: undefined,
+      accountId: undefined,
+    }))
+    await screen.findByText("Compiler notes")
+    expect(mockedApi.listEmails).toHaveBeenLastCalledWith("inbox", expect.objectContaining({
+      cursor: "cursor-1",
+    }))
+  })
+
   it("supports selecting visible mail and applying a bulk read action", async () => {
     render(<InboxList />)
     await screen.findByText("Project update")
@@ -211,13 +297,18 @@ describe("InboxList", () => {
     expect(replace).not.toHaveBeenCalled()
   })
 
-  it("searches within loaded mail and explains the current scope", async () => {
+  it("searches full connected accounts through the email API", async () => {
+    mockedApi.searchEmails.mockResolvedValue({ emails: [messages[1]], total: 1, hasMore: false })
     render(<InboxList />)
     await screen.findByText("Project update")
 
     fireEvent.change(screen.getByPlaceholderText("Search emails..."), { target: { value: "compiler" } })
+    await waitFor(() => expect(mockedApi.searchEmails).toHaveBeenCalledWith(expect.objectContaining({
+      q: "compiler",
+      limit: 50,
+    })))
     await waitFor(() => expect(screen.queryByText("Project update")).not.toBeInTheDocument())
     expect(screen.getByText("Compiler notes")).toBeInTheDocument()
-    expect(screen.getByText("1 loaded match")).toBeInTheDocument()
+    expect(screen.getByText("1 provider result")).toBeInTheDocument()
   })
 })

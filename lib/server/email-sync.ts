@@ -47,7 +47,7 @@ const CATEGORY_QUERIES: Record<GmailCategory, string> = {
 // Row mapping
 // ---------------------------------------------------------------------------
 
-const metadataToRow = (userId: string, accountId: string, meta: GmailMessageMetadata) => ({
+export const metadataToRow = (userId: string, accountId: string, meta: GmailMessageMetadata) => ({
   user_id: userId,
   account_id: accountId,
   provider: 'gmail' as const,
@@ -337,36 +337,54 @@ async function syncCategoryPage(
   return { synced, hasMore: !!nextPageToken };
 }
 
-/** True when at least one connected account has more inbox pages in Gmail. */
-export async function inboxHasMorePages(userId: string, category?: GmailCategory, accountId?: string): Promise<boolean> {
+type PageableMailbox = Extract<Mailbox, 'inbox' | 'sent' | 'archive' | 'trash'>;
+
+/** True when at least one connected account has more provider pages for a mailbox. */
+export async function mailboxHasMorePages(
+  userId: string,
+  mailbox: PageableMailbox,
+  category?: GmailCategory,
+  accountId?: string
+): Promise<boolean> {
   const { data: accounts } = await getSupabaseAdmin()
     .from('email_accounts')
-    .select('id')
+    .select('id, provider')
     .eq('user_id', userId)
-    .eq('provider', 'gmail')
     .is('revoked_at', null);
 
   const scopedAccounts = accountId ? (accounts || []).filter(({ id }) => id === accountId) : (accounts || []);
   if (!scopedAccounts.length) return false;
+  const tokenKey = mailbox === 'inbox' && category ? category : mailbox;
 
   for (const account of scopedAccounts) {
+    if (category && account.provider !== 'gmail') continue;
     const state = await getSyncState(account.id);
     const tokens = parseMailboxPageTokens(state?.pagination_token);
-    if (category ? tokens[category] : tokens.inbox) return true;
+    if ((tokens as Record<string, string | null | undefined>)[tokenKey]) return true;
   }
 
-  // No stored token yet (legacy sync): a full cached page likely means more in Gmail.
+  if (mailbox !== 'inbox' && mailbox !== 'sent') return false;
+
+  // No stored token yet (legacy Gmail sync): a full cached page likely means more in Gmail.
+  if (!scopedAccounts.some((account) => account.provider === 'gmail')) return false;
   let countQuery = getSupabaseAdmin()
     .from('emails')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('is_inbox', true)
-    .eq('is_trashed', false)
-    .eq('gmail_category', category || 'primary');
+    .eq('provider', 'gmail')
+    .eq('is_trashed', false);
+  if (mailbox === 'inbox') countQuery = countQuery.eq('is_inbox', true);
+  if (mailbox === 'sent') countQuery = countQuery.eq('is_sent', true);
+  if (mailbox === 'inbox' && category) countQuery = countQuery.eq('gmail_category', category);
   if (accountId) countQuery = countQuery.eq('account_id', accountId);
   const { count } = await countQuery;
 
   return (count ?? 0) >= INITIAL_FETCH_COUNT;
+}
+
+/** True when at least one connected account has more inbox pages in Gmail. */
+export async function inboxHasMorePages(userId: string, category?: GmailCategory, accountId?: string): Promise<boolean> {
+  return mailboxHasMorePages(userId, 'inbox', category, accountId);
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import { fetchMessageMetadataBatch, sendDraft, sendMessage, updateDraft } from '
 import { handleApiError } from '@/lib/server/api-utils';
 import { GmailMessageMetadata } from '@/lib/server/gmail-api';
 import { upsertEmailRows } from '@/lib/server/email-sync';
+import { recordDraftFeedback } from '@/lib/server/personalization';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +26,8 @@ export async function POST(request: NextRequest) {
       inReplyToMessageId,
       attachments,
       draftId, // Relay DB draft id (optional - sending a saved draft)
+      generatedDraft,
+      generatedDraftId,
     } = body;
 
     if (!to || !Array.isArray(to) || to.length === 0) {
@@ -114,6 +117,21 @@ export async function POST(request: NextRequest) {
         console.error('[Send] Failed to cache sent metadata (non-fatal):', error);
       }
     }
+
+    void recordDraftFeedback({
+      userId,
+      accountId: account.id,
+      to,
+      cc,
+      subject,
+      finalBody: emailBody,
+      generatedBody: typeof generatedDraft === 'string' ? generatedDraft : undefined,
+      generatedDraftId: typeof generatedDraftId === 'string' ? generatedDraftId : undefined,
+      providerMessageId: sent.id || null,
+      threadId: sent.threadId || threadId || null,
+    }).catch((error) => {
+      console.error('[Send] Failed to record draft feedback (non-fatal):', error);
+    });
 
     return NextResponse.json({
       success: true,

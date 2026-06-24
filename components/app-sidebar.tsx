@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Archive,
   Bot,
+  CalendarDays,
   CheckSquare,
   ChevronDown,
   FileText,
@@ -150,6 +151,7 @@ export function AppSidebar() {
     {
       label: "Workspace",
       items: [
+        { name: "Calendar", href: "/calendar", icon: CalendarDays, count: 0 },
         { name: "Commitments", href: "/commitments", icon: CheckSquare, count: counts.commitments },
         { name: "Meeting briefs", href: "/briefs", icon: NotebookTabs, count: 0 },
         { name: "Activity", href: "/activity", icon: Bot, count: counts.agentActivity },

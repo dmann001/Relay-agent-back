@@ -60,7 +60,7 @@ export async function POST(
         is_archived: action === 'archive' ? true : action === 'unarchive' ? false : undefined,
         is_trashed: action === 'trash' ? true : action === 'untrash' ? false : undefined,
         trashed_at: action === 'trash' ? new Date().toISOString() : action === 'untrash' ? null : undefined,
-      }).eq('account_id', account.id).eq('provider_message_id', messageId);
+      }).eq('user_id', userId).eq('account_id', account.id).eq('provider_message_id', messageId);
       return NextResponse.json({ success: true, messageId: changed.id || messageId, moved });
     }
     const client = await getAuthorizedClient(account as any);
