@@ -1011,8 +1011,8 @@ function HeroInboxDashboard() {
   )
 
   const messages = [
-    { initials: "DH", from: "Dhruv", subject: "[Relay-agent-back] Run failed: lint", snippet: "Build output attached for review", time: "10:28 AM", tone: "bg-amber-400", active: true },
-    { initials: "TP", from: "Tushar Gupta", subject: "Why State Governments' Cash Transfers Do...", snippet: "Strip away the cash-transfer details...", time: "9:51 AM", tone: "bg-pink-300" },
+    { initials: "JD", from: "John", subject: "[Relay-agent-back] Run failed: lint", snippet: "Build output attached for review", time: "10:28 AM", tone: "bg-amber-400", active: true },
+    { initials: "BR", from: "Brian Roe", subject: "Why Provincial Governments' Cash Transfers Do...", snippet: "Strip away the cash-transfer details...", time: "9:51 AM", tone: "bg-pink-300" },
     { initials: "SU", from: "Substack", subject: "Richard Hanania posted...", snippet: "A new essay is ready for your reading list", time: "8:24 AM", tone: "bg-orange-400" },
     { initials: "MS", from: "Major League Soccer", subject: "Canada makes history ahead of Switzerland", snippet: "Plus Canada's goalscoring record", time: "8:10 AM", tone: "bg-cyan-300" },
     { initials: "GH", from: "GitHub", subject: "Pull request merged: landing polish", snippet: "Your PR #42 was merged into main", time: "Yesterday", tone: "bg-neutral-400" },
@@ -1032,8 +1032,8 @@ function HeroInboxDashboard() {
       <div className="relative flex h-full min-h-0">
         <aside className="hidden w-[15%] min-w-[168px] border-r border-white/10 bg-[#090909] p-3 text-neutral-400 md:block">
           <div className="flex items-center gap-2 text-xs font-semibold text-white">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-[10px] font-bold text-neutral-950">DH</div>
-            Dhruv Mann
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-[10px] font-bold text-neutral-950">JD</div>
+            John Doe
           </div>
           <div className="mt-4 flex items-center gap-1 text-neutral-500">
             <span className="flex h-7 flex-1 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 text-[10px]">

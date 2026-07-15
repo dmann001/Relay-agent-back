@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import Image from "next/image"
+import Image, { type StaticImageData } from "next/image"
 import Link from "next/link"
 import {
   ArrowRight,
@@ -23,8 +23,14 @@ import {
   type MockupScene,
 } from "@/components/landing-mockups"
 import { cn } from "@/lib/utils"
-import cathedralLight from "@/asset_images/2.png"
-import cosmicPhilosophers from "@/asset_images/4.png"
+import relayStation from "@/asset_images/image 1.png"
+import relayStation2 from "@/asset_images/im1.png"
+import semaphoreTower from "@/asset_images/image 2-semaphore.png"
+import semaphoreTower2 from "@/asset_images/im2.png"
+import scriptoriumImage from "@/asset_images/im4.png"
+import composeStillLife from "@/asset_images/im5.png"
+import beaconTower from "@/asset_images/im6.png"
+import footerImage from "@/asset_images/image3-last.png"
 
 const features: Array<{
   title: string
@@ -386,58 +392,157 @@ function Nav() {
   )
 }
 
-function PrincipleGrid() {
-  const items = [
-    {
-      fig: "FIG 0.1",
-      title: "Built for flow",
-      text: "Relay keeps mail, drafts, briefs, and commitments in one continuous workspace.",
-      Figure: FigFlow,
-    },
-    {
-      fig: "FIG 0.2",
-      title: "Powered by context",
-      text: "The AI chat knows the active page and selected email, then uses that context before answering.",
-      Figure: FigContext,
-    },
-    {
-      fig: "FIG 0.3",
-      title: "Designed for control",
-      text: "Agents summarize and prepare work, while approvals keep important actions explicit.",
-      Figure: FigControl,
-    },
-  ]
+const principleItems = [
+  {
+    fig: "FIG 0.1",
+    title: "Built for flow",
+    text: "Relay keeps mail, drafts, briefs, and commitments in one continuous workspace.",
+    Figure: FigFlow,
+  },
+  {
+    fig: "FIG 0.2",
+    title: "Powered by context",
+    text: "The AI chat knows the active page and selected email, then uses that context before answering.",
+    Figure: FigContext,
+  },
+  {
+    fig: "FIG 0.3",
+    title: "Designed for control",
+    text: "Agents summarize and prepare work, while approvals keep important actions explicit.",
+    Figure: FigControl,
+  },
+]
 
+function LandingImageHeader({
+  src,
+  imageClassName,
+  sectionClassName,
+  children,
+}: {
+  src: StaticImageData
+  imageClassName?: string
+  sectionClassName?: string
+  children: ReactNode
+}) {
   return (
-    <section className="relative mx-auto max-w-7xl px-6 py-24 md:py-28">
+    <section
+      className={cn(
+        "relative mx-auto flex max-w-7xl flex-col justify-start overflow-hidden px-6 py-24 md:py-32",
+        sectionClassName,
+      )}
+    >
+      <div className="pointer-events-none absolute inset-0 z-0 bg-black" aria-hidden>
+        <Image
+          src={src}
+          alt=""
+          fill
+          sizes="(max-width: 768px) 100vw, 1280px"
+          className={cn("object-contain opacity-80", imageClassName)}
+        />
+        <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-black via-black/70 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black via-black/80 to-transparent" />
+        <div className="absolute inset-y-0 left-0 w-[14%] bg-gradient-to-r from-black to-transparent" />
+        <div className="absolute inset-y-0 right-0 w-[10%] bg-gradient-to-l from-black to-transparent" />
+      </div>
       <Reveal>
-        <h2 className="max-w-5xl text-[clamp(2rem,4.5vw,3.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] text-white">
-          A new species of email workspace.{" "}
-          <span className="text-neutral-500">
-            Purpose-built for modern teams with AI workflows at its core.
-          </span>
-        </h2>
+        <div className="relative z-10">{children}</div>
       </Reveal>
+    </section>
+  )
+}
 
-      <div className="relative mt-20 grid overflow-hidden border-y landing-hairline md:grid-cols-3 md:divide-x md:divide-white/[0.06]">
-        <CrosshairCorners />
-        {items.map(({ fig, title, text, Figure }, index) => (
-          <Reveal
-            key={title}
-            className="h-full"
-            delayClass={index === 1 ? "landing-reveal-delay-1" : index === 2 ? "landing-reveal-delay-2" : undefined}
-          >
-            <div className="landing-principle-cell h-full min-h-[340px] bg-black p-8">
-              <div className="landing-mono-label">{fig}</div>
-              <div className="landing-fig-stage relative mt-12 flex h-36 items-center justify-center">
-                <div className="landing-fig-vignette" aria-hidden />
-                <Figure />
+function PrincipleGrid() {
+  return (
+    <LandingImageHeader
+      src={semaphoreTower2}
+      imageClassName="object-[58%_58%]"
+      sectionClassName="min-h-[min(92vw,620px)] md:min-h-[min(74vw,720px)] lg:min-h-[min(70vw,780px)]"
+    >
+      <h2 className="max-w-5xl text-[clamp(2rem,4.5vw,3.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] text-white drop-shadow-[0_4px_24px_rgb(0_0_0/0.9)]">
+        A new species of email workspace.{" "}
+        <span className="text-neutral-400">
+          Purpose-built for modern teams with AI workflows at its core.
+        </span>
+      </h2>
+    </LandingImageHeader>
+  )
+}
+
+function ArchiveBridge() {
+  return (
+    <LandingImageHeader
+      src={scriptoriumImage}
+      imageClassName="object-[44%_52%]"
+      sectionClassName="min-h-[min(88vw,580px)] md:min-h-[min(72vw,680px)] lg:min-h-[min(68vw,740px)]"
+    >
+      <h2 className="max-w-5xl text-[clamp(2rem,4.5vw,3.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] text-white drop-shadow-[0_4px_24px_rgb(0_0_0/0.9)]">
+        Correspondence, refined for the age of agents.{" "}
+        <span className="text-neutral-400">
+          From the scriptorium to the inbox - written words endure.
+        </span>
+      </h2>
+    </LandingImageHeader>
+  )
+}
+
+function ComposeImageHeader() {
+  return (
+    <LandingImageHeader
+      src={composeStillLife}
+      imageClassName="object-[52%_50%]"
+      sectionClassName="min-h-[min(78vw,480px)] md:min-h-[min(60vw,540px)] lg:min-h-[min(56vw,580px)]"
+    >
+      <h2 className="max-w-5xl text-[clamp(2rem,4.5vw,3.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] text-white drop-shadow-[0_4px_24px_rgb(0_0_0/0.9)]">
+        The craft of the reply.{" "}
+        <span className="text-neutral-400">
+          Thread context in, polished draft out.
+        </span>
+      </h2>
+    </LandingImageHeader>
+  )
+}
+
+function MonitorImageHeader() {
+  return (
+    <LandingImageHeader
+      src={beaconTower}
+      imageClassName="object-[50%_64%]"
+      sectionClassName="min-h-[min(90vw,620px)] md:min-h-[min(74vw,720px)] lg:min-h-[min(70vw,780px)]"
+    >
+      <h2 className="max-w-5xl text-[clamp(2rem,4.5vw,3.75rem)] font-semibold leading-[0.98] tracking-[-0.02em] text-white drop-shadow-[0_4px_24px_rgb(0_0_0/0.9)]">
+        See every signal. Approve every action.{" "}
+        <span className="text-neutral-400">
+          Supervised agents, visible at every step.
+        </span>
+      </h2>
+    </LandingImageHeader>
+  )
+}
+
+function PrincipleFigureGrid() {
+  return (
+    <section className="relative border-y landing-hairline px-6 py-0">
+      <div className="mx-auto max-w-7xl">
+        <div className="relative grid overflow-hidden border-x landing-hairline bg-black/35 md:grid-cols-3 md:divide-x md:divide-white/[0.08]">
+          <CrosshairCorners />
+          {principleItems.map(({ fig, title, text, Figure }, index) => (
+            <Reveal
+              key={title}
+              className="h-full"
+              delayClass={index === 1 ? "landing-reveal-delay-1" : index === 2 ? "landing-reveal-delay-2" : undefined}
+            >
+              <div className="landing-principle-cell h-full min-h-[340px] bg-black/70 p-8 backdrop-blur-[1px]">
+                <div className="landing-mono-label">{fig}</div>
+                <div className="landing-fig-stage relative mt-12 flex h-36 items-center justify-center">
+                  <div className="landing-fig-vignette" aria-hidden />
+                  <Figure />
+                </div>
+                <h3 className="mt-14 text-base font-semibold text-white">{title}</h3>
+                <p className="landing-body mt-3 max-w-sm text-sm">{text}</p>
               </div>
-              <h3 className="mt-14 text-base font-semibold text-white">{title}</h3>
-              <p className="landing-body mt-3 max-w-sm text-sm">{text}</p>
-            </div>
-          </Reveal>
-        ))}
+            </Reveal>
+          ))}
+        </div>
       </div>
     </section>
   )
@@ -483,6 +588,22 @@ function FeatureShowcase({ feature }: { feature: (typeof features)[number] }) {
       </div>
     </section>
   )
+}
+
+function renderFeatureSections() {
+  const sections: ReactNode[] = []
+
+  features.forEach((feature) => {
+    if (feature.eyebrow === "3.0 Compose") {
+      sections.push(<ComposeImageHeader key="compose-image-header" />)
+    }
+    if (feature.eyebrow === "6.0 Monitor") {
+      sections.push(<MonitorImageHeader key="monitor-image-header" />)
+    }
+    sections.push(<FeatureShowcase key={feature.title} feature={feature} />)
+  })
+
+  return sections
 }
 
 function RecentlyShipped() {
@@ -589,71 +710,70 @@ export function LandingPage() {
       <Nav />
 
       <main className="relative z-10">
-        <section id="product" className="mx-auto max-w-7xl px-6 pb-20 pt-32 md:pb-28 md:pt-40">
-          <div className={cn("transition-all duration-700", loaded ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0")}>
-            <div className="grid items-end gap-10 lg:grid-cols-[1fr_0.42fr]">
-              <div>
-                <h1 className="landing-hero-title max-w-5xl">
-                  The inbox system for teams and agents
-                </h1>
-                <p className="landing-body mt-8 max-w-xl">
-                  Relay unifies Gmail and Outlook with contextual AI for briefs, drafts, commitments, meeting prep, and supervised agent work.
-                </p>
-              </div>
-              <div className="flex flex-col items-start gap-5 lg:items-end">
-                <Link href="#features" className="group inline-flex items-center gap-2 text-sm font-medium text-neutral-400 hover:text-white">
-                  <span className="rounded-full bg-white px-2 py-1 text-xs text-neutral-950">New</span>
-                  Relay page-aware chat
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </Link>
-                <Button asChild className="h-11 rounded-full bg-white px-5 text-neutral-950 hover:bg-neutral-200">
-                  <Link href="/login?tab=signup">Start with Relay</Link>
+        <section id="product" className="relative isolate overflow-hidden px-6 pb-20 pt-32 md:pb-28 md:pt-40">
+          <div
+            className="pointer-events-none absolute right-4 top-24 z-0 h-[330px] w-[76vw] max-w-[960px] overflow-hidden md:right-8 md:top-24 md:h-[370px] md:w-[66vw] lg:right-12 lg:top-24 lg:h-[390px] lg:w-[58vw]"
+            aria-hidden
+          >
+            <Image
+              src={relayStation2}
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 768px) 76vw, (max-width: 1024px) 66vw, 58vw"
+              className="object-cover object-[48%_42%]"
+            />
+            <div className="absolute inset-y-0 left-0 w-[14%] bg-gradient-to-r from-black to-transparent" />
+            <div className="absolute inset-y-0 right-0 w-[10%] bg-gradient-to-l from-black to-transparent" />
+            <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black to-transparent" />
+          </div>
+          <div className="absolute inset-x-0 bottom-0 z-[1] h-[42%] bg-black" aria-hidden />
+          <div className="absolute inset-x-0 bottom-[40%] z-[1] h-28 bg-gradient-to-b from-transparent to-black" aria-hidden />
+          <div className="relative z-10 mx-auto max-w-7xl">
+            <div className={cn("transition-all duration-700", loaded ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0")}>
+              <div className="grid items-end gap-10 lg:grid-cols-[1fr_0.42fr]">
+                <div>
+                  <h1 className="landing-hero-title max-w-5xl">
+                    The inbox system for teams and agents
+                  </h1>
+                  <p className="landing-body mt-8 max-w-xl">
+                    Relay unifies Gmail and Outlook with contextual AI for briefs, drafts, commitments, meeting prep, and supervised agent work.
+                  </p>
+                </div>
+                <div className="flex flex-col items-start gap-5 lg:items-end">
+                  <Link href="#features" className="group inline-flex items-center gap-2 text-sm font-medium text-neutral-100 drop-shadow-[0_2px_10px_rgb(0_0_0/0.9)] hover:text-white">
+                    <span className="rounded-full bg-white px-2 py-1 text-xs text-neutral-950">New</span>
+                    Relay page-aware chat
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Link>
+                  <Button asChild className="h-11 rounded-full bg-white px-5 text-neutral-950 hover:bg-neutral-200">
+                    <Link href="/login?tab=signup">Start with Relay</Link>
                 </Button>
                 <div className="mt-2 hidden text-right leading-relaxed lg:block">
-                  <p className="landing-mono-label">Unified Gmail + Outlook</p>
-                  <p className="landing-mono-label mt-1">Contextual AI briefs</p>
-                  <p className="landing-mono-label mt-1">Supervised agent work</p>
+                  <p className="landing-mono-label text-neutral-300 drop-shadow-[0_2px_8px_rgb(0_0_0/0.95)]">Unified Gmail + Outlook</p>
+                  <p className="landing-mono-label mt-1 text-neutral-300 drop-shadow-[0_2px_8px_rgb(0_0_0/0.95)]">Contextual AI briefs</p>
+                  <p className="landing-mono-label mt-1 text-neutral-300 drop-shadow-[0_2px_8px_rgb(0_0_0/0.95)]">Supervised agent work</p>
                 </div>
               </div>
+              </div>
             </div>
-          </div>
 
-          <div className={cn("relative mt-16 transition-all delay-200 duration-700", loaded ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0")}>
-            <div className="landing-hero-bloom" aria-hidden />
-            <div className="relative overflow-hidden rounded-xl landing-panel p-3 md:p-4">
-              <ProductMockup variant="hero" scene="inbox" />
+            <div className={cn("relative mt-16 transition-all delay-200 duration-700", loaded ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0")}>
+              <div className="landing-hero-bloom" aria-hidden />
+              <div className="relative overflow-hidden rounded-xl landing-panel p-3 md:p-4">
+                <ProductMockup variant="hero" scene="inbox" />
+              </div>
             </div>
           </div>
         </section>
 
         <PrincipleGrid />
-
-        <section className="relative min-h-[420px] overflow-hidden border-y landing-hairline">
-          <Image
-            src={cathedralLight}
-            alt=""
-            fill
-            sizes="100vw"
-            className="object-cover object-[32%_42%] opacity-40"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/90 to-black/40" />
-          <div className="relative mx-auto flex min-h-[420px] max-w-7xl items-center px-6 py-20">
-            <Reveal className="max-w-2xl">
-              <p className="landing-mono-label mb-6">0.4 Philosophy</p>
-              <h2 className="landing-section-title">
-                Quiet intelligence for a loud inbox.
-              </h2>
-              <p className="landing-body mt-6 max-w-xl">
-                Relay turns mail into decisions without burying people in dashboards, modes, or disconnected AI panels.
-              </p>
-            </Reveal>
-          </div>
-        </section>
+        <PrincipleFigureGrid />
+        <ArchiveBridge />
 
         <div id="features">
-          {features.map((feature) => (
-            <FeatureShowcase key={feature.title} feature={feature} />
-          ))}
+          {renderFeatureSections()}
         </div>
 
         <RecentlyShipped />
@@ -689,25 +809,25 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="px-6 pb-16">
+        <section className="px-6 pb-6">
           <Reveal>
-            <div className="relative mx-auto min-h-[360px] max-w-7xl overflow-hidden rounded-xl landing-panel">
+            <div className="relative mx-auto min-h-[400px] max-w-7xl overflow-hidden rounded-xl landing-panel md:min-h-[440px] lg:min-h-[480px]">
               <CrosshairCorners />
               <Image
-                src={cosmicPhilosophers}
+                src={footerImage}
                 alt=""
                 fill
                 sizes="(max-width: 768px) 100vw, 1280px"
-                className="object-cover object-[center_36%] opacity-70"
+                className="object-cover object-[50%_42%] opacity-80 scale-105"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/75 to-black/35" />
-              <div className="relative flex min-h-[360px] flex-col items-center justify-center px-6 py-16 text-center">
-                <p className="landing-mono-label mb-6">7.0 Start</p>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
+              <div className="relative flex min-h-[400px] flex-col items-center justify-center px-6 py-10 text-center md:min-h-[440px] lg:min-h-[480px]">
+                <p className="landing-mono-label mb-4 text-neutral-300">7.0 Start</p>
                 <h2 className="landing-section-title max-w-3xl">
-                  Browse mail with intelligence
+                  Put the next reply in motion.
                 </h2>
                 <p className="landing-body mt-5 max-w-xl">
-                  Create an account and connect Gmail or Outlook in minutes.
+                  Connect your mailbox and let Relay organize briefs, drafts, and follow-ups from one workspace.
                 </p>
                 <Button asChild className="mt-8 h-11 rounded-full bg-white px-6 text-neutral-950 hover:bg-neutral-200">
                   <Link href="/login?tab=signup">
@@ -721,10 +841,10 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="relative z-10 border-t landing-hairline px-6 py-16">
+      <footer className="relative z-10 border-t landing-hairline px-6 py-10">
         <Cross className="absolute left-6 top-0 -translate-x-1/2 -translate-y-1/2" />
         <div className="mx-auto max-w-7xl">
-          <div className="grid gap-12 md:grid-cols-[1.2fr_repeat(3,1fr)]">
+          <div className="grid gap-8 md:grid-cols-[1.2fr_repeat(3,1fr)]">
             <div>
               <div className="flex items-center gap-2 text-white">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-neutral-950">
@@ -732,13 +852,13 @@ export function LandingPage() {
                 </div>
                 Relay
               </div>
-              <p className="landing-body mt-5 max-w-xs text-sm">
+              <p className="landing-body mt-4 max-w-xs text-sm">
                 The inbox system for teams and agents.
               </p>
             </div>
             <div>
               <p className="landing-mono-label">Product</p>
-              <div className="mt-5 flex flex-col gap-3.5 text-sm text-neutral-500">
+              <div className="mt-4 flex flex-col gap-3 text-sm text-neutral-500">
                 <Link href="#product" className="hover:text-white">Overview</Link>
                 <Link href="#features" className="inline-flex items-center gap-2 hover:text-white">
                   Features
@@ -751,20 +871,20 @@ export function LandingPage() {
             </div>
             <div>
               <p className="landing-mono-label">Account</p>
-              <div className="mt-5 flex flex-col gap-3.5 text-sm text-neutral-500">
+              <div className="mt-4 flex flex-col gap-3 text-sm text-neutral-500">
                 <Link href="/login" className="hover:text-white">Log in</Link>
                 <Link href="/login?tab=signup" className="hover:text-white">Sign up</Link>
               </div>
             </div>
             <div>
               <p className="landing-mono-label">Connect</p>
-              <div className="mt-5 flex flex-col gap-3.5 text-sm text-neutral-500">
+              <div className="mt-4 flex flex-col gap-3 text-sm text-neutral-500">
                 <span>Gmail</span>
                 <span>Outlook</span>
               </div>
             </div>
           </div>
-          <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t landing-hairline pt-6 text-sm text-neutral-500">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t landing-hairline pt-5 text-sm text-neutral-500">
             <span>© {new Date().getFullYear()} Relay</span>
             <div className="flex gap-6">
               <Link href="#product" className="hover:text-white">Product</Link>

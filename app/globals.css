@@ -664,6 +664,193 @@ html {
   color: rgb(150 150 150);
 }
 
+.landing-auth-title {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 0.98;
+  color: white;
+}
+
+.landing-auth-input {
+  border-color: var(--landing-hairline);
+  background-color: rgb(255 255 255 / 0.04);
+  color: white;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    background-color 0.25s ease;
+}
+
+.landing-auth-input::placeholder {
+  color: rgb(115 115 115);
+}
+
+.landing-auth-input:focus-visible {
+  border-color: rgb(255 255 255 / 0.2);
+  background-color: rgb(255 255 255 / 0.06);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.1),
+    0 0 20px rgb(255 255 255 / 0.04);
+}
+
+.landing-auth-input:-webkit-autofill,
+.landing-auth-input:-webkit-autofill:hover,
+.landing-auth-input:-webkit-autofill:focus,
+.landing-auth-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgb(20 20 20) inset !important;
+  -webkit-text-fill-color: white !important;
+  caret-color: white;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.landing-auth-glass {
+  position: relative;
+  border: 1px solid var(--landing-hairline);
+  border-radius: 1rem;
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.08) 0%,
+    rgb(255 255 255 / 0.03) 45%,
+    rgb(255 255 255 / 0.01) 100%
+  );
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 0 0 0 1px rgb(255 255 255 / 0.02),
+    0 24px 80px -32px rgb(0 0 0 / 0.75),
+    0 0 0 1px rgb(255 255 255 / 0.03);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .landing-auth-glass {
+    background: rgb(10 10 10 / 0.92);
+  }
+}
+
+.landing-auth-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: 1rem 1rem 0 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35) 50%, transparent);
+  pointer-events: none;
+}
+
+.landing-auth-bloom {
+  position: absolute;
+  inset: 8% -24% -8% -24%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(58% 80% at 50% 42%, var(--landing-bloom), transparent 72%);
+  filter: blur(64px);
+  animation: landing-bloom-breathe 11s ease-in-out infinite;
+}
+
+.landing-auth-tabs {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--landing-hairline);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.landing-auth-tab-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  z-index: 0;
+  width: calc(50% - 4px);
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  transform: translateX(0%);
+}
+
+.landing-auth-tab-indicator.is-signup {
+  transform: translateX(100%);
+}
+
+.landing-auth-tab-indicator.is-ready {
+  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-auth-tab {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  color: rgb(163 163 163);
+  box-shadow: none !important;
+  transition: color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-auth-tab[data-state="active"] {
+  background: transparent !important;
+  color: rgb(10 10 10);
+}
+
+.landing-auth-content-swap {
+  position: relative;
+  min-height: 26rem;
+  overflow: hidden;
+}
+
+@keyframes landing-auth-slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes landing-auth-slide-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-1.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.landing-auth-slide-from-right {
+  animation: landing-auth-slide-in-from-right 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.landing-auth-slide-from-left {
+  animation: landing-auth-slide-in-from-left 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.landing-auth-image {
+  transition:
+    opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-auth-image-enter {
+  animation: landing-auth-image-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes landing-auth-image-enter {
+  from {
+    opacity: 0.65;
+    transform: scale(1.05);
+  }
+
+  to {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
 .landing-panel {
   position: relative;
   border: 1px solid var(--landing-hairline);
@@ -1327,9 +1514,26 @@ html {
     transform: none;
   }
 
-  .landing-hero-bloom {
+  .landing-hero-bloom,
+  .landing-auth-bloom {
     animation: none !important;
     opacity: 0.8;
+  }
+
+  .landing-auth-tab-indicator.is-ready {
+    transition: none !important;
+  }
+
+  .landing-auth-slide-from-right,
+  .landing-auth-slide-from-left,
+  .landing-auth-image-enter {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .landing-auth-image {
+    transition: opacity 0.3s ease !important;
   }
 
   .landing-animate-active .landing-bar {
