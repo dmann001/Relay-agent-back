@@ -4,11 +4,10 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
-import { Instrument_Serif } from "next/font/google"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
-import { Loader2, Mail, ArrowLeft, ArrowRight, Check, Eye, EyeOff } from "lucide-react"
+import { Loader2, Mail, ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react"
 import { getAuthStoragePreference, setAuthStoragePreference, supabase } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
@@ -18,25 +17,21 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { ThemeToggleIcon } from "@/components/theme-toggle"
-import philosophersTemple from "@/asset_images/3.png"
-import contemplativeProfile from "@/asset_images/7.png"
+import signInArt from "@/asset_images/im7.png"
+import signUpArt from "@/asset_images/im8.png"
 
-const loginSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-})
+const authInputClass = "landing-auth-input border landing-hairline"
 
 const authPanels = {
   signin: {
-    image: contemplativeProfile,
-    imagePosition: "object-[58%_center]",
+    image: signInArt,
+    imagePosition: "object-[50%_42%]",
     title: "Return to clarity.",
     description: "Pick up where you left off — your inbox, briefs, and commitments.",
   },
   signup: {
-    image: philosophersTemple,
-    imagePosition: "object-[center_42%]",
+    image: signUpArt,
+    imagePosition: "object-[50%_45%]",
     title: "Begin with intention.",
     description: "Create an account and connect Gmail or Outlook in minutes.",
   },
@@ -67,9 +62,13 @@ export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const tabParam = searchParams.get("tab")
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [isSigningUp, setIsSigningUp] = useState(false)
-  const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin")
+  const [activeTab, setActiveTab] = useState<"signin" | "signup">(
+    tabParam === "signup" ? "signup" : "signin",
+  )
+  const [indicatorReady, setIndicatorReady] = useState(false)
   const [showSignInPassword, setShowSignInPassword] = useState(false)
   const [isForgotOpen, setIsForgotOpen] = useState(false)
 
@@ -87,8 +86,19 @@ export default function LoginPage() {
     const tab = searchParams.get("tab")
     if (tab === "signup") {
       setActiveTab("signup")
+    } else if (tab === "signin") {
+      setActiveTab("signin")
     }
   }, [searchParams])
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setIndicatorReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as "signin" | "signup")
+  }
 
   const signUpForm = useForm<SignUpValues>({
     resolver: zodResolver(signUpSchema),
@@ -198,66 +208,77 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-[var(--landing-bg)] text-[var(--landing-fg)]">
-      <div className="absolute top-6 left-6 z-20 flex items-center gap-2">
-        <Button variant="ghost" size="sm" asChild className="rounded-full bg-white/70 backdrop-blur-sm dark:bg-neutral-900/70">
-          <Link href="/">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Link>
-        </Button>
-      </div>
-      <div className="absolute top-6 right-6 z-20">
-        <ThemeToggleIcon />
+    <div className="landing-page relative min-h-screen overflow-x-hidden">
+      <div className="landing-backdrop" aria-hidden>
+        <div className="landing-backdrop-glow landing-backdrop-glow-hero" />
+        <div className="landing-backdrop-glow landing-backdrop-glow-principles" />
+        <div className="landing-backdrop-grain" />
       </div>
 
-      <div className="mx-auto grid min-h-screen lg:grid-cols-2">
-        <div className="relative hidden min-h-[280px] overflow-hidden lg:block lg:min-h-screen">
+      <div className="absolute inset-x-0 top-0 z-20 px-6 pt-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm text-neutral-400 transition-colors hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Link>
+          <Link href="/" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-neutral-950">
+              <Mail className="h-4 w-4" />
+            </div>
+            <span className="text-base font-semibold text-white">Relay</span>
+          </Link>
+        </div>
+      </div>
+
+      <div className="relative z-10 mx-auto grid min-h-screen lg:grid-cols-2">
+        <div className="relative hidden min-h-[280px] overflow-hidden bg-black lg:block lg:min-h-screen">
           <Image
+            key={activeTab}
             src={authPanels[activeTab].image}
             alt=""
             fill
             priority
             sizes="50vw"
-            className={cn("object-cover transition-opacity duration-500", authPanels[activeTab].imagePosition)}
+            className={cn(
+              "landing-auth-image landing-auth-image-enter object-cover opacity-90",
+              authPanels[activeTab].imagePosition,
+            )}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-black/10" />
+          <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black via-black/70 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black via-black/85 to-transparent" />
+          <div className="absolute inset-y-0 left-0 w-[12%] bg-gradient-to-r from-black to-transparent" />
+          <div className="absolute inset-y-0 right-0 w-[8%] bg-gradient-to-l from-black to-transparent" />
           <div className="absolute inset-0 flex flex-col justify-end p-12 xl:p-16">
-            <p
-              className={cn(
-                loginSerif.className,
-                "max-w-md text-3xl leading-tight text-white xl:text-4xl",
-              )}
-            >
-              {authPanels[activeTab].title}
+            <p className="landing-mono-label mb-4 text-neutral-400">
+              {activeTab === "signin" ? "Account" : "Get started"}
             </p>
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-white/75 md:text-base">
+            <h2 className="landing-section-title max-w-md text-[clamp(2rem,3.5vw,3rem)] drop-shadow-[0_4px_24px_rgb(0_0_0/0.9)]">
+              {authPanels[activeTab].title}
+            </h2>
+            <p className="landing-body mt-4 max-w-sm text-sm md:text-base">
               {authPanels[activeTab].description}
             </p>
           </div>
         </div>
 
-        <div className="relative flex flex-col justify-center px-6 py-16 lg:px-12 xl:px-16">
-          <div className="relative mx-auto w-full max-w-md">
-            <div className="pointer-events-none absolute -right-4 -top-8 h-28 w-28 overflow-hidden rounded-full opacity-90 shadow-lg lg:hidden">
-              <Image
-                src={activeTab === "signin" ? contemplativeProfile : philosophersTemple}
-                alt=""
-                fill
-                sizes="112px"
-                className="object-cover"
-              />
-            </div>
-
-            <div className="mb-8 flex flex-col items-center gap-3 text-center lg:items-start lg:text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-neutral-900 dark:bg-neutral-100">
-                <Mail className="h-5 w-5 text-white dark:text-neutral-900" />
+        <div className="relative flex min-h-screen flex-col justify-center px-6 py-16 pt-14 lg:px-10 lg:py-20 xl:px-14">
+          <div className="landing-auth-bloom" aria-hidden />
+          <div className="relative z-10 mx-auto w-full max-w-md">
+            <div className="mb-4 flex flex-col items-center gap-2 text-center lg:items-start lg:text-left">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-neutral-950 lg:hidden">
+                <Mail className="h-4 w-4" />
               </div>
               <div>
-                <h1 className="text-xl font-medium tracking-tight text-neutral-900 dark:text-neutral-50">
+                <p className="landing-mono-label mb-1 text-[10px]">
+                  {activeTab === "signin" ? "Sign in" : "Sign up"}
+                </p>
+                <h1 className="text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
                   {activeTab === "signin" ? "Welcome back" : "Create your account"}
                 </h1>
-                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                <p className="landing-body mt-1 hidden text-sm sm:block">
                   {activeTab === "signin"
                     ? "Sign in to your Relay workspace."
                     : "Start with a free account."}
@@ -265,33 +286,43 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-neutral-200/80 bg-white p-6 shadow-[0_12px_40px_-24px_rgba(0,0,0,0.12)] dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-[0_12px_40px_-24px_rgba(0,0,0,0.45)]">
+            <div className="landing-auth-glass rounded-2xl p-4 sm:p-5">
           <Tabs
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as "signin" | "signup")}
+            onValueChange={handleTabChange}
           >
-            <TabsList className="mb-6 grid w-full grid-cols-2 rounded-full bg-neutral-100 p-1 dark:bg-neutral-800">
-              <TabsTrigger value="signin" className="rounded-full">
+            <TabsList className="landing-auth-tabs mb-4 grid h-9 w-full grid-cols-2 rounded-full p-1">
+              <div
+                aria-hidden
+                className={cn(
+                  "landing-auth-tab-indicator",
+                  activeTab === "signup" && "is-signup",
+                  indicatorReady && "is-ready",
+                )}
+              />
+              <TabsTrigger value="signin" className="landing-auth-tab rounded-full text-xs sm:text-sm">
                 Sign in
               </TabsTrigger>
-              <TabsTrigger value="signup" className="rounded-full">
+              <TabsTrigger value="signup" className="landing-auth-tab rounded-full text-xs sm:text-sm">
                 Create account
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="signin">
+            <div className="landing-auth-content-swap">
+            <TabsContent value="signin" className="landing-auth-slide-from-left mt-0">
               <Form {...signInForm}>
-                <form onSubmit={signInForm.handleSubmit(handleSignIn)} className="space-y-4">
+                <form onSubmit={signInForm.handleSubmit(handleSignIn)} className="space-y-3">
                   <FormField
                     control={signInForm.control}
                     name="email"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
+                      <FormItem className="space-y-1.5">
+                        <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Email</FormLabel>
                         <FormControl>
                           <Input
                             type="email"
                             placeholder="you@company.com"
+                            className={cn(authInputClass, "h-9 text-sm")}
                             {...field}
                           />
                         </FormControl>
@@ -304,31 +335,35 @@ export default function LoginPage() {
                     control={signInForm.control}
                     name="password"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <FormLabel>Password</FormLabel>
+                          <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Password</FormLabel>
                           <Dialog open={isForgotOpen} onOpenChange={setIsForgotOpen}>
                             <DialogTrigger asChild>
                               <button
                                 type="button"
-                                className="text-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                                className="landing-mono-label text-[10px] text-neutral-500 transition-colors hover:text-white"
                               >
                                 Forgot?
                               </button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent className="border landing-hairline bg-black text-white">
                               <DialogHeader>
-                                <DialogTitle>Reset your password</DialogTitle>
-                                <DialogDescription>
+                                <DialogTitle className="text-white">Reset your password</DialogTitle>
+                                <DialogDescription className="text-neutral-400">
                                   Enter your email and we will send a reset link.
                                 </DialogDescription>
                               </DialogHeader>
                               <div className="space-y-2">
-                                <FormLabel>Email</FormLabel>
-                                <Input type="email" placeholder="you@company.com" />
+                                <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Email</FormLabel>
+                                <Input type="email" placeholder="you@company.com" className={authInputClass} />
                               </div>
                               <DialogFooter>
-                                <Button type="button" onClick={handleForgotPassword}>
+                                <Button
+                                  type="button"
+                                  onClick={handleForgotPassword}
+                                  className="rounded-full bg-white text-neutral-950 hover:bg-neutral-200"
+                                >
                                   Send reset link
                                 </Button>
                               </DialogFooter>
@@ -340,13 +375,13 @@ export default function LoginPage() {
                             <Input
                               type={showSignInPassword ? "text" : "password"}
                               placeholder="••••••••"
-                              className="pr-10"
+                              className={cn(authInputClass, "h-9 pr-10 text-sm")}
                               {...field}
                             />
                             <button
                               type="button"
                               onClick={() => setShowSignInPassword((prev) => !prev)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 transition-colors hover:text-white"
                               aria-label={showSignInPassword ? "Hide password" : "Show password"}
                             >
                               {showSignInPassword ? (
@@ -373,12 +408,16 @@ export default function LoginPage() {
                             onCheckedChange={(checked) => field.onChange(checked === true)}
                           />
                         </FormControl>
-                        <span className="text-xs text-neutral-500 dark:text-neutral-400">Remember me</span>
+                        <span className="text-xs text-neutral-500">Remember me</span>
                       </FormItem>
                     )}
                   />
 
-                  <Button type="submit" className="w-full rounded-full" disabled={isSigningIn}>
+                  <Button
+                    type="submit"
+                    className="h-10 w-full rounded-full bg-white text-neutral-950 hover:bg-neutral-200"
+                    disabled={isSigningIn}
+                  >
                     {isSigningIn ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -395,17 +434,17 @@ export default function LoginPage() {
               </Form>
             </TabsContent>
 
-            <TabsContent value="signup">
+            <TabsContent value="signup" className="landing-auth-slide-from-right mt-0">
               <Form {...signUpForm}>
-                <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-4">
+                <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-3">
                   <FormField
                     control={signUpForm.control}
                     name="fullName"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Full name</FormLabel>
+                      <FormItem className="space-y-1.5">
+                        <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Full name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Jane Doe" {...field} />
+                          <Input placeholder="Jane Doe" className={cn(authInputClass, "h-9 text-sm")} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -416,25 +455,25 @@ export default function LoginPage() {
                     control={signUpForm.control}
                     name="email"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
+                      <FormItem className="space-y-1.5">
+                        <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Email</FormLabel>
                         <FormControl>
-                          <Input type="email" placeholder="you@company.com" {...field} />
+                          <Input type="email" placeholder="you@company.com" className={cn(authInputClass, "h-9 text-sm")} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <FormField
                       control={signUpForm.control}
                       name="password"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password</FormLabel>
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Password</FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="••••••" {...field} />
+                            <Input type="password" placeholder="••••••" className={cn(authInputClass, "h-9 text-sm")} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -444,10 +483,10 @@ export default function LoginPage() {
                       control={signUpForm.control}
                       name="confirmPassword"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Confirm</FormLabel>
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="landing-mono-label text-[10px] text-neutral-400">Confirm</FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="••••••" {...field} />
+                            <Input type="password" placeholder="••••••" className={cn(authInputClass, "h-9 text-sm")} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -455,12 +494,13 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-                    <Check className="h-3 w-3" />
-                    <span>Minimum 8 characters</span>
-                  </div>
+                  <p className="text-[11px] text-neutral-500">Minimum 8 characters</p>
 
-                  <Button type="submit" className="w-full rounded-full" disabled={isSigningUp}>
+                  <Button
+                    type="submit"
+                    className="h-10 w-full rounded-full bg-white text-neutral-950 hover:bg-neutral-200"
+                    disabled={isSigningUp}
+                  >
                     {isSigningUp ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -473,16 +513,17 @@ export default function LoginPage() {
                 </form>
               </Form>
             </TabsContent>
+            </div>
           </Tabs>
         </div>
 
-        <p className="mt-6 text-center text-xs text-neutral-400 dark:text-neutral-500 lg:text-left">
+        <p className="landing-body mt-3 text-center text-[11px] leading-snug lg:text-left">
           By continuing, you agree to our{" "}
-          <Link href="#" className="underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300">
+          <Link href="#" className="text-neutral-400 underline underline-offset-2 transition-colors hover:text-white">
             Terms
           </Link>{" "}
           and{" "}
-          <Link href="#" className="underline underline-offset-2 hover:text-neutral-600 dark:hover:text-neutral-300">
+          <Link href="#" className="text-neutral-400 underline underline-offset-2 transition-colors hover:text-white">
             Privacy Policy
           </Link>
           .
