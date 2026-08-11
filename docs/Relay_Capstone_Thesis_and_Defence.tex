@@ -121,12 +121,17 @@
   \vspace{0.9cm}
   {\Large Capstone Project Thesis\par}
   \vfill
+  {\small
   \begin{tabular}{ll}
-    \textbf{Dhruv Mann} & Project manager; backend testing and CI/CD \\
-    \textbf{Arshia Bar} & Retrieval-augmented generation and AI testing \\
-    \textbf{Dipak Prasad} & Data analysis, security, and infrastructure \\
-    \textbf{Smeet Patel} & Frontend, UI, and accessibility testing \\
-  \end{tabular}
+    \textbf{Dhruv Mann} & \href{mailto:dmann9@myseneca.ca}{\nolinkurl{dmann9@myseneca.ca}} \\
+    \textbf{Arshia Barootkoob Dezfooli} & \href{mailto:abarootkoob-dezfooli@myseneca.ca}{\nolinkurl{abarootkoob-dezfooli@myseneca.ca}} \\
+    \textbf{Dipak Prasad Kushwaha} & \href{mailto:dkushwaha@myseneca.ca}{\nolinkurl{dkushwaha@myseneca.ca}} \\
+    \textbf{Smeet Brijesh Patel} & \href{mailto:spatel577@myseneca.ca}{\nolinkurl{spatel577@myseneca.ca}} \\
+  \end{tabular}}
+  \vspace{0.65cm}
+
+  {\large \textbf{Instructor:} Miguel Watler\par}
+  {\small \href{mailto:miguel.watler@senecapolytechnic.ca}{\nolinkurl{miguel.watler@senecapolytechnic.ca}}\par}
   \vfill
   {\large Submission date: August 14, 2026\par}
   \vspace{0.25cm}
@@ -788,24 +793,16 @@ legacy Express process must be removed or private before release.
 
 \section{3.8 Design Evolution}\label{38-design-evolution}
 
-\begin{longtable}[]{@{}p{0.16\textwidth}p{0.23\textwidth}p{0.25\textwidth}p{0.28\textwidth}@{}}
-\toprule\noalign{}
-Concern & Original design & End-product design & Rationale/effect \\
-\midrule\noalign{}
-\endhead
-\bottomrule\noalign{}
-\endlastfoot
-Web boundary & React SPA plus Express API & Next.js pages and route handlers; legacy Express debt & Reduced CORS, session, and deployment complexity \\
-Synchronization & Gmail watch/history and Graph webhooks/delta & Gmail history pulls and Outlook delta pulls & Preserved incremental sync without webhook infrastructure \\
-AI provider & OpenAI and Anthropic & OpenAI Responses and Embeddings & Reduced adapter and evaluation scope \\
-Search/RAG & FTS, vectors, attachment embeddings, citations & Provider search plus selected-thread, memory, same-contact, and message-vector context & Delivered scoped evidence; generalized grounding remains partial \\
-Agent actions & Generic proposals with confirmation & Calendar, commitments, monitors, briefs, activity, cancel/retry & Concrete workflows shipped before the approval executor \\
-Data model & Core mail, embeddings, tasks & Provider-neutral mail plus memory, feedback, calendars, commitments, briefs, activity, settings & Scope expanded into a communication workspace \\
-Privacy & No third-party sharing & Minimized context sent to configured OpenAI service & Corrected incompatible wording and requires transparency \\
-\end{longtable}
-
-The complete public-ready design is maintained in
-\texttt{docs/Relay\_System\_Design\_Document.tex} {[}21{]}.
+The architecture became more focused during implementation. Next.js
+route handlers replaced the public SPA/Express boundary, Gmail history
+and Outlook delta pulls replaced webhook dependencies, and OpenAI became
+the implemented model provider. Provider search and scoped semantic
+context replaced the originally unified FTS/RAG vision. Concrete
+calendar, commitment, brief, and activity workflows were delivered
+before the generic approval executor. The data model expanded, while the
+privacy requirement was clarified to disclose minimized OpenAI
+processing. The complete comparison table and rationale are maintained
+in the public-ready System Design Document {[}21{]}.
 
 \begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
 
@@ -1468,7 +1465,36 @@ needs correction and expiry. A model needs strict tools and limits.
 Approval needs an immutable payload and ownership revalidation. These
 principles make Relay a stronger foundation for continued development.
 
-\section{9.2 Prioritized Future Work}\label{92-prioritized-future-work}
+\section{9.2 Team Retrospective and Professional
+Growth}\label{92-team-retrospective-and-professional-growth}
+
+From the team\textquotesingle s perspective, Relay required us to work
+through an evolving scope while keeping the project understandable to
+people responsible for different areas. We divided ownership according
+to each member\textquotesingle s strengths, used shared documentation
+and version control to coordinate changes, and reviewed progress at
+regular checkpoints. As integrations and quality requirements expanded,
+some tasks took longer than first estimated and occasionally required
+redistribution. This highlighted the value of smaller deliverables,
+clearer acceptance criteria, and earlier communication when one area
+depended on another. The team became more consistent at recording
+decisions and identifying what was completed, partial, or dependent on
+external evidence.
+
+The project also supported professional growth beyond individual
+implementation tasks. We improved at explaining design decisions,
+reviewing one another\textquotesingle s work, responding constructively
+to feedback, and balancing desired features against time, security, and
+testing constraints. Working across interface, data, integration, AI,
+testing, and documentation concerns reinforced that software engineering
+is collaborative rather than a collection of isolated contributions. A
+major lesson was that a credible result depends on clear boundaries and
+honest evidence as much as visible functionality. If the project
+continued, we would establish measurable completion criteria earlier,
+schedule integration checks sooner, and preserve more time for user
+evaluation and final operational validation.
+
+\section{9.3 Prioritized Future Work}\label{93-prioritized-future-work}
 
 \begin{enumerate}
 \def\labelenumi{\arabic{enumi}.}
@@ -1508,7 +1534,7 @@ principles make Relay a stronger foundation for continued development.
   disaster-recovery procedures.
 \end{enumerate}
 
-\section{9.3 Closing Statement}\label{93-closing-statement}
+\section{9.4 Closing Statement}\label{94-closing-statement}
 
 Relay demonstrates that an AI email agent can be more than a text
 generator. By unifying providers, grounding context, tracking

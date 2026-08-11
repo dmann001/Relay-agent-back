@@ -3,6 +3,8 @@
 # dependencies
 /node_modules
 /.cursor
+package-lock.json
+pnpm-lock.yaml
 
 # next.js
 /.next/

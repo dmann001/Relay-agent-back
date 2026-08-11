@@ -6,16 +6,18 @@
 
 **Institution:** Seneca Polytechnic
 
+**Instructor:** Miguel Watler — [miguel.watler@senecapolytechnic.ca](mailto:miguel.watler@senecapolytechnic.ca)
+
 **Submission date:** August 14, 2026
 
 **Implementation and test baseline:** Working tree reviewed August 11, 2026
 
-| Team member | Project role |
-| --- | --- |
-| Dhruv Mann | Project manager; backend testing, integration testing, and CI/CD |
-| Arshia Bar. | Retrieval-augmented generation and AI workflow testing |
-| Dipak Prasad | Data analysis, security testing, and infrastructure validation |
-| Smeet Patel | Frontend development, UI verification, and accessibility testing |
+| Team member | Seneca email | Project role |
+| --- | --- | --- |
+| Dhruv Mann | [dmann9@myseneca.ca](mailto:dmann9@myseneca.ca) | Project manager; backend testing, integration testing, and CI/CD |
+| Arshia Barootkoob Dezfooli | [abarootkoob-dezfooli@myseneca.ca](mailto:abarootkoob-dezfooli@myseneca.ca) | Retrieval-augmented generation and AI workflow testing |
+| Dipak Prasad Kushwaha | [dkushwaha@myseneca.ca](mailto:dkushwaha@myseneca.ca) | Data analysis, security testing, and infrastructure validation |
+| Smeet Brijesh Patel | [spatel577@myseneca.ca](mailto:spatel577@myseneca.ca) | Frontend development, UI verification, and accessibility testing |
 
 ---
 
@@ -305,20 +307,7 @@ The repository combines a Next.js application, a legacy Express process, and a s
 
 ## 3.8 Design Evolution
 
-The original design described a React SPA, a separate Express API gateway, Gmail watch notifications, Microsoft Graph webhooks, OpenAI or Anthropic models, and a generic approval-driven agent layer. Implementation evidence shows a different and more focused architecture.
-
-| Design concern | Original design | Implemented end-product design | Reason and consequence |
-| --- | --- | --- | --- |
-| Web boundary | React SPA plus independent Express REST API | Next.js App Router combines React pages with authenticated route handlers; legacy Express remains migration debt | Reduced CORS, deployment, session, and duplicated-routing complexity |
-| Provider synchronization | Gmail `watch`/`history.list`; Graph webhooks/delta | Gmail history-based incremental pulls and Outlook delta/next-link pulls | Avoided webhook infrastructure during the capstone while preserving incremental cursors |
-| AI providers | OpenAI and Anthropic | OpenAI Responses and Embeddings APIs | Reduced adapter and evaluation scope; multi-provider support remains future work |
-| Search | Database FTS plus vectors | Direct Gmail/Outlook provider search plus semantic embedding matches for AI context | Delivered provider-accurate search; unified local FTS/vector experience remains partial |
-| RAG | Message/attachment embeddings with generalized citation pipeline | Same-contact sent mail, accepted memory, selected exact thread, and message embedding chunks | Narrowed retrieval to evidence supported by code; attachment RAG and automatic grounding remain future work |
-| Agentic actions | Generic tool proposals for labels, calendar, and follow-ups with confirmation | Commitments, calendar actions, monitors, meeting briefs, activity records, cancel/retry | Shipped concrete workflows first; full approval executor remains incomplete |
-| Data model | Core users/accounts/threads/messages plus embeddings/tasks | Expanded provider-neutral schema with recipients, drafts, memory, feedback, commitments, calendars, briefs, activity events, and settings | Product scope expanded from inbox/RAG into a communication workspace |
-| Privacy model | “User data never shared with third parties” | Minimized, server-controlled context is sent to the configured OpenAI service | Corrected an incompatible requirement and made third-party AI processing explicit |
-
-The complete public-ready design description is maintained in `docs/Relay_System_Design_Document.tex` [21].
+The architecture became more focused during implementation. Next.js route handlers replaced the planned public SPA/Express boundary, cursor-based Gmail history and Outlook delta pulls replaced webhook dependencies, and OpenAI became the implemented model provider. Provider search and scoped semantic context replaced the originally unified FTS/RAG vision. Concrete calendar, commitment, brief, and activity workflows were delivered before the generic approval executor. The data model expanded accordingly, while the privacy requirement was clarified to disclose minimized OpenAI processing. The complete comparison table and rationale are maintained in the public-ready System Design Document [21].
 
 ---
 
@@ -576,7 +565,13 @@ Automated evidence is meaningful: 206 Jest tests across 36 suites passed, and th
 
 The engineering lesson is that useful agent behavior depends as much on boundaries as capability. Retrieval needs provenance. Personalization needs correction and expiry. A model needs strict tools and limits. Approval needs an immutable payload and ownership revalidation. These principles make Relay a stronger foundation for continued development.
 
-## 9.2 Prioritized Future Work
+## 9.2 Team Retrospective and Professional Growth
+
+From the team's perspective, Relay required us to work through an evolving scope while keeping the project understandable to people responsible for different areas. We divided ownership according to each member's strengths, used shared documentation and version control to coordinate changes, and reviewed progress at regular checkpoints. As integrations and quality requirements expanded, some tasks took longer than first estimated and occasionally required redistribution. This highlighted the value of smaller deliverables, clearer acceptance criteria, and earlier communication when one area depended on another. The team became more consistent at recording decisions and identifying what was completed, partial, or still dependent on external evidence.
+
+The project also supported professional growth beyond individual implementation tasks. We improved at explaining design decisions, reviewing one another's work, responding constructively to feedback, and balancing desired features against time, security, and testing constraints. Working across interface, data, integration, AI, testing, and documentation concerns reinforced that software engineering is a collaborative process rather than a collection of isolated contributions. A major lesson was that a credible final result depends on clear boundaries and honest evidence as much as visible functionality. If the project continued, we would establish responsibilities and measurable completion criteria earlier, schedule integration checks sooner, and preserve more time for user evaluation and final operational validation.
+
+## 9.3 Prioritized Future Work
 
 1. **Close release-blocking security risks:** remove or isolate legacy Express routes, complete destination controls, normalize validation and rate limits, configure security headers, and execute the security test plan.
 2. **Validate the real environment:** apply every migration to a staging Supabase project and run two-user, two-account Gmail and Outlook scenarios with synthetic data.
@@ -587,7 +582,7 @@ The engineering lesson is that useful agent behavior depends as much on boundari
 7. **Add inspectable relationships:** introduce lightweight entity and relationship records only where every edge has source, confidence, scope, review state, and deletion controls.
 8. **Strengthen operations:** define monitoring, backup restore, retention, deletion, incident response, key rotation, and disaster-recovery procedures.
 
-## 9.3 Closing Statement
+## 9.4 Closing Statement
 
 Relay demonstrates that an AI email agent can be more than a text generator. By unifying providers, grounding context, tracking commitments, learning cautiously, and asking before it acts, the project offers a practical model for personal communication software that remains accountable to its user.
 

@@ -6,7 +6,9 @@
 
 **Defence date:** Friday, August 14, 2026
 
-**Team:** Dhruv Mann, Arshia Bar., Dipak Prasad, and Smeet Patel
+**Team:** Dhruv Mann, Arshia Barootkoob Dezfooli, Dipak Prasad Kushwaha, and Smeet Brijesh Patel
+
+**Instructor:** Miguel Watler — [miguel.watler@senecapolytechnic.ca](mailto:miguel.watler@senecapolytechnic.ca)
 
 This document contains the presentation slides, speaking guidance, live-demo script, showcase-video outline, and defence question bank. Detailed evidence and citations remain in `Relay_Capstone_Thesis_and_Defence.md`.
 
@@ -363,10 +365,10 @@ Translate technical terms for the showcase audience: use "meaning-based search" 
 
 | Segment | Suggested lead | Supporting responsibility |
 | --- | --- | --- |
-| Opening, business case, scope, conclusion | Dhruv | Keep time and connect the system to project objectives |
-| Retrieval, AI context, and agent behavior | Arshia | Explain grounding, hallucination limits, and prompt injection |
-| Data model, RLS, security, and privacy | Dipak | Explain ownership, encrypted credentials, risks, and evidence limits |
-| Interface and live demonstration | Smeet | Demonstrate responsive workflows and UI behavior |
+| Opening, business case, scope, conclusion | Dhruv Mann | Keep time and connect the system to project objectives |
+| Retrieval, AI context, and agent behavior | Arshia Barootkoob Dezfooli | Explain grounding, hallucination limits, and prompt injection |
+| Data model, RLS, security, and privacy | Dipak Prasad Kushwaha | Explain ownership, encrypted credentials, risks, and evidence limits |
+| Interface and live demonstration | Smeet Brijesh Patel | Demonstrate responsive workflows and UI behavior |
 | Q&A | All members | Answer in the responsible area, then invite concise additions |
 
 Every member should understand the complete architecture. For each answer, state the decision, reason, evidence, and limitation. Each member should prepare two concrete pull requests or commits, one technical challenge, and one lesson learned.
