@@ -132,7 +132,8 @@ describe("InboxList", () => {
     render(<InboxList />)
     await screen.findByText("Project update")
 
-    fireEvent.change(screen.getByLabelText("Inbox account"), { target: { value: "account-1" } })
+    fireEvent.click(screen.getByLabelText("Inbox account"))
+    fireEvent.click(screen.getByRole("option", { name: /me@example\.com/ }))
     expect(replace).toHaveBeenCalledWith("/inbox?account=account-1", { scroll: false })
   })
 
@@ -146,20 +147,27 @@ describe("InboxList", () => {
   })
 
   it("opens AI chat in the reading pane without requiring a selected email", async () => {
+    const onOpenAiChat = jest.fn()
+    window.addEventListener("relay-open-ai-chat", onOpenAiChat)
     render(<InboxList />)
     await screen.findByText("Project update")
 
     fireEvent.click(screen.getByRole("button", { name: "AI" }))
-    expect(replace).toHaveBeenCalledWith("/inbox?assistant=chat", { scroll: false })
+    expect(onOpenAiChat).toHaveBeenCalledTimes(1)
+    window.removeEventListener("relay-open-ai-chat", onOpenAiChat)
   })
 
   it("preserves the selected email when opening AI chat", async () => {
+    const onOpenAiChat = jest.fn()
+    window.addEventListener("relay-open-ai-chat", onOpenAiChat)
     params = new URLSearchParams("message=message-1&messageAccount=account-1")
     render(<InboxList />)
     await screen.findByText("Reading message-1")
 
     fireEvent.click(screen.getByRole("button", { name: "AI" }))
-    expect(replace).toHaveBeenCalledWith("/inbox?message=message-1&messageAccount=account-1&assistant=chat", { scroll: false })
+    expect(onOpenAiChat).toHaveBeenCalledTimes(1)
+    expect(replace).not.toHaveBeenCalled()
+    window.removeEventListener("relay-open-ai-chat", onOpenAiChat)
   })
 
   it("does not apply Gmail categories to a selected Outlook account", async () => {

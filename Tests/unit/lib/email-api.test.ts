@@ -7,7 +7,7 @@ jest.mock("@/lib/supabase/client", () => ({
   supabase: { auth: { getSession: (...args: unknown[]) => getSession(...args) } },
 }));
 
-import { emailApi, EmailApiError } from "@/lib/email-api";
+import { emailApi, EmailApiError, WIRED_AI_TOOLS } from "@/lib/email-api";
 
 const response = (payload: unknown, status = 200) => ({
   ok: status >= 200 && status < 300,
@@ -249,5 +249,170 @@ describe("email API client", () => {
         body: JSON.stringify({ action: "archive" }),
       }),
     );
+  });
+
+  it("covers every public route with populated optional parameters", async () => {
+    const payload: any = {
+      email: { id: "message-1" },
+      messages: [],
+      accountId: "account-1",
+      accountEmail: "me@example.com",
+      threadId: "thread-1",
+      data: "attachment-data",
+      drafts: [],
+      accounts: [],
+      contacts: [],
+      url: "https://example.com/connect",
+      connections: [],
+      events: [],
+      event: { id: "event-1" },
+      monitors: [],
+      monitor: { id: "monitor-1" },
+      briefs: [],
+      brief: { id: "brief-1" },
+      result: { answer: "done" },
+      sessions: [],
+      session: { id: "session-1" },
+      ok: true,
+      preferences: [],
+      preference: { accountId: "account-1" },
+      memories: [],
+      profile: {},
+      settings: { defaultModel: "gpt-test", tools: {} },
+      models: [],
+      activities: [],
+      activity: { id: "activity-1" },
+      commitments: [],
+      commitment: { id: "commitment-1" },
+      needsAttention: 0,
+      results: [],
+    };
+    (global.fetch as jest.Mock).mockImplementation(() =>
+      Promise.resolve(response(payload)),
+    );
+    const calendarPayload = {
+      accountId: "account-1",
+      title: "Planning",
+      startsAt: "2026-08-12T10:00:00Z",
+      endsAt: "2026-08-12T10:30:00Z",
+      timezone: "America/Toronto",
+    };
+
+    expect(WIRED_AI_TOOLS).toEqual([
+      "webSearch",
+      "codeInterpreter",
+      "imageGeneration",
+      "computerUse",
+    ]);
+    await emailApi.listEmails("inbox");
+    await emailApi.searchEmails({ q: "status" });
+    await emailApi.sync("drafts", {
+      force: true,
+      loadMore: true,
+      category: "updates",
+      accountId: "account-1",
+    });
+    await emailApi.sync();
+    await emailApi.getEmail("message/1", "account/1");
+    await emailApi.getThread("message/1");
+    await emailApi.listDrafts("account/1");
+    await emailApi.searchContacts();
+    await emailApi.searchContacts({ q: "ada", accountId: "account-1", limit: 5 });
+    await emailApi.getOutlookConnectUrl();
+    await emailApi.listCalendarConnections();
+    await emailApi.listCalendarAgenda();
+    await emailApi.listCalendarAgenda({
+      accountId: "account-1",
+      start: "2026-08-12",
+      end: "2026-08-13",
+    });
+    await emailApi.createCalendarMeeting(calendarPayload);
+    await emailApi.updateCalendarMeeting("event/1", {
+      ...calendarPayload,
+      calendarId: "primary",
+    });
+    await emailApi.deleteCalendarMeeting({
+      id: "event/1",
+      accountId: "account-1",
+      calendarId: "",
+    });
+    await emailApi.draftCalendarMeeting({ prompt: "Tomorrow at ten" });
+    await emailApi.getCalendarConnectUrl("gmail", "account/1");
+    await emailApi.listCommitmentCalendarEvents();
+    await emailApi.createCommitmentCalendarEvent("commitment-1");
+    await emailApi.createCommitmentCalendarEvent("commitment-1", 10);
+    await emailApi.deleteCommitmentCalendarEvent("event/1");
+    await emailApi.listCommitmentMonitors();
+    await emailApi.enableCommitmentMonitor("commitment/1");
+    await emailApi.enableCommitmentMonitor("commitment/1", 12);
+    await emailApi.disableCommitmentMonitor("commitment/1");
+    await emailApi.listMeetingBriefs();
+    await emailApi.prepareMeetingBrief("commitment-1");
+    await emailApi.runComposeAi({ prompt: "Draft", signal: new AbortController().signal });
+    await emailApi.runComputerUseAi({ prompt: "Inspect", signal: new AbortController().signal });
+    await emailApi.listAiChatSessions();
+    await emailApi.listAiChatSessions(5);
+    await emailApi.getAiChatSession("session/1");
+    await emailApi.createAiChatSession();
+    await emailApi.createAiChatSession({ title: "Inbox" });
+    await emailApi.deleteAiChatSession("session/1");
+    await emailApi.getInboxBrief("account-1");
+    await emailApi.listAiPreferences();
+    await emailApi.updateAiPreference({
+      accountId: "account-1",
+      writingStyle: "concise",
+      signature: "Ada",
+      draftInstructions: "Be direct",
+      aiEnabled: true,
+    });
+    await emailApi.listMemory();
+    await emailApi.updateMemory({ action: "resetProfile" });
+    await emailApi.deleteMemory("memory/1");
+    await emailApi.runMemoryMaintenance();
+    await emailApi.getAiModelSettings();
+    await emailApi.updateAiModelSettings({ defaultModel: "gpt-test", tools: {} as any });
+    await emailApi.listAgentActivity();
+    await emailApi.listAgentActivity({ status: "failed", limit: 5 });
+    await emailApi.getAgentActivity("activity/1");
+    await emailApi.controlAgentActivity("activity/1", "retry");
+    await emailApi.listCommitments();
+    await emailApi.listCommitments({ status: "active", accountId: "account-1", limit: 5 });
+    await emailApi.createCommitment({
+      accountId: "account-1",
+      providerMessageId: "message-1",
+      type: "my_task",
+      title: "Reply",
+    });
+    await emailApi.updateCommitment("commitment/1", { action: "complete" });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/calendar/agenda/event%2F1?accountId=account-1&calendarId=primary",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("maps cancellation, transport, and bodyless backend failures", async () => {
+    const aborted = Object.assign(new Error("cancelled"), { name: "AbortError" });
+    (global.fetch as jest.Mock).mockRejectedValueOnce(aborted);
+    await expect(
+      emailApi.runThreadAi({ messageId: "message-1", action: "summary" }),
+    ).rejects.toMatchObject({ status: 499, code: "AI_ABORTED" });
+
+    const offline = new TypeError("offline");
+    (global.fetch as jest.Mock).mockRejectedValueOnce(offline);
+    await expect(emailApi.getCounts()).rejects.toBe(offline);
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: jest.fn().mockRejectedValue(new Error("invalid json")),
+    });
+    await expect(emailApi.getCounts()).rejects.toMatchObject({
+      message: "Request failed (503)",
+      status: 503,
+    });
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce(response({ error: "Bad request" }, 400));
+    await expect(emailApi.getCounts()).rejects.toMatchObject({ message: "Bad request" });
   });
 });

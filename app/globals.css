@@ -705,6 +705,9 @@ html {
 }
 
 .landing-auth-glass {
+  /* One clock for the whole tab swap: pill, labels, card height, and form. */
+  --landing-auth-swap: 0.42s;
+  --landing-auth-content: 0.34s;
   position: relative;
   border: 1px solid var(--landing-hairline);
   border-radius: 1rem;
@@ -749,11 +752,15 @@ html {
   animation: landing-bloom-breathe 11s ease-in-out infinite;
 }
 
+/* The track shows as a ~5px strip around the active pill. At 4% white over the
+   dark card that strip reads as a black ring rather than a subtle groove, and
+   the hairline border sharpens it into a visible outline. Lifting the fill and
+   dropping the border keeps the groove readable without the hard edge. */
 .landing-auth-tabs {
   position: relative;
   isolation: isolate;
-  border: 1px solid var(--landing-hairline);
-  background: rgb(255 255 255 / 0.04);
+  border: 0;
+  background: rgb(255 255 255 / 0.09);
 }
 
 .landing-auth-tab-indicator {
@@ -765,7 +772,10 @@ html {
   width: calc(50% - 4px);
   border-radius: 9999px;
   background: white;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  /* No drop shadow: offset downward against a near-black track it reads as a
+     dark smudge hugging the pill's bottom edge rather than as elevation. A
+     soft white glow separates the pill from the track without the grime. */
+  box-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.5);
   transform: translateX(0%);
 }
 
@@ -774,16 +784,22 @@ html {
 }
 
 .landing-auth-tab-indicator.is-ready {
-  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--landing-auth-swap, 0.42s) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-auth-tab {
   position: relative;
   z-index: 1;
   background: transparent !important;
+  /* shadcn's `dark:data-[state=active]:border-input` puts a solid #2e2e2e
+     border on the active trigger. It sits 1px proud of the white pill and
+     paints above it, reading as a black ring around the button. */
+  border-color: transparent !important;
   color: rgb(163 163 163);
   box-shadow: none !important;
-  transition: color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Matches the indicator's clock so the label never darkens before the
+     pill has actually slid under it. */
+  transition: color var(--landing-auth-swap, 0.42s) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-auth-tab[data-state="active"] {
@@ -791,10 +807,15 @@ html {
   color: rgb(10 10 10);
 }
 
+/* Sizes to the active tab instead of the tallest one, so the sign-in panel
+   doesn't leave dead space below its button. interpolate-size lets the
+   height change animate rather than snap during a tab swap. */
 .landing-auth-content-swap {
   position: relative;
-  min-height: 26rem;
   overflow: hidden;
+  interpolate-size: allow-keywords;
+  height: auto;
+  transition: height var(--landing-auth-swap, 0.42s) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes landing-auth-slide-in-from-right {
@@ -821,12 +842,26 @@ html {
   }
 }
 
+/* Slightly shorter than the pill and offset by a beat, so the incoming form
+   resolves just after the indicator lands instead of racing it. Longhand on
+   single lines: a var() split across lines in the `animation` shorthand
+   picked up a stray CR and zeroed the duration. */
+.landing-auth-slide-from-right,
+.landing-auth-slide-from-left {
+  /* !important: Radix Tabs sets an inline `animation-duration: 0s` to suppress
+     the mount animation, which otherwise wins over any stylesheet rule. */
+  animation-duration: 0.34s !important;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-delay: 0.06s;
+  animation-fill-mode: both;
+}
+
 .landing-auth-slide-from-right {
-  animation: landing-auth-slide-in-from-right 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-name: landing-auth-slide-in-from-right;
 }
 
 .landing-auth-slide-from-left {
-  animation: landing-auth-slide-in-from-left 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-name: landing-auth-slide-in-from-left;
 }
 
 .landing-auth-image {
@@ -1530,6 +1565,10 @@ html {
     animation: none !important;
     opacity: 1;
     transform: none;
+  }
+
+  .landing-auth-content-swap {
+    transition: none !important;
   }
 
   .landing-auth-image {

@@ -15,6 +15,7 @@ export default defineConfig([
     },
   },
   globalIgnores([
+    ".claude/worktrees/**",
     ".next/**",
     "build/**",
     "coverage/**",

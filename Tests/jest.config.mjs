@@ -20,18 +20,19 @@ const config = {
     "lib/server/supabase-admin.ts",
   ],
   coverageDirectory: "coverage",
-  coverageReporters: ["text", "lcov", "json-summary"],
+  coverageReporters: ["text", "lcov", "json", "json-summary"],
   coverageThreshold: {
     global: {
-      branches: 45,
-      functions: 55,
-      lines: 60,
-      statements: 60,
+      branches: 100,
+      functions: 100,
+      lines: 100,
+      statements: 100,
     },
   },
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },
+  modulePathIgnorePatterns: ["<rootDir>/.claude/worktrees/"],
   setupFilesAfterEnv: ["<rootDir>/Tests/jest.setup.ts"],
   testEnvironment: "node",
   testMatch: [

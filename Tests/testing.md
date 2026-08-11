@@ -56,7 +56,7 @@ instance or execute migrations against PostgreSQL.
 
 Playwright runs Chromium against the production Next.js build and checks:
 
-- Root-to-login redirect
+- Landing-page login-link navigation
 - Public login-page rendering
 - Sign-in validation
 - Account-creation password confirmation
@@ -106,13 +106,15 @@ below these global minimums:
 
 | Metric | Minimum |
 | --- | ---: |
-| Statements | 60% |
-| Branches | 45% |
-| Functions | 55% |
-| Lines | 60% |
+| Statements | 100% |
+| Branches | 100% |
+| Functions | 100% |
+| Lines | 100% |
 
-The current suite is substantially above these minimums. Coverage output is
-uploaded as the `coverage` GitHub Actions artifact.
+As verified on August 11, 2026, all four metrics are 100% across the configured
+core-module scope. Coverage output is uploaded as the `coverage` GitHub Actions
+artifact. This scoped result does not claim that every production file or live
+provider workflow is covered.
 
 ## CI Jobs
 

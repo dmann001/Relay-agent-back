@@ -36,6 +36,9 @@ describe("server-side secret encryption", () => {
 
   it("supports legacy plaintext values", () => {
     expect(decryptSecretOrPassthrough("legacy-token")).toBe("legacy-token");
+    expect(decryptSecretOrPassthrough(encryptSecret("encrypted-token"))).toBe(
+      "encrypted-token",
+    );
   });
 
   it("binds OAuth state to a user and rejects expired state", () => {
@@ -47,6 +50,31 @@ describe("server-side secret encryption", () => {
     now.mockReturnValue(1_000_000 + 16 * 60 * 1000);
     expect(() => parseOAuthState(state)).toThrow("OAuth state expired or invalid");
     now.mockRestore();
+  });
+
+  it("round-trips complete OAuth context and rejects a missing user", () => {
+    const state = createOAuthState("user-123", {
+      purpose: "calendar",
+      accountId: "account-1",
+      provider: "outlook",
+    });
+    expect(parseOAuthState(state)).toMatchObject({
+      userId: "user-123",
+      purpose: "calendar",
+      accountId: "account-1",
+      provider: "outlook",
+    });
+
+    const invalid = encodeURIComponent(
+      encryptSecret(JSON.stringify({ issuedAt: Date.now() })),
+    );
+    expect(() => parseOAuthState(invalid)).toThrow("OAuth state expired or invalid");
+  });
+
+  it("falls back to SESSION_SECRET", () => {
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    process.env.SESSION_SECRET = "session-secret";
+    expect(decryptSecret(encryptSecret("secret"))).toBe("secret");
   });
 
   it("requires an encryption key", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AccountScopeMenu } from "@/components/account-scope-menu";
 import { emailApi, type ConnectedAccount } from "@/lib/email-api";
 
 interface AccountScopeSelectProps {
@@ -37,18 +38,12 @@ export function AccountScopeSelect({
   if (accounts.length < 2) return null;
 
   return (
-    <select
-      aria-label="Mailbox account"
+    <AccountScopeMenu
+      accounts={accounts}
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={`h-9 max-w-56 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring ${className}`}
-    >
-      <option value="">All accounts</option>
-      {accounts.map((account) => (
-        <option key={account.id} value={account.id}>
-          {account.email}
-        </option>
-      ))}
-    </select>
+      onChange={(accountId) => onChange(accountId ?? "")}
+      label="Mailbox account"
+      className={`max-w-56 ${className}`}
+    />
   );
 }

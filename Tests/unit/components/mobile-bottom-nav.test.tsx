@@ -39,4 +39,11 @@ describe("MobileBottomNav", () => {
     fireEvent.click(screen.getByRole("button", { name: "Compose email" }))
     expect(screen.getByTestId("mobile-compose-state")).toHaveTextContent("compose open")
   })
+
+  it("marks a destination in the trailing group as active", () => {
+    pathname = "/settings"
+    render(<MobileBottomNav />)
+
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveClass("text-brand")
+  })
 })

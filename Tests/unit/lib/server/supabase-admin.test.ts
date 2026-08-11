@@ -45,6 +45,14 @@ describe("Supabase request authentication", () => {
     );
   });
 
+  it("provides a default unauthorized message", async () => {
+    const { UnauthorizedError } = await import("@/lib/server/supabase-admin");
+    expect(new UnauthorizedError()).toMatchObject({
+      name: "UnauthorizedError",
+      message: "Unauthorized",
+    });
+  });
+
   it("returns the authenticated user id", async () => {
     createClient.mockReturnValue({
       auth: {

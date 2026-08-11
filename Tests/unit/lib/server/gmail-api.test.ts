@@ -33,12 +33,15 @@ import {
   buildRawMessage,
   createDraft,
   deleteDraft,
+  fetchFullMessage,
   fetchFullThread,
   fetchMessageMetadataBatch,
+  formatOutgoingBodyAsHtml,
   getAttachment,
   getProfileHistoryId,
   listDrafts,
   listHistoryDelta,
+  listMessageIds,
   listMessageIdsPage,
   modifyMessage,
   parseMessageMetadata,
@@ -93,6 +96,30 @@ describe('Gmail MIME generation', () => {
     expect(mime).not.toContain('\r\nBcc: attacker@example.com');
     expect(mime).not.toContain('\r\nX-Injected: true');
   });
+
+  it('preserves HTML and emits copy and reply headers with safe MIME defaults', () => {
+    expect(formatOutgoingBodyAsHtml('<strong>Already HTML</strong>')).toBe(
+      '<strong>Already HTML</strong>',
+    );
+    expect(formatOutgoingBodyAsHtml('First\r\nline\r\n\r\nSecond')).toBe(
+      '<p>First<br />line</p><p>Second</p>',
+    );
+    const raw = buildRawMessage({
+      to: ['recipient@example.com'],
+      cc: ['copy@example.com'],
+      subject: 'Reply',
+      body: '<strong>Already HTML</strong>',
+      inReplyToMessageId: 'original-message',
+      attachments: [{ filename: 'empty.bin', mimeType: '', data: '   ' }],
+    });
+    const mime = Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+      .toString('utf8');
+
+    expect(mime).toContain('Cc: copy@example.com');
+    expect(mime).toContain('In-Reply-To: <original-message>');
+    expect(mime).toContain('References: <original-message>');
+    expect(mime).toContain('Content-Type: application/octet-stream');
+  });
 });
 
 describe('Gmail metadata parsing', () => {
@@ -144,6 +171,26 @@ describe('Gmail metadata parsing', () => {
       hasAttachment: false,
     });
   });
+
+  it.each([
+    ['CATEGORY_PRIMARY', 'primary'],
+    ['CATEGORY_SOCIAL', 'social'],
+    ['CATEGORY_UPDATES', 'updates'],
+    ['CATEGORY_FORUMS', 'forums'],
+  ])('maps %s to %s', (label, category) => {
+    expect(parseMessageMetadata({ labelIds: [label] })?.gmailCategory).toBe(category);
+  });
+
+  it('returns null when malformed metadata throws during parsing', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    const malformed = Object.defineProperty({}, 'payload', {
+      get: () => { throw new Error('malformed payload'); },
+    });
+
+    expect(parseMessageMetadata(malformed)).toBeNull();
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
 
 describe('Gmail API contracts', () => {
@@ -193,6 +240,51 @@ describe('Gmail API contracts', () => {
       maxResults: 25,
       pageToken: 'current-page',
     });
+  });
+
+  it('lists one page through the compatibility helper and defaults empty pages', async () => {
+    mockGmailApi.users.messages.list
+      .mockResolvedValueOnce({ data: { messages: [{ id: 'one' }] } })
+      .mockResolvedValueOnce({ data: {} });
+
+    await expect(listMessageIds({} as never, 'in:sent', 10)).resolves.toEqual(['one']);
+    await expect(listMessageIdsPage({} as never, 'in:trash', 10)).resolves.toEqual({
+      ids: [],
+      nextPageToken: undefined,
+    });
+  });
+
+  it('fetches full messages and handles unparsable provider payloads', async () => {
+    const valid = {
+      id: 'message-1',
+      threadId: 'thread-1',
+      payload: { headers: [] },
+    };
+    const malformed = { payload: { headers: [{ name: null }] } };
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    mockGmailApi.users.messages.get
+      .mockResolvedValueOnce({ data: valid })
+      .mockResolvedValueOnce({ data: malformed });
+
+    await expect(fetchFullMessage({} as never, 'message-1')).resolves.toMatchObject({
+      email: { id: 'message-1' },
+      labelIds: [],
+    });
+    await expect(fetchFullMessage({} as never, 'bad')).resolves.toBeNull();
+    consoleError.mockRestore();
+  });
+
+  it('defaults missing threads and filters malformed conversation messages', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    mockGmailApi.users.threads.get
+      .mockResolvedValueOnce({ data: {} })
+      .mockResolvedValueOnce({
+        data: { messages: [{ payload: { headers: [{ name: null }] } }] },
+      });
+
+    await expect(fetchFullThread({} as never, 'empty')).resolves.toEqual([]);
+    await expect(fetchFullThread({} as never, 'malformed')).resolves.toEqual([]);
+    consoleError.mockRestore();
   });
 
   it('keeps successful metadata results when one Gmail request fails', async () => {
@@ -255,6 +347,44 @@ describe('Gmail API contracts', () => {
     });
   });
 
+  it('handles every expired-history shape and rethrows unrelated failures', async () => {
+    mockGmailApi.users.history.list
+      .mockRejectedValueOnce({ code: 404 })
+      .mockRejectedValueOnce({ response: { status: 404 } })
+      .mockRejectedValueOnce(new Error('offline'));
+
+    await expect(listHistoryDelta({} as never, 'old-404')).resolves.toMatchObject({ historyExpired: true });
+    await expect(listHistoryDelta({} as never, 'old-response')).resolves.toMatchObject({ historyExpired: true });
+    await expect(listHistoryDelta({} as never, 'current')).rejects.toThrow('offline');
+  });
+
+  it('defaults empty history records and ignores entries without ids', async () => {
+    mockGmailApi.users.history.list.mockResolvedValue({
+      data: {
+        history: [{
+          messagesAdded: [{ message: {} }],
+          messagesDeleted: [{ message: {} }],
+          labelsAdded: [{ message: {} }],
+          labelsRemoved: [{ message: {} }],
+        }, {}],
+      },
+    });
+
+    await expect(listHistoryDelta({} as never, '100')).resolves.toEqual({
+      newHistoryId: undefined,
+      changedMessageIds: [],
+      deletedMessageIds: [],
+      historyExpired: false,
+    });
+
+    mockGmailApi.users.history.list.mockResolvedValue({ data: {} });
+    await expect(listHistoryDelta({} as never, '101')).resolves.toMatchObject({
+      changedMessageIds: [],
+      deletedMessageIds: [],
+      historyExpired: false,
+    });
+  });
+
   it('maps message, attachment, profile, send, and draft operations', async () => {
     mockGmailApi.users.messages.modify.mockResolvedValue({ data: { labelIds: ['INBOX'] } });
     mockGmailApi.users.messages.trash.mockResolvedValue({ data: { labelIds: ['TRASH'] } });
@@ -313,5 +443,26 @@ describe('Gmail API contracts', () => {
       id: 'sent-draft',
       threadId: 'thread',
     });
+  });
+
+  it('uses empty provider fallbacks for labels, attachment data, profile, and drafts', async () => {
+    mockGmailApi.users.messages.modify.mockResolvedValue({ data: {} });
+    mockGmailApi.users.messages.trash.mockResolvedValue({ data: {} });
+    mockGmailApi.users.messages.untrash.mockResolvedValue({ data: {} });
+    mockGmailApi.users.messages.attachments.get.mockResolvedValue({ data: {} });
+    mockGmailApi.users.getProfile.mockResolvedValue({ data: {} });
+    mockGmailApi.users.drafts.list.mockResolvedValue({
+      data: { drafts: [{ id: 'missing-message' }] },
+    });
+
+    await expect(modifyMessage({} as never, 'id', [], [])).resolves.toEqual([]);
+    await expect(trashMessage({} as never, 'id')).resolves.toEqual([]);
+    await expect(untrashMessage({} as never, 'id')).resolves.toEqual([]);
+    await expect(getAttachment({} as never, 'id', 'attachment')).resolves.toBe('');
+    await expect(getProfileHistoryId({} as never)).resolves.toBeUndefined();
+    await expect(listDrafts({} as never, 10)).resolves.toEqual([]);
+
+    mockGmailApi.users.drafts.list.mockResolvedValue({ data: {} });
+    await expect(listDrafts({} as never, 10)).resolves.toEqual([]);
   });
 });

@@ -18,9 +18,11 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { AccountScopeMenu } from "@/components/account-scope-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ToastAction } from "@/components/ui/toast";
 import { ComposeDialog } from "@/components/compose-dialog";
 import { SearchBar } from "@/components/search-bar";
 import { ThreadView } from "@/components/thread-view";
@@ -206,8 +208,16 @@ export function InboxList() {
         if (failed?.error?.toLowerCase().includes("invalid_grant")) {
           toast({
             title: "Session expired",
-            description: `Reconnect ${failed.email} in Settings.`,
+            description: `Reconnect ${failed.email} to keep syncing.`,
             variant: "destructive",
+            action: (
+              <ToastAction
+                altText={`Reconnect ${failed.email} in Settings`}
+                onClick={() => router.push("/settings/connections")}
+              >
+                Reconnect
+              </ToastAction>
+            ),
           });
         } else if (failed?.error && !silent) {
           toast({
@@ -234,7 +244,7 @@ export function InboxList() {
         setIsSyncing(false);
       }
     },
-    [loadEmails, selectedAccountId, selectedCategory, toast],
+    [loadEmails, router, selectedAccountId, selectedCategory, toast],
   );
 
   useEffect(() => {
@@ -686,35 +696,15 @@ export function InboxList() {
                 }
                 disabled={!visibleEmails.length}
               />
-              <div className="min-w-0">
-                <label className="sr-only" htmlFor="inbox-account-scope">
-                  Inbox account
-                </label>
-                <select
-                  id="inbox-account-scope"
-                  value={selectedAccountId || "all"}
-                  onChange={(event) =>
-                    updateQuery({
-                      account:
-                        event.target.value === "all"
-                          ? null
-                          : event.target.value,
-                      message: null,
-                    })
-                  }
-                  className="max-w-[12rem] cursor-pointer bg-transparent text-sm font-semibold text-foreground outline-none"
-                >
-                  <option value="all">All accounts</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.email}
-                    </option>
-                  ))}
-                </select>
-                <div className="text-[11px] text-muted-foreground">
-                  {unreadTotal} unread · {totalEmails} total
-                </div>
-              </div>
+              <AccountScopeMenu
+                className="max-w-[14rem]"
+                accounts={accounts}
+                value={selectedAccountId}
+                onChange={(accountId) =>
+                  updateQuery({ account: accountId, message: null })
+                }
+                summary={`${unreadTotal} unread · ${totalEmails} total`}
+              />
             </div>
             <div className="flex items-center gap-1">
               <Button
